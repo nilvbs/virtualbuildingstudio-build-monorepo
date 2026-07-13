@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   ChevronDown,
-  Compass,
   LayoutDashboard,
   LogOut,
   type LucideIcon,
@@ -101,11 +101,15 @@ export function AppShell({ section, children }: { section: Section; children: Re
   return (
     <div className="shell">
       <aside className="sidebar">
-        <Link href="/" className="brand plain">
-          <span className="brand-mark">
-            <Compass size={19} strokeWidth={2.4} />
-          </span>
-          <span className="brand-name">SurveyLink</span>
+        <Link href="/" className="brand plain" aria-label="BLD home">
+          <Image
+            src="/brand/bld-logo-dark.png"
+            alt="BLD"
+            width={636}
+            height={236}
+            className="brand-logo"
+            priority
+          />
         </Link>
 
         <div className="nav-section">{nav.label}</div>
@@ -126,7 +130,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
           })}
         </nav>
 
-        <div className="sidebar-foot">SurveyLink · Phase 1</div>
+        <div className="sidebar-foot">BLD · Phase 1</div>
       </aside>
 
       <div className="shell-body">

@@ -13,9 +13,37 @@ import type {
   CreateIdentityInput,
   IdentityProvider,
   IdentityRecord,
+  SocialAuthorizeInput,
+  SocialExchangeInput,
+  SocialExchangeResult,
+  SocialIdentity,
 } from './identity-provider';
 
 export const AUTH_PROVIDER_NAME = 'auth0';
+/** Auth provider label stored for accounts created through Google. */
+export const GOOGLE_PROVIDER_NAME = 'google-oauth2';
+
+interface Auth0IdToken {
+  sub?: string;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+}
+
+/** Decode a JWT payload without verifying its signature. Safe here because the
+ *  token is received directly from Auth0's token endpoint over TLS. */
+function decodeJwtPayload(token: string): Auth0IdToken {
+  const parts = token.split('.');
+  if (parts.length < 2) return {};
+  const json = Buffer.from(parts[1], 'base64url').toString('utf8');
+  try {
+    return JSON.parse(json) as Auth0IdToken;
+  } catch {
+    return {};
+  }
+}
 
 @Injectable()
 export class Auth0IdentityProvider implements IdentityProvider {
@@ -135,6 +163,56 @@ export class Auth0IdentityProvider implements IdentityProvider {
     } catch (err) {
       // Logout should be resilient; a failed revoke must not block the client.
       this.logger.warn(`Refresh-token revoke failed: ${(err as Error).message}`);
+    }
+  }
+
+  buildSocialAuthorizeUrl(input: SocialAuthorizeInput): string {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: this.requireConfig('AUTH0_CLIENT_ID'),
+      connection: input.connection,
+      redirect_uri: input.redirectUri,
+      scope: 'openid profile email offline_access',
+      audience: this.audience,
+      state: input.state,
+    });
+    return `https://${this.domain}/authorize?${params.toString()}`;
+  }
+
+  async exchangeAuthorizationCode(input: SocialExchangeInput): Promise<SocialExchangeResult> {
+    try {
+      const { data } = await this.auth().oauth.authorizationCodeGrant({
+        code: input.code,
+        redirect_uri: input.redirectUri,
+      });
+      const claims = data.id_token ? decodeJwtPayload(data.id_token) : {};
+      const composedName = [claims.given_name, claims.family_name].filter(Boolean).join(' ');
+      const identity: SocialIdentity = {
+        subject: claims.sub ?? '',
+        email: claims.email ?? '',
+        emailVerified: Boolean(claims.email_verified),
+        fullName: claims.name || composedName || claims.email || '',
+      };
+      if (!identity.subject) {
+        throw new ServiceUnavailableException('Auth0 did not return an identity subject');
+      }
+      return {
+        session: {
+          accessToken: data.access_token,
+          idToken: data.id_token,
+          refreshToken: data.refresh_token,
+          tokenType: data.token_type ?? 'Bearer',
+          expiresIn: data.expires_in,
+        },
+        identity,
+      };
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode;
+      if (status === 401 || status === 403) {
+        throw new UnauthorizedException('Google sign-in was rejected');
+      }
+      this.logger.error('Auth0 authorization-code exchange failed', err as Error);
+      throw err;
     }
   }
 }

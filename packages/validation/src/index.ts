@@ -76,6 +76,25 @@ export type VerifyPhoneInput = z.infer<typeof verifyPhoneSchema>;
 export const verifyEmailSchema = z.object({}).strict();
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 
+/** Body posted from the OAuth callback page to exchange the provider code. */
+export const googleExchangeSchema = z.object({
+  code: z.string().min(1),
+  state: z.string().min(1),
+});
+export type GoogleExchangeInput = z.infer<typeof googleExchangeSchema>;
+
+/**
+ * Completes a social sign-up: the account already exists at the identity
+ * provider, we just need the details the provider can't give us (phone + role).
+ */
+export const completeRegistrationSchema = z.object({
+  fullName: z.string().min(1).max(200),
+  email: emailSchema.optional(),
+  phone: phoneSchema,
+  roleHint: roleHintSchema.default('client'),
+});
+export type CompleteRegistrationInput = z.infer<typeof completeRegistrationSchema>;
+
 export const logoutSchema = z
   .object({
     refreshToken: z.string().min(1).optional(),

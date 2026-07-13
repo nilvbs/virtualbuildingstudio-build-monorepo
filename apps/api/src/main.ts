@@ -23,7 +23,22 @@ async function bootstrap(): Promise<void> {
   // Request bodies are validated at the boundary with the shared zod schemas
   // (@surveylink/validation) via a zod pipe, added alongside feature DTOs.
 
-  app.enableCors();
+  // Lock CORS to explicit web origins in any deployed environment. Set
+  // CORS_ORIGINS (comma-separated) or fall back to WEB_APP_URL. If neither is
+  // set (local dev), reflect the request origin so the SPA still works.
+  const allowedOrigins = (process.env.CORS_ORIGINS ?? process.env.WEB_APP_URL ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    credentials: true,
+  });
+
+  // Behind an ALB/CloudFront: trust the proxy so client IPs (X-Forwarded-For)
+  // are correct for rate limiting and logs.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.enableShutdownHooks();
 
   const port = Number(process.env.API_PORT ?? 4000);

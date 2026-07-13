@@ -1,0 +1,59 @@
+{
+  "family": "bld-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/bld-api-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/bld-api-task-role",
+  "containerDefinitions": [
+    {
+      "name": "api",
+      "image": "PLACEHOLDER_REPLACED_BY_CI",
+      "essential": true,
+      "portMappings": [{ "containerPort": 4000, "protocol": "tcp" }],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "API_PORT", "value": "4000" },
+        { "name": "LOG_LEVEL", "value": "info" },
+        { "name": "AUTH0_GOOGLE_CONNECTION", "value": "google-oauth2" }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/DATABASE_URL" },
+        { "name": "DIRECT_DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/DIRECT_DATABASE_URL" },
+        { "name": "CORS_ORIGINS", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/CORS_ORIGINS" },
+        { "name": "WEB_APP_URL", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/WEB_APP_URL" },
+        { "name": "SENTRY_DSN", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/SENTRY_DSN" },
+        { "name": "AUTH0_DOMAIN", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_DOMAIN" },
+        { "name": "AUTH0_AUDIENCE", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_AUDIENCE" },
+        { "name": "AUTH0_CLIENT_ID", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_CLIENT_ID" },
+        { "name": "AUTH0_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_CLIENT_SECRET" },
+        { "name": "AUTH0_MGMT_CLIENT_ID", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_MGMT_CLIENT_ID" },
+        { "name": "AUTH0_MGMT_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_MGMT_CLIENT_SECRET" },
+        { "name": "TWILIO_ACCOUNT_SID", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/TWILIO_ACCOUNT_SID" },
+        { "name": "TWILIO_AUTH_TOKEN", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/TWILIO_AUTH_TOKEN" },
+        { "name": "TWILIO_VERIFY_SERVICE_SID", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/TWILIO_VERIFY_SERVICE_SID" },
+        { "name": "SENDGRID_API_KEY", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/SENDGRID_API_KEY" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health >/dev/null 2>&1 || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/bld-api",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "api"
+        }
+      }
+    }
+  ]
+}

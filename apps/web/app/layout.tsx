@@ -16,9 +16,9 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: 'SurveyLink',
+  title: 'BLD',
   description:
-    'A managed marketplace connecting clients with independent site surveyors.',
+    'BLD is a managed marketplace connecting clients with independent site surveyors.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

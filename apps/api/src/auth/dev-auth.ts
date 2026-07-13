@@ -22,6 +22,23 @@ export const DEV_PRINCIPAL: AuthPrincipal = {
   roles: ['admin'],
 };
 
+/**
+ * A second fixed identity used to exercise the Google sign-in flow locally
+ * (Auth0 is not configured in dev). It stands in for a brand-new social user
+ * with no local account yet, so the "complete registration" step can be tested.
+ */
+export const DEV_GOOGLE_SUBJECT = 'dev|google';
+export const DEV_GOOGLE_EMAIL = 'dev.google@surveylink.local';
+export const DEV_GOOGLE_ACCESS_TOKEN = 'dev-google-access-token';
+export const DEV_GOOGLE_CODE = 'dev-google';
+
+export const DEV_GOOGLE_PRINCIPAL: AuthPrincipal = {
+  sub: DEV_GOOGLE_SUBJECT,
+  email: DEV_GOOGLE_EMAIL,
+  emailVerified: true,
+  roles: [],
+};
+
 export function devAuthEnabled(config: ConfigService): boolean {
   const nodeEnv = config.get<string>('NODE_ENV') ?? process.env.NODE_ENV;
   if (nodeEnv === 'production') return false;

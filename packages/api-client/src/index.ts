@@ -2,6 +2,8 @@ import type {
   HealthStatus,
   AuthSession,
   AuthenticatedUser,
+  GoogleAuthResult,
+  RoleHint,
   SurveyorProfile,
   SurveyorStatus,
   SurveyService,
@@ -53,6 +55,18 @@ export interface SignupBody {
 export interface LoginBody {
   email: string;
   password: string;
+}
+
+export interface GoogleExchangeBody {
+  code: string;
+  state: string;
+}
+
+export interface CompleteRegistrationBody {
+  fullName: string;
+  email?: string;
+  phone: string;
+  roleHint?: RoleHint;
 }
 
 export interface AdminSurveyorQueryBody {
@@ -120,6 +134,22 @@ export class SurveyLinkClient {
 
   async login(body: LoginBody): Promise<AuthSession> {
     return this.request<AuthSession>('POST', '/auth/login', body);
+  }
+
+  /** Resolve the "Continue with Google" URL to navigate the browser to. */
+  async googleStartUrl(role?: RoleHint): Promise<{ url: string }> {
+    const suffix = role ? `?role=${encodeURIComponent(role)}` : '';
+    return this.request<{ url: string }>('GET', `/auth/oauth/google/start${suffix}`);
+  }
+
+  /** Exchange the Google authorization code (from the callback) for a session. */
+  async exchangeGoogle(body: GoogleExchangeBody): Promise<GoogleAuthResult> {
+    return this.request<GoogleAuthResult>('POST', '/auth/oauth/google/exchange', body);
+  }
+
+  /** Finish a social sign-up by supplying phone + role (requires the session). */
+  async completeRegistration(body: CompleteRegistrationBody): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/complete-registration', body);
   }
 
   async logout(refreshToken?: string): Promise<void> {

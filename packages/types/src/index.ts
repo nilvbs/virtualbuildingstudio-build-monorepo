@@ -103,6 +103,24 @@ export interface AuthSession {
   expiresIn: number;
 }
 
+/** Minimal profile resolved from a social login, used to prefill signup. */
+export interface OAuthProfile {
+  email: string;
+  fullName: string;
+}
+
+/**
+ * Result of exchanging a Google authorization code. When `registered` is false
+ * no local account exists yet: the client is authenticated (session is valid)
+ * but must complete registration (phone + role) before using the app.
+ */
+export interface GoogleAuthResult {
+  session: AuthSession;
+  registered: boolean;
+  roleHint: RoleHint;
+  profile: OAuthProfile;
+}
+
 // --- Admin & matches ---
 
 export interface Match {

@@ -1,14 +1,19 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
 import type {
   AuthenticatedUser,
   AuthPrincipal,
   AuthSession,
+  GoogleAuthResult,
 } from '@surveylink/types';
 import {
+  completeRegistrationSchema,
+  googleExchangeSchema,
   loginSchema,
   logoutSchema,
   signupSchema,
   verifyPhoneSchema,
+  type CompleteRegistrationInput,
+  type GoogleExchangeInput,
   type LoginInput,
   type LogoutInput,
   type SignupInput,
@@ -34,6 +39,30 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body(new ZodValidationPipe(loginSchema)) body: LoginInput): Promise<AuthSession> {
     return this.auth.login(body.email, body.password);
+  }
+
+  @Public()
+  @Get('oauth/google/start')
+  googleStart(@Query('role') role?: string): { url: string } {
+    return this.auth.startGoogleLogin(role);
+  }
+
+  @Public()
+  @Post('oauth/google/exchange')
+  @HttpCode(HttpStatus.OK)
+  googleExchange(
+    @Body(new ZodValidationPipe(googleExchangeSchema)) body: GoogleExchangeInput,
+  ): Promise<GoogleAuthResult> {
+    return this.auth.exchangeGoogle(body.code, body.state);
+  }
+
+  @Post('complete-registration')
+  @HttpCode(HttpStatus.OK)
+  completeRegistration(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(completeRegistrationSchema)) body: CompleteRegistrationInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.completeRegistration(principal, body);
   }
 
   @Post('logout')

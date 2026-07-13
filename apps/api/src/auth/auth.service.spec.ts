@@ -63,6 +63,8 @@ describe('AuthService', () => {
       sendEmailVerification: jest.fn().mockResolvedValue(undefined),
       getIdentity: jest.fn(),
       revokeRefreshToken: jest.fn().mockResolvedValue(undefined),
+      buildSocialAuthorizeUrl: jest.fn(),
+      exchangeAuthorizationCode: jest.fn(),
     };
     phone = {
       startVerification: jest.fn().mockResolvedValue(undefined),

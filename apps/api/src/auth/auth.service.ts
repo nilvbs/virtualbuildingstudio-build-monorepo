@@ -1,32 +1,64 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type {
   AppRole,
   AuthenticatedUser,
   AuthPrincipal,
   AuthSession,
+  GoogleAuthResult,
   RoleHint,
   UserStatus,
 } from '@surveylink/types';
-import type { SignupInput } from '@surveylink/validation';
+import { ROLE_HINTS } from '@surveylink/types';
+import type { CompleteRegistrationInput, SignupInput } from '@surveylink/validation';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { IDENTITY_PROVIDER, type IdentityProvider } from './identity/identity-provider';
-import { AUTH_PROVIDER_NAME } from './identity/auth0.identity-provider';
+import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.identity-provider';
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import {
   DEV_ACCESS_TOKEN,
   DEV_EMAIL,
+  DEV_GOOGLE_ACCESS_TOKEN,
+  DEV_GOOGLE_CODE,
+  DEV_GOOGLE_EMAIL,
+  DEV_GOOGLE_SUBJECT,
   DEV_PASSWORD,
   DEV_SUBJECT,
   devAuthEnabled,
 } from './dev-auth';
+
+const GOOGLE_CONNECTION = 'google-oauth2';
+
+interface OAuthState {
+  role: RoleHint;
+  nonce: string;
+}
+
+function normalizeRole(raw: string | undefined): RoleHint {
+  return ROLE_HINTS.includes(raw as RoleHint) ? (raw as RoleHint) : 'client';
+}
+
+function encodeState(state: OAuthState): string {
+  return Buffer.from(JSON.stringify(state), 'utf8').toString('base64url');
+}
+
+function decodeState(raw: string): OAuthState {
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Partial<OAuthState>;
+    return { role: normalizeRole(parsed.role), nonce: parsed.nonce ?? '' };
+  } catch {
+    return { role: 'client', nonce: '' };
+  }
+}
 
 @Injectable()
 export class AuthService {
@@ -119,6 +151,151 @@ export class AuthService {
     if (refreshToken) {
       await this.identity.revokeRefreshToken(refreshToken);
     }
+  }
+
+  private get webAppUrl(): string {
+    return (this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
+  }
+
+  private get googleRedirectUri(): string {
+    return `${this.webAppUrl}/auth/callback`;
+  }
+
+  /** Build the URL the browser should navigate to for "Continue with Google". */
+  startGoogleLogin(roleRaw: string | undefined): { url: string } {
+    const state = encodeState({ role: normalizeRole(roleRaw), nonce: randomBytes(12).toString('hex') });
+
+    // Dev bypass: skip Auth0 entirely and bounce straight to the callback.
+    if (devAuthEnabled(this.config)) {
+      const params = new URLSearchParams({ code: DEV_GOOGLE_CODE, state });
+      return { url: `${this.googleRedirectUri}?${params.toString()}` };
+    }
+
+    const connection = this.config.get<string>('AUTH0_GOOGLE_CONNECTION') ?? GOOGLE_CONNECTION;
+    const url = this.identity.buildSocialAuthorizeUrl({
+      redirectUri: this.googleRedirectUri,
+      state,
+      connection,
+    });
+    return { url };
+  }
+
+  /**
+   * Exchange the Google authorization code for a session. If a local account is
+   * already linked to the identity the caller is fully signed in; otherwise the
+   * session is valid but registration must be completed (phone + role).
+   */
+  async exchangeGoogle(code: string, state: string): Promise<GoogleAuthResult> {
+    const { role } = decodeState(state);
+
+    // Dev bypass: fabricate a session for the fixed Google dev identity.
+    if (devAuthEnabled(this.config) && code === DEV_GOOGLE_CODE) {
+      const session: AuthSession = {
+        accessToken: DEV_GOOGLE_ACCESS_TOKEN,
+        tokenType: 'Bearer',
+        expiresIn: 60 * 60 * 24,
+      };
+      const existing = await this.prisma.user.findUnique({
+        where: { authSubject: DEV_GOOGLE_SUBJECT },
+      });
+      if (existing) {
+        return {
+          session,
+          registered: true,
+          roleHint: existing.roleHint as RoleHint,
+          profile: { email: existing.email, fullName: existing.fullName },
+        };
+      }
+      return {
+        session,
+        registered: false,
+        roleHint: role,
+        profile: { email: DEV_GOOGLE_EMAIL, fullName: 'Dev Google User' },
+      };
+    }
+
+    const { session, identity } = await this.identity.exchangeAuthorizationCode({
+      code,
+      redirectUri: this.googleRedirectUri,
+    });
+
+    const existing = await this.prisma.user.findUnique({
+      where: { authSubject: identity.subject },
+    });
+    if (existing) {
+      return {
+        session,
+        registered: true,
+        roleHint: existing.roleHint as RoleHint,
+        profile: { email: existing.email, fullName: existing.fullName },
+      };
+    }
+
+    // Account linking (same email, different provider) is out of scope for
+    // Phase 1 — steer the user to their existing password login instead.
+    if (identity.email) {
+      const emailOwner = await this.prisma.user.findUnique({ where: { email: identity.email } });
+      if (emailOwner) {
+        throw new ConflictException(
+          'An account with this email already exists. Please sign in with your email and password.',
+        );
+      }
+    }
+
+    return {
+      session,
+      registered: false,
+      roleHint: role,
+      profile: { email: identity.email, fullName: identity.fullName },
+    };
+  }
+
+  /**
+   * Finish a social sign-up: the identity exists at the provider (the caller is
+   * authenticated), we just persist the local row with the phone + role the
+   * provider can't supply, then kick off phone verification.
+   */
+  async completeRegistration(
+    principal: AuthPrincipal,
+    input: CompleteRegistrationInput,
+  ): Promise<AuthenticatedUser> {
+    const already = await this.prisma.user.findUnique({ where: { authSubject: principal.sub } });
+    if (already) {
+      return this.toAuthenticatedUser(already, principal.roles);
+    }
+
+    const email = principal.email ?? input.email;
+    if (!email) {
+      throw new BadRequestException('Could not determine the account email from the identity');
+    }
+
+    const clash = await this.prisma.user.findFirst({
+      where: { OR: [{ email }, { phone: input.phone }] },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new ConflictException('An account with this email or phone already exists');
+    }
+
+    const isDevGoogle = devAuthEnabled(this.config) && principal.sub === DEV_GOOGLE_SUBJECT;
+
+    const user = await this.prisma.user.create({
+      data: {
+        fullName: input.fullName,
+        email,
+        phone: input.phone,
+        roleHint: input.roleHint,
+        // Social providers (Google) return already-verified emails.
+        emailVerified: principal.emailVerified ?? true,
+        authProvider: isDevGoogle ? 'dev' : GOOGLE_PROVIDER_NAME,
+        authSubject: principal.sub,
+      },
+    });
+
+    // Best-effort, consistent with signup: a missing Twilio config must not fail this.
+    await Promise.allSettled([this.phone.startVerification(input.phone)]);
+
+    return this.toAuthenticatedUser(user, principal.roles);
   }
 
   async me(principal: AuthPrincipal): Promise<AuthenticatedUser> {

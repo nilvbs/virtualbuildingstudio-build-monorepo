@@ -1,0 +1,30 @@
+# Keep the Docker build context small and reproducible.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/.expo
+out/
+
+# VCS & tooling
+.git
+.github
+.vscode
+.idea
+
+# Env & secrets (injected at runtime by ECS, never baked into the image)
+.env
+.env.*
+!.env.example
+
+# Local-only assets / scratch
+assets/
+image*.png
+image*.jpg
+terminals/
+*.log
+
+# Docs that don't affect the build
+**/*.md
