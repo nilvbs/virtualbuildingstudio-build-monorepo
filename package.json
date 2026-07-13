@@ -1,0 +1,33 @@
+{
+  "name": "surveylink",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SurveyLink — managed US marketplace connecting clients with independent site surveyors (Phase 1).",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @surveylink/api prisma:migrate:deploy",
+    "db:migrate:dev": "pnpm --filter @surveylink/api prisma:migrate:dev",
+    "db:generate": "pnpm --filter @surveylink/api prisma:generate"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.6.3",
+    "prettier": "^3.4.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.2.17",
+      "@types/react-dom": "19.2.2"
+    }
+  }
+}

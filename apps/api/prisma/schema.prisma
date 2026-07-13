@@ -1,0 +1,124 @@
+// SurveyLink — Phase 1 data model.
+//
+// The authoritative schema is the hand-authored SQL migration in
+// ./migrations, which implements the founding brief verbatim (PostGIS
+// GEOGRAPHY columns, GIST/GIN indexes, CHECK-constrained status columns).
+// This Prisma schema mirrors that migration so `@prisma/client` is fully
+// typed. Geography columns are modelled as `Unsupported(...)`; geo reads use
+// raw SQL. Schema changes ship as new SQL migrations applied with
+// `prisma migrate deploy` — never by hand-editing a live database.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_DATABASE_URL")
+  extensions = [pgcrypto, postgis]
+}
+
+model User {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName      String   @map("full_name")
+  email         String   @unique
+  phone         String   @unique
+  emailVerified Boolean  @default(false) @map("email_verified")
+  phoneVerified Boolean  @default(false) @map("phone_verified")
+  roleHint      String   @default("client") @map("role_hint")
+  status        String   @default("active")
+  authProvider  String?  @map("auth_provider")
+  authSubject   String?  @unique @map("auth_subject")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  surveyorProfile SurveyorProfile?
+  projects        Project[]
+  matchesMade     Match[]          @relation("MatchedBy")
+  notifications   Notification[]
+
+  @@index([authSubject], map: "idx_users_auth_subject")
+  @@map("users")
+}
+
+model SurveyorProfile {
+  id           String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String                                 @unique @map("user_id") @db.Uuid
+  bio          String?
+  services     Json                                   @default("[]")
+  equipment    Json                                   @default("[]")
+  baseLocation Unsupported("geography(Point, 4326)")? @map("base_location")
+  baseCity     String?                                @map("base_city")
+  radiusKm     Int                                    @default(25) @map("radius_km")
+  dayRateCents BigInt?                                @map("day_rate_cents")
+  portfolio    Json                                   @default("[]")
+  isMatchable  Boolean                                @default(true) @map("is_matchable")
+  createdAt    DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user    User    @relation(fields: [userId], references: [id])
+  matches Match[]
+
+  @@map("surveyor_profiles")
+}
+
+model Project {
+  id           String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientId     String                                 @map("client_id") @db.Uuid
+  title        String
+  services     Json                                   @default("[]")
+  location     Unsupported("geography(Point, 4326)")?
+  locationText String?                                @map("location_text")
+  buildingType String?                                @map("building_type")
+  buildingAge  String?                                @map("building_age")
+  floors       Int?
+  areaSqft     Int?                                   @map("area_sqft")
+  neededWithin String?                                @map("needed_within")
+  notes        String?
+  status       String                                 @default("submitted")
+  createdAt    DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  client  User    @relation(fields: [clientId], references: [id])
+  matches Match[]
+
+  @@index([status])
+  @@map("projects")
+}
+
+model Match {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId  String   @map("project_id") @db.Uuid
+  surveyorId String   @map("surveyor_id") @db.Uuid
+  matchedBy  String   @map("matched_by") @db.Uuid
+  status     String   @default("proposed")
+  adminNotes String?  @map("admin_notes")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project  Project         @relation(fields: [projectId], references: [id])
+  surveyor SurveyorProfile @relation(fields: [surveyorId], references: [id])
+  matcher  User            @relation("MatchedBy", fields: [matchedBy], references: [id])
+
+  @@index([projectId])
+  @@index([surveyorId])
+  @@map("matches")
+}
+
+model Notification {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  kind      String
+  title     String
+  body      String?
+  channel   String    @default("in_app")
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
