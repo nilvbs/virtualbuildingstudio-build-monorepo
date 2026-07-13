@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowRight } from 'lucide-react';
-import Image from 'next/image';
+import { HeroBrand } from './hero-brand';
 import { LandingAuthOverlay, useLandingAuth } from './landing-auth';
 
 export function LandingPage() {
@@ -28,21 +28,7 @@ export function LandingPage() {
         <div className="mkt-hero-stage">
           <div className="mkt-hero-media" aria-hidden />
           <div className="mkt-hero-media-veil" aria-hidden />
-          <div className="mkt-hero-grain" aria-hidden />
-
-          <div className="mkt-hero-brand">
-            <div className="mkt-hero-brand-glow" aria-hidden />
-            <Image
-              src="/brand/bld-logo-dark.png"
-              alt="BLD"
-              width={636}
-              height={236}
-              className="mkt-hero-logo"
-              priority
-            />
-            <p className="mkt-hero-tagline">Site surveys, built around you.</p>
-            <span className="mkt-hero-rule" aria-hidden />
-          </div>
+          <HeroBrand />
         </div>
       </section>
 

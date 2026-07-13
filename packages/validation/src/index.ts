@@ -5,6 +5,8 @@ import {
   MATCH_STATUSES,
   NOTIFICATION_CHANNELS,
   SURVEY_SERVICES,
+  WORKSPACE_ROLES,
+  MEMBERSHIP_ROLES,
 } from '@surveylink/types';
 
 /**
@@ -37,6 +39,8 @@ export const centsSchema = z.number().int().nonnegative();
 // --- Enum schemas (mirror DB CHECK constraints) ---
 
 export const roleHintSchema = z.enum(ROLE_HINTS);
+export const workspaceRoleSchema = z.enum(WORKSPACE_ROLES);
+export const membershipRoleSchema = z.enum(MEMBERSHIP_ROLES);
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 export const matchStatusSchema = z.enum(MATCH_STATUSES);
 export const notificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
@@ -57,15 +61,26 @@ export const signupSchema = z.object({
   email: emailSchema,
   phone: phoneSchema,
   password: passwordSchema,
-  roleHint: roleHintSchema.default('client'),
+  /** Marketplace role to provision (client or surveyor). */
+  roleHint: workspaceRoleSchema.default('client'),
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 
 export const loginSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
+  /**
+   * Marketplace login must pass `client` or `surveyor`.
+   * Staff portal (`/build/admin`) omits this and requires an admin membership.
+   */
+  role: workspaceRoleSchema.optional(),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+export const addMembershipSchema = z.object({
+  role: workspaceRoleSchema,
+});
+export type AddMembershipInput = z.infer<typeof addMembershipSchema>;
 
 export const verifyPhoneSchema = z.object({
   code: z.string().regex(/^\d{4,10}$/, 'Code must be 4-10 digits'),
@@ -91,7 +106,7 @@ export const completeRegistrationSchema = z.object({
   fullName: z.string().min(1).max(200),
   email: emailSchema.optional(),
   phone: phoneSchema,
-  roleHint: roleHintSchema.default('client'),
+  roleHint: workspaceRoleSchema.default('client'),
 });
 export type CompleteRegistrationInput = z.infer<typeof completeRegistrationSchema>;
 

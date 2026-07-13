@@ -10,8 +10,10 @@ import {
   googleExchangeSchema,
   loginSchema,
   logoutSchema,
+  addMembershipSchema,
   signupSchema,
   verifyPhoneSchema,
+  type AddMembershipInput,
   type CompleteRegistrationInput,
   type GoogleExchangeInput,
   type LoginInput,
@@ -38,7 +40,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body(new ZodValidationPipe(loginSchema)) body: LoginInput): Promise<AuthSession> {
-    return this.auth.login(body.email, body.password);
+    return this.auth.login(body.email, body.password, body.role);
   }
 
   @Public()
@@ -63,6 +65,15 @@ export class AuthController {
     @Body(new ZodValidationPipe(completeRegistrationSchema)) body: CompleteRegistrationInput,
   ): Promise<AuthenticatedUser> {
     return this.auth.completeRegistration(principal, body);
+  }
+
+  @Post('memberships')
+  @HttpCode(HttpStatus.OK)
+  addMembership(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(addMembershipSchema)) body: AddMembershipInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.addMembership(principal, body);
   }
 
   @Post('logout')

@@ -13,11 +13,18 @@ import {
   Radar,
   UserRound,
 } from 'lucide-react';
-import type { AuthenticatedUser } from '@surveylink/types';
+import type { AuthenticatedUser, WorkspaceRole } from '@surveylink/types';
 import { api, ApiError } from '../lib/api';
-import { clearSession, isAuthenticated } from '../lib/session';
+import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
+import { clearSession, isAuthenticated, setActiveRole } from '../lib/session';
 
 type Section = 'client' | 'surveyor' | 'admin';
+
+const SECTION_HOME: Record<Section, string> = {
+  client: '/client',
+  surveyor: '/surveyor',
+  admin: '/build/admin/queue',
+};
 
 interface NavItem {
   href: string;
@@ -46,7 +53,7 @@ const NAV: Record<Section, { label: string; sub: string; items: NavItem[] }> = {
   admin: {
     label: 'Operations',
     sub: 'Match projects to surveyors',
-    items: [{ href: '/admin', label: 'Match queue', icon: LayoutDashboard, exact: true }],
+    items: [{ href: '/build/admin/queue', label: 'Match queue', icon: LayoutDashboard, exact: true }],
   },
 };
 
@@ -64,7 +71,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.replace('/login');
+      router.replace(section === 'admin' ? '/build/admin' : '/login');
       return;
     }
     api
@@ -73,10 +80,10 @@ export function AppShell({ section, children }: { section: Section; children: Re
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
           clearSession();
-          router.replace('/login');
+          router.replace(section === 'admin' ? '/build/admin' : '/login');
         }
       });
-  }, [router]);
+  }, [router, section]);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -88,20 +95,44 @@ export function AppShell({ section, children }: { section: Section; children: Re
 
   function signOut() {
     clearSession();
-    router.replace('/login');
+    router.replace(section === 'admin' ? '/build/admin' : '/login');
+  }
+
+  function switchWorkspace(role: WorkspaceRole) {
+    setActiveRole(role);
+    setMenuOpen(false);
+    router.push(homePathForWorkspace(role));
+  }
+
+  async function addWorkspace(role: WorkspaceRole) {
+    try {
+      const updated = await api.addMembership({ role });
+      setUser(updated);
+      switchWorkspace(role);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        clearSession();
+        router.replace('/login');
+      }
+    }
   }
 
   const nav = NAV[section];
-  const roleLabel = user?.roles.includes('admin')
+  const workspaces = user ? workspaceMemberships(user) : [];
+  const roleLabel = user?.roles.includes('admin') && section === 'admin'
     ? 'Administrator'
-    : user
-      ? user.roleHint.charAt(0).toUpperCase() + user.roleHint.slice(1)
-      : '';
+    : section === 'client'
+      ? 'Client workspace'
+      : section === 'surveyor'
+        ? 'Expert (surveyor)'
+        : user
+          ? user.roleHint.charAt(0).toUpperCase() + user.roleHint.slice(1)
+          : '';
 
   return (
     <div className="shell">
       <aside className="sidebar">
-        <Link href="/" className="brand plain" aria-label="BLD home">
+        <Link href={SECTION_HOME[section]} className="brand plain" aria-label="BLD home">
           <Image
             src="/brand/bld-logo-dark.png"
             alt="BLD"
@@ -153,6 +184,26 @@ export function AppShell({ section, children }: { section: Section; children: Re
             </button>
             {menuOpen && (
               <div className="menu">
+                {section !== 'admin' && workspaces.includes('client') && section !== 'client' && (
+                  <button className="menu-item" type="button" onClick={() => switchWorkspace('client')}>
+                    Switch to client
+                  </button>
+                )}
+                {section !== 'admin' && workspaces.includes('surveyor') && section !== 'surveyor' && (
+                  <button className="menu-item" type="button" onClick={() => switchWorkspace('surveyor')}>
+                    Switch to expert (surveyor)
+                  </button>
+                )}
+                {section !== 'admin' && !workspaces.includes('client') && (
+                  <button className="menu-item" type="button" onClick={() => addWorkspace('client')}>
+                    Add client workspace
+                  </button>
+                )}
+                {section !== 'admin' && !workspaces.includes('surveyor') && (
+                  <button className="menu-item" type="button" onClick={() => addWorkspace('surveyor')}>
+                    Add expert (surveyor) workspace
+                  </button>
+                )}
                 <button className="menu-item danger" onClick={signOut}>
                   <LogOut size={16} />
                   Sign out

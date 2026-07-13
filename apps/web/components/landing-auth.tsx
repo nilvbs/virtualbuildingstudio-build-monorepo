@@ -9,11 +9,13 @@ import {
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { AlertCircle, Info, Lock, Mail, Phone, User, X } from 'lucide-react';
-import type { RoleHint } from '@surveylink/types';
+import { AlertCircle, Info, Lock, Mail, User, X } from 'lucide-react';
+import type { RoleHint, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
-import { setSession } from '../lib/session';
+import { homePathForUser, homePathForWorkspace } from '../lib/home';
+import { isAuthenticated, setSession } from '../lib/session';
 import { GoogleButton } from './google-button';
+import { defaultPhoneInput, PhoneInput, phoneInputToE164 } from './phone-input';
 
 export type AuthMode = 'login' | 'signup';
 
@@ -48,15 +50,16 @@ export function LandingAuthOverlay({
 
   const [loginEmail, setLoginEmail] = useState(DEV_MODE ? DEV_EMAIL : '');
   const [loginPassword, setLoginPassword] = useState(DEV_MODE ? DEV_PASSWORD : '');
+  const [loginRole, setLoginRole] = useState<WorkspaceRole>('client');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginBusy, setLoginBusy] = useState(false);
 
   const [signup, setSignup] = useState({
     fullName: '',
     email: '',
-    phone: '',
     password: '',
   });
+  const [signupPhone, setSignupPhone] = useState(defaultPhoneInput);
   const [signupError, setSignupError] = useState<string | null>(null);
   const [signupBusy, setSignupBusy] = useState(false);
 
@@ -80,20 +83,27 @@ export function LandingAuthOverlay({
     setSignupError(null);
   }, [open, mode]);
 
+  useEffect(() => {
+    if (roleHint === 'client' || roleHint === 'surveyor') setLoginRole(roleHint);
+  }, [roleHint]);
+
   async function onLogin(e: FormEvent) {
     e.preventDefault();
     setLoginError(null);
     setLoginBusy(true);
     try {
-      const session = await api.login({ email: loginEmail, password: loginPassword });
+      const session = await api.login({
+        email: loginEmail,
+        password: loginPassword,
+        role: loginRole,
+      });
       setSession({
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,
         expiresAt: Date.now() + session.expiresIn * 1000,
+        activeRole: session.activeRole ?? loginRole,
       });
-      const me = await api.me();
-      if (me.roleHint === 'client') router.push('/client');
-      else router.push('/surveyor');
+      router.push(homePathForWorkspace(session.activeRole ?? loginRole));
     } catch (err) {
       setLoginError(errorMessage(err));
     } finally {
@@ -106,10 +116,15 @@ export function LandingAuthOverlay({
     setSignupError(null);
     setSignupBusy(true);
     try {
-      await api.signup({ ...signup, roleHint });
+      await api.signup({
+        ...signup,
+        phone: phoneInputToE164(signupPhone),
+        roleHint: roleHint === 'surveyor' ? 'surveyor' : 'client',
+      });
       onModeChange('login', { created: true });
       setLoginEmail(signup.email);
       setLoginPassword('');
+      setSignupPhone(defaultPhoneInput());
     } catch (err) {
       setSignupError(errorMessage(err));
     } finally {
@@ -174,8 +189,8 @@ export function LandingAuthOverlay({
           <div className="mkt-auth-body" key={mode}>
             {mode === 'login' ? (
               <>
-                <p className="mkt-auth-lede">Sign in as a client or surveyor.</p>
-                <GoogleButton label="Sign in with Google" />
+                <p className="mkt-auth-lede">Choose your workspace, then sign in.</p>
+                <GoogleButton role={loginRole} label="Sign in with Google" />
                 <div className="auth-or">
                   <span>or</span>
                 </div>
@@ -198,6 +213,17 @@ export function LandingAuthOverlay({
                       <span>{loginError}</span>
                     </div>
                   )}
+                  <div className="field">
+                    <label htmlFor="mkt-login-role">Sign in as</label>
+                    <select
+                      id="mkt-login-role"
+                      value={loginRole}
+                      onChange={(e) => setLoginRole(e.target.value as WorkspaceRole)}
+                    >
+                      <option value="client">Client — I need surveys</option>
+                      <option value="surveyor">Expert (surveyor) — I offer surveys</option>
+                    </select>
+                  </div>
                   <div className="field">
                     <label htmlFor="mkt-login-email">Email</label>
                     <div className="input-icon">
@@ -272,21 +298,13 @@ export function LandingAuthOverlay({
                       />
                     </div>
                   </div>
-                  <div className="field">
-                    <label htmlFor="mkt-signup-phone">Phone</label>
-                    <div className="input-icon">
-                      <Phone size={16} />
-                      <input
-                        id="mkt-signup-phone"
-                        type="text"
-                        required
-                        placeholder="+14155552671"
-                        value={signup.phone}
-                        onChange={(e) => setSignup((s) => ({ ...s, phone: e.target.value }))}
-                      />
-                    </div>
-                    <span className="hint">E.164 format, e.g. +14155552671</span>
-                  </div>
+                  <PhoneInput
+                    id="mkt-signup-phone"
+                    value={signupPhone}
+                    onChange={setSignupPhone}
+                    required
+                    disabled={signupBusy}
+                  />
                   <div className="field">
                     <label htmlFor="mkt-signup-password">Password</label>
                     <input
@@ -305,7 +323,7 @@ export function LandingAuthOverlay({
                       onChange={(e) => onRoleChange(e.target.value as RoleHint)}
                     >
                       <option value="client">Client — I need surveys</option>
-                      <option value="surveyor">Surveyor — I offer surveys</option>
+                      <option value="surveyor">Expert (surveyor) — I offer surveys</option>
                     </select>
                   </div>
                   <button className="btn block" type="submit" disabled={signupBusy}>
@@ -331,6 +349,22 @@ export function useLandingAuth() {
   const mode: AuthMode = modeParam === 'signup' ? 'signup' : 'login';
   const roleHint = roleFromQuery(searchParams.get('role'));
   const created = searchParams.get('created') === '1';
+
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+    let cancelled = false;
+    api
+      .me()
+      .then((user) => {
+        if (!cancelled) router.replace(homePathForUser(user));
+      })
+      .catch(() => {
+        /* stale token — leave landing / login UI available */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const syncUrl = useCallback(
     (next: { auth?: AuthMode | null; role?: RoleHint; created?: boolean }) => {

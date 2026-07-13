@@ -4,13 +4,10 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import type { RoleHint } from '@surveylink/types';
 import { api, errorMessage } from '../../../lib/api';
+import { homePathForRoleHint, homePathForWorkspace } from '../../../lib/home';
 import { setSession } from '../../../lib/session';
-
-function destinationFor(role: RoleHint): string {
-  return role === 'client' ? '/client' : '/surveyor';
-}
+import type { WorkspaceRole } from '@surveylink/types';
 
 function CallbackInner() {
   const router = useRouter();
@@ -38,14 +35,23 @@ function CallbackInner() {
     (async () => {
       try {
         const res = await api.exchangeGoogle({ code, state });
+        const activeRole: WorkspaceRole | undefined =
+          res.roleHint === 'surveyor' || res.roleHint === 'client'
+            ? res.roleHint
+            : res.roleHint === 'both'
+              ? 'client'
+              : undefined;
         setSession({
           accessToken: res.session.accessToken,
           refreshToken: res.session.refreshToken,
           expiresAt: Date.now() + res.session.expiresIn * 1000,
+          activeRole,
         });
 
         if (res.registered) {
-          router.replace(destinationFor(res.roleHint));
+          router.replace(
+            activeRole ? homePathForWorkspace(activeRole) : homePathForRoleHint(res.roleHint),
+          );
           return;
         }
 

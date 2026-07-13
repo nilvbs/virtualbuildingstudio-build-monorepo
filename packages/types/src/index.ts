@@ -10,6 +10,14 @@
 export const ROLE_HINTS = ['client', 'surveyor', 'both'] as const;
 export type RoleHint = (typeof ROLE_HINTS)[number];
 
+/** Marketplace + staff memberships stored in `user_roles`. */
+export const MEMBERSHIP_ROLES = ['client', 'surveyor', 'admin'] as const;
+export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
+
+/** Roles selectable on public login / signup (not admin). */
+export const WORKSPACE_ROLES = ['client', 'surveyor'] as const;
+export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+
 export const USER_STATUSES = ['active', 'suspended'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
@@ -89,7 +97,10 @@ export interface AuthenticatedUser {
   phone: string;
   emailVerified: boolean;
   phoneVerified: boolean;
+  /** @deprecated Derived from memberships for older clients. */
   roleHint: RoleHint;
+  /** Segregated role memberships (client / surveyor / admin). */
+  memberships: MembershipRole[];
   status: UserStatus;
   roles: AppRole[];
 }
@@ -101,6 +112,8 @@ export interface AuthSession {
   refreshToken?: string;
   tokenType: string;
   expiresIn: number;
+  /** Workspace chosen at login (client or surveyor). */
+  activeRole?: WorkspaceRole;
 }
 
 /** Minimal profile resolved from a social login, used to prefill signup. */

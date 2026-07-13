@@ -27,6 +27,7 @@ model User {
   phone         String   @unique
   emailVerified Boolean  @default(false) @map("email_verified")
   phoneVerified Boolean  @default(false) @map("phone_verified")
+  /** @deprecated Prefer UserRole memberships; kept for back-compat / display. */
   roleHint      String   @default("client") @map("role_hint")
   status        String   @default("active")
   authProvider  String?  @map("auth_provider")
@@ -34,13 +35,54 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  roles           UserRole[]
+  clientProfile   ClientProfile?
   surveyorProfile SurveyorProfile?
+  adminProfile    AdminProfile?
   projects        Project[]
   matchesMade     Match[]          @relation("MatchedBy")
   notifications   Notification[]
 
   @@index([authSubject], map: "idx_users_auth_subject")
   @@map("users")
+}
+
+model UserRole {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role], map: "uq_user_roles_user_role")
+  @@index([userId], map: "idx_user_roles_user_id")
+  @@index([role], map: "idx_user_roles_role")
+  @@map("user_roles")
+}
+
+model ClientProfile {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  companyName String?  @map("company_name")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("client_profiles")
+}
+
+model AdminProfile {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_profiles")
 }
 
 model SurveyorProfile {

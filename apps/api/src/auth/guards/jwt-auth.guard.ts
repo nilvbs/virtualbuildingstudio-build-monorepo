@@ -10,6 +10,7 @@ import {
   DEV_GOOGLE_PRINCIPAL,
   DEV_PRINCIPAL,
   devAuthEnabled,
+  principalFromDevUserToken,
 } from '../dev-auth';
 
 /**
@@ -32,7 +33,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
     if (isPublic) return true;
 
-    // Dev-only bypass: accept the fixed dev tokens and inject their principals.
+    // Dev-only bypass: accept the fixeddev tokens and inject their principals.
     if (devAuthEnabled(this.config)) {
       const request = context.switchToHttp().getRequest<Request>();
       const auth = request.headers.authorization;
@@ -43,6 +44,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (auth === `Bearer ${DEV_GOOGLE_ACCESS_TOKEN}`) {
         request.user = DEV_GOOGLE_PRINCIPAL;
         return true;
+      }
+      if (auth?.startsWith('Bearer ')) {
+        const principal = principalFromDevUserToken(auth.slice('Bearer '.length));
+        if (principal) {
+          request.user = principal;
+          return true;
+        }
       }
     }
 

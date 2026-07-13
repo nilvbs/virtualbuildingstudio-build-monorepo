@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
-import { AppShell } from '../../components/app-shell';
+import { redirect } from 'next/navigation';
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  return <AppShell section="admin">{children}</AppShell>;
+export default function LegacyAdminLayout({ children }: { children: React.ReactNode }) {
+  // Keep a passthrough layout so nested redirects still resolve; no AppShell here.
+  return children;
 }

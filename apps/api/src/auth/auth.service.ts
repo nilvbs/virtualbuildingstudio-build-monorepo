@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -14,11 +15,17 @@ import type {
   AuthPrincipal,
   AuthSession,
   GoogleAuthResult,
+  MembershipRole,
   RoleHint,
   UserStatus,
+  WorkspaceRole,
 } from '@surveylink/types';
 import { ROLE_HINTS } from '@surveylink/types';
-import type { CompleteRegistrationInput, SignupInput } from '@surveylink/validation';
+import type {
+  AddMembershipInput,
+  CompleteRegistrationInput,
+  SignupInput,
+} from '@surveylink/validation';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { IDENTITY_PROVIDER, type IdentityProvider } from './identity/identity-provider';
@@ -34,7 +41,12 @@ import {
   DEV_PASSWORD,
   DEV_SUBJECT,
   devAuthEnabled,
+  devSubjectForEmail,
+  findDevSignup,
+  issueDevUserToken,
+  rememberDevSignup,
 } from './dev-auth';
+import { ensureMembership, hintFromMemberships, listMemberships } from './memberships';
 
 const GOOGLE_CONNECTION = 'google-oauth2';
 
@@ -84,6 +96,27 @@ export class AuthService {
       throw new ConflictException('An account with this email or phone already exists');
     }
 
+    const workspaceRole = input.roleHint as WorkspaceRole;
+
+    if (devAuthEnabled(this.config)) {
+      const subject = devSubjectForEmail(input.email);
+      rememberDevSignup(input.email, input.password, subject);
+      const user = await this.prisma.user.create({
+        data: {
+          fullName: input.fullName,
+          email: input.email,
+          phone: input.phone,
+          roleHint: workspaceRole,
+          emailVerified: true,
+          phoneVerified: true,
+          authProvider: 'dev',
+          authSubject: subject,
+        },
+      });
+      await ensureMembership(this.prisma, user.id, workspaceRole);
+      return this.toAuthenticatedUser(user, [], await listMemberships(this.prisma, user.id));
+    }
+
     const identity = await this.identity.createIdentity({
       fullName: input.fullName,
       email: input.email,
@@ -96,14 +129,14 @@ export class AuthService {
         fullName: input.fullName,
         email: input.email,
         phone: input.phone,
-        roleHint: input.roleHint,
+        roleHint: workspaceRole,
         emailVerified: identity.emailVerified,
         authProvider: AUTH_PROVIDER_NAME,
         authSubject: identity.subject,
       },
     });
+    await ensureMembership(this.prisma, user.id, workspaceRole);
 
-    // Fire-and-forget verifications; failures here must not fail signup.
     await Promise.allSettled([
       identity.emailVerified
         ? Promise.resolve()
@@ -111,26 +144,60 @@ export class AuthService {
       this.phone.startVerification(input.phone),
     ]);
 
-    return this.toAuthenticatedUser(user, []);
+    return this.toAuthenticatedUser(user, [], await listMemberships(this.prisma, user.id));
   }
 
-  async login(email: string, password: string): Promise<AuthSession> {
+  async login(email: string, password: string, role?: WorkspaceRole): Promise<AuthSession> {
+    let session: AuthSession;
+
     if (devAuthEnabled(this.config)) {
       if (email.trim().toLowerCase() === DEV_EMAIL && password === DEV_PASSWORD) {
         await this.ensureDevUser();
-        return {
+        session = {
           accessToken: DEV_ACCESS_TOKEN,
           tokenType: 'Bearer',
           expiresIn: 60 * 60 * 24,
         };
+      } else {
+        const local = findDevSignup(email);
+        if (local && local.password === password) {
+          session = {
+            accessToken: issueDevUserToken(local.subject),
+            tokenType: 'Bearer',
+            expiresIn: 60 * 60 * 24,
+          };
+        } else {
+          session = await this.identity.login(email, password);
+        }
       }
+    } else {
+      session = await this.identity.login(email, password);
     }
-    return this.identity.login(email, password);
+
+    const user =
+      (await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } })) ??
+      (await this.prisma.user.findUnique({ where: { email } }));
+    if (!user) {
+      return session;
+    }
+
+    const memberships = await listMemberships(this.prisma, user.id);
+
+    if (role) {
+      if (!memberships.includes(role)) {
+        throw new ForbiddenException(
+          `No ${role} workspace on this account. Sign up as a ${role}, or add that role from your other workspace.`,
+        );
+      }
+      return { ...session, activeRole: role };
+    }
+
+    // Staff portal omits role; JWT admin claim is checked after login.
+    return session;
   }
 
-  /** Idempotently provision the fixed dev account (dev bypass only). */
   private async ensureDevUser(): Promise<void> {
-    await this.prisma.user.upsert({
+    const user = await this.prisma.user.upsert({
       where: { authSubject: DEV_SUBJECT },
       update: {},
       create: {
@@ -145,6 +212,9 @@ export class AuthService {
         authSubject: DEV_SUBJECT,
       },
     });
+    await ensureMembership(this.prisma, user.id, 'client');
+    await ensureMembership(this.prisma, user.id, 'surveyor');
+    await ensureMembership(this.prisma, user.id, 'admin');
   }
 
   async logout(refreshToken?: string): Promise<void> {
@@ -261,7 +331,7 @@ export class AuthService {
   ): Promise<AuthenticatedUser> {
     const already = await this.prisma.user.findUnique({ where: { authSubject: principal.sub } });
     if (already) {
-      return this.toAuthenticatedUser(already, principal.roles);
+      return this.hydrateUser(already, principal.roles);
     }
 
     const email = principal.email ?? input.email;
@@ -279,28 +349,37 @@ export class AuthService {
 
     const isDevGoogle = devAuthEnabled(this.config) && principal.sub === DEV_GOOGLE_SUBJECT;
 
+    const workspaceRole = input.roleHint as WorkspaceRole;
     const user = await this.prisma.user.create({
       data: {
         fullName: input.fullName,
         email,
         phone: input.phone,
-        roleHint: input.roleHint,
+        roleHint: workspaceRole,
         // Social providers (Google) return already-verified emails.
         emailVerified: principal.emailVerified ?? true,
         authProvider: isDevGoogle ? 'dev' : GOOGLE_PROVIDER_NAME,
         authSubject: principal.sub,
       },
     });
+    await ensureMembership(this.prisma, user.id, workspaceRole);
 
     // Best-effort, consistent with signup: a missing Twilio config must not fail this.
     await Promise.allSettled([this.phone.startVerification(input.phone)]);
 
-    return this.toAuthenticatedUser(user, principal.roles);
+    return this.toAuthenticatedUser(user, principal.roles, await listMemberships(this.prisma, user.id));
+  }
+
+  async addMembership(principal: AuthPrincipal, input: AddMembershipInput): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    await ensureMembership(this.prisma, user.id, input.role);
+    const updated = await this.requireUser(principal.sub);
+    return this.toAuthenticatedUser(updated, principal.roles, await listMemberships(this.prisma, updated.id));
   }
 
   async me(principal: AuthPrincipal): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
-    return this.toAuthenticatedUser(user, principal.roles);
+    return this.toAuthenticatedUser(user, principal.roles, await listMemberships(this.prisma, user.id));
   }
 
   /** Re-sync email-verified status from the provider, resending if still unverified. */
@@ -313,13 +392,13 @@ export class AuthService {
         where: { id: user.id },
         data: { emailVerified: true },
       });
-      return this.toAuthenticatedUser(updated, principal.roles);
+      return this.hydrateUser(updated, principal.roles);
     }
 
     if (!identity.emailVerified) {
       await this.identity.sendEmailVerification(principal.sub);
     }
-    return this.toAuthenticatedUser(user, principal.roles);
+    return this.hydrateUser(user, principal.roles);
   }
 
   /** Confirm the SMS OTP for the authenticated user's phone number. */
@@ -333,7 +412,7 @@ export class AuthService {
       where: { id: user.id },
       data: { phoneVerified: true },
     });
-    return this.toAuthenticatedUser(updated, principal.roles);
+    return this.hydrateUser(updated, principal.roles);
   }
 
   private async requireUser(subject: string): Promise<User> {
@@ -344,7 +423,25 @@ export class AuthService {
     return user;
   }
 
-  private toAuthenticatedUser(user: User, roles: AppRole[]): AuthenticatedUser {
+  private async hydrateUser(user: User, roles: AppRole[]): Promise<AuthenticatedUser> {
+    return this.toAuthenticatedUser(user, roles, await listMemberships(this.prisma, user.id));
+  }
+
+  private toAuthenticatedUser(
+    user: User,
+    roles: AppRole[],
+    memberships: MembershipRole[] = [],
+  ): AuthenticatedUser {
+    const merged = memberships.length
+      ? memberships
+      : ((user.roleHint === 'both'
+          ? (['client', 'surveyor'] as MembershipRole[])
+          : user.roleHint === 'surveyor'
+            ? (['surveyor'] as MembershipRole[])
+            : (['client'] as MembershipRole[])));
+    const staffRoles = roles.includes('admin') || merged.includes('admin')
+      ? (Array.from(new Set([...roles, ...(merged.includes('admin') ? (['admin'] as AppRole[]) : [])])) as AppRole[])
+      : roles;
     return {
       id: user.id,
       fullName: user.fullName,
@@ -352,9 +449,10 @@ export class AuthService {
       phone: user.phone,
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
-      roleHint: user.roleHint as RoleHint,
+      roleHint: hintFromMemberships(merged),
+      memberships: merged,
       status: user.status as UserStatus,
-      roles,
+      roles: staffRoles,
     };
   }
 }

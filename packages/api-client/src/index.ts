@@ -49,12 +49,18 @@ export interface SignupBody {
   email: string;
   phone: string;
   password: string;
-  roleHint?: 'client' | 'surveyor' | 'both';
+  roleHint?: 'client' | 'surveyor';
 }
 
 export interface LoginBody {
   email: string;
   password: string;
+  /** Marketplace workspace to enter. Omit for staff portal. */
+  role?: 'client' | 'surveyor';
+}
+
+export interface AddMembershipBody {
+  role: 'client' | 'surveyor';
 }
 
 export interface GoogleExchangeBody {
@@ -150,6 +156,11 @@ export class SurveyLinkClient {
   /** Finish a social sign-up by supplying phone + role (requires the session). */
   async completeRegistration(body: CompleteRegistrationBody): Promise<AuthenticatedUser> {
     return this.request<AuthenticatedUser>('POST', '/auth/complete-registration', body);
+  }
+
+  /** Add a second marketplace workspace (client ↔ surveyor) to an existing account. */
+  async addMembership(body: AddMembershipBody): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/memberships', body);
   }
 
   async logout(refreshToken?: string): Promise<void> {

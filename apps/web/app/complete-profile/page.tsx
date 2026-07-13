@@ -3,17 +3,15 @@
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, Phone, User } from 'lucide-react';
+import { AlertCircle, User } from 'lucide-react';
 import type { RoleHint } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
+import { homePathForRoleHint } from '../../lib/home';
 import { isAuthenticated } from '../../lib/session';
+import { defaultPhoneInput, PhoneInput, phoneInputToE164 } from '../../components/phone-input';
 
 function roleFrom(raw: string | null): RoleHint {
   return raw === 'surveyor' || raw === 'both' ? raw : 'client';
-}
-
-function destinationFor(role: RoleHint): string {
-  return role === 'client' ? '/client' : '/surveyor';
 }
 
 function CompleteProfileForm() {
@@ -21,7 +19,7 @@ function CompleteProfileForm() {
   const params = useSearchParams();
 
   const [fullName, setFullName] = useState(params.get('name') ?? '');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(defaultPhoneInput);
   const [roleHint, setRoleHint] = useState<RoleHint>(roleFrom(params.get('role')));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,8 +35,13 @@ function CompleteProfileForm() {
     setError(null);
     setBusy(true);
     try {
-      await api.completeRegistration({ fullName, email, phone, roleHint });
-      router.replace(destinationFor(roleHint));
+      await api.completeRegistration({
+        fullName,
+        email,
+        phone: phoneInputToE164(phone),
+        roleHint,
+      });
+      router.replace(homePathForRoleHint(roleHint));
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);
@@ -95,21 +98,10 @@ function CompleteProfileForm() {
             </div>
           </div>
 
-          <div className="field">
-            <label htmlFor="phone">Phone</label>
-            <div className="input-icon">
-              <Phone size={16} />
-              <input
-                id="phone"
-                type="text"
-                required
-                placeholder="+14155552671"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-            <span className="hint">E.164 format, e.g. +14155552671. We&apos;ll text a code to verify it.</span>
-          </div>
+          <PhoneInput id="phone" value={phone} onChange={setPhone} required disabled={busy} />
+          <p className="hint" style={{ marginTop: -8, marginBottom: 12 }}>
+            We&apos;ll text a code to verify it.
+          </p>
 
           <div className="field">
             <label htmlFor="roleHint">I am a</label>
