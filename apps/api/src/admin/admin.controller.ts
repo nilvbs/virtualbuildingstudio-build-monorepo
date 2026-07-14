@@ -11,7 +11,9 @@ import {
   Query,
 } from '@nestjs/common';
 import type {
+  AdminClient,
   AdminQueues,
+  AdminQueueProject,
   AdminSurveyor,
   AuthPrincipal,
   Match,
@@ -43,10 +45,22 @@ import { AdminService } from './admin.service';
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
+  /** Summary for operations overview (any staff). */
   @Get('queues')
-  @RequirePermissions('queue:view')
   queues(): Promise<AdminQueues> {
     return this.admin.getQueues();
+  }
+
+  @Get('clients')
+  @RequirePermissions('clients:view')
+  listClients(): Promise<AdminClient[]> {
+    return this.admin.listClients();
+  }
+
+  @Get('projects/open')
+  @RequirePermissions('projects:view')
+  listOpenProjects(): Promise<AdminQueueProject[]> {
+    return this.admin.listOpenProjects();
   }
 
   @Get('surveyors')

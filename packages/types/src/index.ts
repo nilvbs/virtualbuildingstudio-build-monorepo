@@ -83,8 +83,9 @@ export type StaffLevel = (typeof STAFF_LEVELS)[number];
 
 /** Fine-grained staff actions (super_admin has all implicitly). */
 export const STAFF_PERMISSIONS = [
-  'queue:view',
+  'clients:view',
   'surveyors:view',
+  'projects:view',
   'match:create',
   'match:update',
   'project:update_status',
@@ -100,11 +101,19 @@ export const STAFF_PERMISSION_PRESET_MAP: Record<
   Exclude<StaffPermissionPreset, 'custom'>,
   StaffPermission[]
 > = {
-  viewer: ['queue:view', 'surveyors:view'],
-  matcher: ['queue:view', 'surveyors:view', 'match:create', 'match:update', 'project:update_status'],
-  full: [
-    'queue:view',
+  viewer: ['clients:view', 'surveyors:view', 'projects:view'],
+  matcher: [
+    'clients:view',
     'surveyors:view',
+    'projects:view',
+    'match:create',
+    'match:update',
+    'project:update_status',
+  ],
+  full: [
+    'clients:view',
+    'surveyors:view',
+    'projects:view',
     'match:create',
     'match:update',
     'project:update_status',
@@ -112,18 +121,24 @@ export const STAFF_PERMISSION_PRESET_MAP: Record<
 };
 
 export const STAFF_PERMISSION_LABELS: Record<StaffPermission, string> = {
-  'queue:view': 'View match queue',
-  'surveyors:view': 'Browse surveyors',
+  'clients:view': 'View clients',
+  'surveyors:view': 'View surveyors',
+  'projects:view': 'View projects queue',
   'match:create': 'Create matches',
   'match:update': 'Update matches',
   'project:update_status': 'Update project status',
   'staff:manage': 'Manage staff admins',
 };
 
+/** Legacy permission ids still stored on older admin profiles. */
+const LEGACY_PERMISSION_MAP: Record<string, StaffPermission> = {
+  'queue:view': 'projects:view',
+};
+
 export function resolveStaffPermissions(input: {
   staffLevel: StaffLevel | null | undefined;
   permissionPreset?: StaffPermissionPreset | null;
-  permissions?: StaffPermission[] | null;
+  permissions?: readonly string[] | null;
 }): StaffPermission[] {
   if (input.staffLevel === 'super_admin') {
     return [...STAFF_PERMISSIONS];
@@ -131,9 +146,12 @@ export function resolveStaffPermissions(input: {
   if (!input.staffLevel) return [];
   const preset = input.permissionPreset ?? 'matcher';
   if (preset === 'custom') {
-    return (input.permissions ?? []).filter((p): p is StaffPermission =>
-      STAFF_PERMISSIONS.includes(p),
-    );
+    const normalized = (input.permissions ?? [])
+      .map((p) => LEGACY_PERMISSION_MAP[p] ?? p)
+      .filter((p): p is StaffPermission =>
+        (STAFF_PERMISSIONS as readonly string[]).includes(p),
+      );
+    return Array.from(new Set(normalized));
   }
   return [...STAFF_PERMISSION_PRESET_MAP[preset]];
 }
@@ -227,25 +245,16 @@ export interface Match {
   updatedAt: string;
 }
 
-export interface AdminQueueUser {
+/** Client directory row for the admin Clients module. */
+export interface AdminClient {
   id: string;
   fullName: string;
   email: string;
   phone: string;
-  roleHint: RoleHint;
+  companyName: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
-  createdAt: string;
-}
-
-export interface AdminQueueSurveyor {
-  profileId: string;
-  userId: string;
-  fullName: string;
-  baseCity: string | null;
-  services: SurveyService[];
-  radiusKm: number;
-  isMatchable: boolean;
+  projectCount: number;
   createdAt: string;
 }
 
@@ -259,11 +268,9 @@ export interface AdminQueueProject {
   createdAt: string;
 }
 
+/** Lightweight, permission-free snapshot shown on the Operations overview. */
 export interface AdminQueues {
   counts: { users: number; surveyors: number; openProjects: number };
-  recentUsers: AdminQueueUser[];
-  recentSurveyors: AdminQueueSurveyor[];
-  openProjects: AdminQueueProject[];
 }
 
 /** A surveyor as seen in the admin browser, with optional distance to a point. */

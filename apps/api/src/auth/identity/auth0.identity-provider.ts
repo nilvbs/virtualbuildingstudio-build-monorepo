@@ -144,6 +144,19 @@ export class Auth0IdentityProvider implements IdentityProvider {
     }
   }
 
+  async requestPasswordReset(email: string): Promise<void> {
+    try {
+      await this.auth().database.changePassword({
+        email,
+        connection: this.connection,
+      });
+    } catch (err) {
+      // Auth0 still returns success for unknown emails; treat other errors as
+      // soft failures so the API can keep anti-enumeration behaviour.
+      this.logger.warn(`Auth0 password-reset request failed for ${email}: ${(err as Error).message}`);
+    }
+  }
+
   async sendEmailVerification(subject: string): Promise<void> {
     await this.mgmt().jobs.verifyEmail({ user_id: subject });
   }

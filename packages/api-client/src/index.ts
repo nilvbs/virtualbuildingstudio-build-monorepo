@@ -21,6 +21,8 @@ import type {
   StaffPermission,
   StaffPermissionPreset,
   UserStatus,
+  AdminClient,
+  AdminQueueProject,
 } from '@surveylink/types';
 
 export interface CreateProjectBody {
@@ -61,6 +63,12 @@ export interface LoginBody {
   password: string;
   /** Marketplace workspace to enter. Omit for staff portal. */
   role?: 'client' | 'surveyor';
+}
+
+/** Marketplace forgot-password. Staff/admin accounts are not eligible. */
+export interface ForgotPasswordBody {
+  email: string;
+  role: 'client' | 'surveyor';
 }
 
 export interface AddMembershipBody {
@@ -163,6 +171,11 @@ export class SurveyLinkClient {
     return this.request<AuthSession>('POST', '/auth/login', body);
   }
 
+  /** Send a password-reset email for a client or surveyor account. */
+  async forgotPassword(body: ForgotPasswordBody): Promise<{ ok: true; message: string }> {
+    return this.request<{ ok: true; message: string }>('POST', '/auth/forgot-password', body);
+  }
+
   /** Resolve the "Continue with Google" URL to navigate the browser to. */
   async googleStartUrl(role?: RoleHint): Promise<{ url: string }> {
     const suffix = role ? `?role=${encodeURIComponent(role)}` : '';
@@ -246,6 +259,14 @@ export class SurveyLinkClient {
 
   async getAdminQueues(): Promise<AdminQueues> {
     return this.request<AdminQueues>('GET', '/admin/queues');
+  }
+
+  async listAdminClients(): Promise<AdminClient[]> {
+    return this.request<AdminClient[]>('GET', '/admin/clients');
+  }
+
+  async listAdminOpenProjects(): Promise<AdminQueueProject[]> {
+    return this.request<AdminQueueProject[]>('GET', '/admin/projects/open');
   }
 
   async browseAdminSurveyors(query: AdminSurveyorQueryBody = {}): Promise<AdminSurveyor[]> {

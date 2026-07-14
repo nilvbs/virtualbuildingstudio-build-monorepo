@@ -7,6 +7,7 @@ import type {
 } from '@surveylink/types';
 import {
   completeRegistrationSchema,
+  forgotPasswordSchema,
   googleExchangeSchema,
   loginSchema,
   logoutSchema,
@@ -15,6 +16,7 @@ import {
   verifyPhoneSchema,
   type AddMembershipInput,
   type CompleteRegistrationInput,
+  type ForgotPasswordInput,
   type GoogleExchangeInput,
   type LoginInput,
   type LogoutInput,
@@ -41,6 +43,16 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body(new ZodValidationPipe(loginSchema)) body: LoginInput): Promise<AuthSession> {
     return this.auth.login(body.email, body.password, body.role);
+  }
+
+  /** Marketplace only — requires client|surveyor role; staff portal has no forgot-password. */
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordSchema)) body: ForgotPasswordInput,
+  ): Promise<{ ok: true; message: string }> {
+    return this.auth.forgotPassword(body.email, body.role);
   }
 
   @Public()

@@ -13,13 +13,14 @@ import {
   PROJECT_STATUS_TRANSITIONS,
   isValidTransition,
   resolveStaffPermissions,
+  type AdminClient,
   type AdminQueues,
+  type AdminQueueProject,
   type AdminSurveyor,
   type Match,
   type MatchStatus,
   type ProjectDetail,
   type ProjectStatus,
-  type RoleHint,
   type StaffAdmin,
   type StaffLevel,
   type StaffPermission,
@@ -69,58 +70,61 @@ export class AdminService {
     @Inject(IDENTITY_PROVIDER) private readonly identity: IdentityProvider,
   ) {}
 
+  /**
+   * Aggregate counts only — no row-level data. Keeping this permission-free
+   * lets every staff member see a snapshot on the overview page, while the
+   * actual client/surveyor/project rows only surface in their dedicated,
+   * permission-gated modules.
+   */
   async getQueues(): Promise<AdminQueues> {
-    const [userCount, surveyorCount, openCount, recentUsers, recentSurveyors, openProjects] =
-      await Promise.all([
-        this.prisma.user.count(),
-        this.prisma.surveyorProfile.count(),
-        this.prisma.project.count({ where: { status: { in: OPEN_PROJECT_STATUSES } } }),
-        this.prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 10 }),
-        this.prisma.surveyorProfile.findMany({
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-          include: { user: { select: { fullName: true } } },
-        }),
-        this.prisma.project.findMany({
-          where: { status: { in: OPEN_PROJECT_STATUSES } },
-          orderBy: { createdAt: 'desc' },
-          take: 20,
-          include: { client: { select: { fullName: true } } },
-        }),
-      ]);
+    const [userCount, surveyorCount, openCount] = await Promise.all([
+      this.prisma.userRole.count({ where: { role: 'client' } }),
+      this.prisma.surveyorProfile.count(),
+      this.prisma.project.count({ where: { status: { in: OPEN_PROJECT_STATUSES } } }),
+    ]);
 
     return {
       counts: { users: userCount, surveyors: surveyorCount, openProjects: openCount },
-      recentUsers: recentUsers.map((u) => ({
-        id: u.id,
-        fullName: u.fullName,
-        email: u.email,
-        phone: u.phone,
-        roleHint: u.roleHint as RoleHint,
-        emailVerified: u.emailVerified,
-        phoneVerified: u.phoneVerified,
-        createdAt: u.createdAt.toISOString(),
-      })),
-      recentSurveyors: recentSurveyors.map((s) => ({
-        profileId: s.id,
-        userId: s.userId,
-        fullName: s.user.fullName,
-        baseCity: s.baseCity,
-        services: (s.services as unknown as SurveyService[]) ?? [],
-        radiusKm: s.radiusKm,
-        isMatchable: s.isMatchable,
-        createdAt: s.createdAt.toISOString(),
-      })),
-      openProjects: openProjects.map((p) => ({
-        id: p.id,
-        title: p.title,
-        clientName: p.client.fullName,
-        services: (p.services as unknown as SurveyService[]) ?? [],
-        locationText: p.locationText,
-        status: p.status as ProjectStatus,
-        createdAt: p.createdAt.toISOString(),
-      })),
     };
+  }
+
+  async listClients(): Promise<AdminClient[]> {
+    const rows = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'client' } } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        clientProfile: true,
+        _count: { select: { projects: true } },
+      },
+    });
+    return rows.map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      email: u.email,
+      phone: u.phone,
+      companyName: u.clientProfile?.companyName ?? null,
+      emailVerified: u.emailVerified,
+      phoneVerified: u.phoneVerified,
+      projectCount: u._count.projects,
+      createdAt: u.createdAt.toISOString(),
+    }));
+  }
+
+  async listOpenProjects(): Promise<AdminQueueProject[]> {
+    const openProjects = await this.prisma.project.findMany({
+      where: { status: { in: OPEN_PROJECT_STATUSES } },
+      orderBy: { createdAt: 'desc' },
+      include: { client: { select: { fullName: true } } },
+    });
+    return openProjects.map((p) => ({
+      id: p.id,
+      title: p.title,
+      clientName: p.client.fullName,
+      services: (p.services as unknown as SurveyService[]) ?? [],
+      locationText: p.locationText,
+      status: p.status as ProjectStatus,
+      createdAt: p.createdAt.toISOString(),
+    }));
   }
 
   async browseSurveyors(query: AdminSurveyorQuery): Promise<AdminSurveyor[]> {

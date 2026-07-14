@@ -59,6 +59,12 @@ export function LandingAuthOverlay({
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginBusy, setLoginBusy] = useState(false);
 
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotBusy, setForgotBusy] = useState(false);
+
   const [signup, setSignup] = useState({
     fullName: '',
     email: '',
@@ -86,7 +92,39 @@ export function LandingAuthOverlay({
     if (!open) return;
     setLoginError(null);
     setSignupError(null);
+    setForgotError(null);
+    setForgotSent(false);
+    setForgotOpen(false);
   }, [open, mode, role]);
+
+  function openForgot() {
+    setForgotEmail(loginEmail);
+    setForgotError(null);
+    setForgotSent(false);
+    setForgotOpen(true);
+  }
+
+  function closeForgot() {
+    setForgotOpen(false);
+    setForgotError(null);
+    setForgotSent(false);
+  }
+
+  async function onForgot(e: FormEvent) {
+    e.preventDefault();
+    if (!role) return;
+    setForgotError(null);
+    setForgotBusy(true);
+    try {
+      await api.forgotPassword({ email: forgotEmail, role });
+      setForgotSent(true);
+      setLoginEmail(forgotEmail);
+    } catch (err) {
+      setForgotError(errorMessage(err));
+    } finally {
+      setForgotBusy(false);
+    }
+  }
 
   async function onLogin(e: FormEvent) {
     e.preventDefault();
@@ -164,14 +202,22 @@ export function LandingAuthOverlay({
           <header className="mkt-auth-head">
             <div>
               <p className="mkt-auth-kicker">
-                {!roleChosen ? 'Get started' : mode === 'login' ? 'Welcome back' : 'Join BLD'}
+                {!roleChosen
+                  ? 'Get started'
+                  : forgotOpen
+                    ? 'Reset access'
+                    : mode === 'login'
+                      ? 'Welcome back'
+                      : 'Join BLD'}
               </p>
               <h2 id={titleId} className="mkt-auth-title">
                 {!roleChosen
                   ? 'Who are you?'
-                  : mode === 'login'
-                    ? 'Sign in'
-                    : 'Create account'}
+                  : forgotOpen
+                    ? 'Forgot password'
+                    : mode === 'login'
+                      ? 'Sign in'
+                      : 'Create account'}
               </h2>
             </div>
             <button type="button" className="mkt-auth-close" onClick={onClose} aria-label="Close">
@@ -215,35 +261,89 @@ export function LandingAuthOverlay({
             </div>
           ) : (
             <>
-              <button type="button" className="mkt-auth-back" onClick={onClearRole}>
+              <button
+                type="button"
+                className="mkt-auth-back"
+                onClick={forgotOpen ? closeForgot : onClearRole}
+              >
                 <ArrowLeft size={15} strokeWidth={2.2} />
-                {workspaceLabel(role)}
-                <span className="mkt-auth-back-change">Change</span>
+                {forgotOpen ? 'Back to sign in' : workspaceLabel(role)}
+                {!forgotOpen ? <span className="mkt-auth-back-change">Change</span> : null}
               </button>
 
-              <div className="mkt-auth-tabs" role="tablist" aria-label="Auth mode">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'login'}
-                  className={`mkt-auth-tab ${mode === 'login' ? 'is-active' : ''}`}
-                  onClick={() => onModeChange('login')}
-                >
-                  Sign in
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'signup'}
-                  className={`mkt-auth-tab ${mode === 'signup' ? 'is-active' : ''}`}
-                  onClick={() => onModeChange('signup')}
-                >
-                  Create account
-                </button>
-              </div>
+              {!forgotOpen && (
+                <div className="mkt-auth-tabs" role="tablist" aria-label="Auth mode">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === 'login'}
+                    className={`mkt-auth-tab ${mode === 'login' ? 'is-active' : ''}`}
+                    onClick={() => onModeChange('login')}
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === 'signup'}
+                    className={`mkt-auth-tab ${mode === 'signup' ? 'is-active' : ''}`}
+                    onClick={() => onModeChange('signup')}
+                  >
+                    Create account
+                  </button>
+                </div>
+              )}
 
-              <div className="mkt-auth-body" key={mode}>
-                {mode === 'login' ? (
+              <div className="mkt-auth-body" key={forgotOpen ? 'forgot' : mode}>
+                {forgotOpen && role ? (
+                  <>
+                    <p className="mkt-auth-lede">
+                      Enter the email for your {workspaceLabel(role).toLowerCase()} account and
+                      we&apos;ll send a reset link.
+                    </p>
+                    {forgotSent ? (
+                      <div className="alert success" role="status">
+                        <Info size={17} />
+                        <span>
+                          If an account exists for that email, we sent a password reset link. Check
+                          your inbox, then return to sign in.
+                        </span>
+                      </div>
+                    ) : (
+                      <form onSubmit={onForgot} noValidate>
+                        {forgotError && (
+                          <div className="alert error" role="alert">
+                            <AlertCircle size={17} />
+                            <span>{forgotError}</span>
+                          </div>
+                        )}
+                        <div className="field">
+                          <label htmlFor="mkt-forgot-email">Email</label>
+                          <div className="input-icon">
+                            <Mail size={16} />
+                            <input
+                              id="mkt-forgot-email"
+                              type="email"
+                              autoComplete="email"
+                              required
+                              value={forgotEmail}
+                              onChange={(e) => setForgotEmail(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <button className="btn block" type="submit" disabled={forgotBusy}>
+                          {forgotBusy ? <span className="spin" /> : null}
+                          {forgotBusy ? 'Sending…' : 'Send reset link'}
+                        </button>
+                      </form>
+                    )}
+                    {forgotSent && (
+                      <button type="button" className="btn block" onClick={closeForgot}>
+                        Back to sign in
+                      </button>
+                    )}
+                  </>
+                ) : mode === 'login' ? (
                   <>
                     <p className="mkt-auth-lede">Sign in to your {workspaceLabel(role).toLowerCase()} workspace.</p>
                     <GoogleButton role={role} label="Sign in with Google" />
@@ -284,7 +384,16 @@ export function LandingAuthOverlay({
                         </div>
                       </div>
                       <div className="field">
-                        <label htmlFor="mkt-login-password">Password</label>
+                        <div className="mkt-auth-label-row">
+                          <label htmlFor="mkt-login-password">Password</label>
+                          <button
+                            type="button"
+                            className="mkt-auth-forgot"
+                            onClick={openForgot}
+                          >
+                            Forgot password?
+                          </button>
+                        </div>
                         <div className="input-icon">
                           <Lock size={16} />
                           <input

@@ -58,6 +58,11 @@ export interface IdentityProvider {
   createIdentity(input: CreateIdentityInput): Promise<CreatedIdentity>;
   /** Resource-Owner-Password grant → token bundle. */
   login(email: string, password: string): Promise<AuthSession>;
+  /**
+   * Trigger the provider's "forgot password" email for a database user.
+   * Always resolves when the email is absent (provider anti-enumeration).
+   */
+  requestPasswordReset(email: string): Promise<void>;
   sendEmailVerification(subject: string): Promise<void>;
   getIdentity(subject: string): Promise<IdentityRecord>;
   /** Best-effort refresh-token revocation on logout. */

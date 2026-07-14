@@ -5,12 +5,15 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  Building2,
   ChevronDown,
   Handshake,
   LayoutDashboard,
   LogOut,
   type LucideIcon,
   Shield,
+  Users,
+  UserCheck,
   UserRound,
 } from 'lucide-react';
 import type { AuthenticatedUser, WorkspaceRole, StaffPermission } from '@surveylink/types';
@@ -56,7 +59,25 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
     label: 'Operations',
     sub: 'Match projects to surveyors',
     items: [
-      { href: '/build/admin/queue', label: 'Match queue', icon: LayoutDashboard, exact: true },
+      { href: '/build/admin/queue', label: 'Overview', icon: LayoutDashboard, exact: true },
+      {
+        href: '/build/admin/clients',
+        label: 'Clients',
+        icon: Users,
+        requiresPermission: 'clients:view',
+      },
+      {
+        href: '/build/admin/surveyors',
+        label: 'Surveyors',
+        icon: UserCheck,
+        requiresPermission: 'surveyors:view',
+      },
+      {
+        href: '/build/admin/projects',
+        label: 'Projects',
+        icon: Building2,
+        requiresPermission: 'projects:view',
+      },
       {
         href: '/build/admin/staff',
         label: 'Staff',
@@ -92,6 +113,24 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
       return { label: 'My Matches', sub: 'Projects matched to you' };
     }
     return { label: 'Dashboard', sub: 'Live matching status' };
+  }
+  if (section === 'admin') {
+    if (pathname.startsWith('/build/admin/clients')) {
+      return { label: 'Clients', sub: 'Everyone posting survey work' };
+    }
+    if (pathname.startsWith('/build/admin/surveyors')) {
+      return { label: 'Surveyors', sub: 'Browse the expert network' };
+    }
+    if (/^\/build\/admin\/projects\/[^/]+/.test(pathname)) {
+      return { label: 'Project details', sub: 'Review, match, and update status' };
+    }
+    if (pathname.startsWith('/build/admin/projects')) {
+      return { label: 'Projects', sub: 'Demand awaiting a surveyor' };
+    }
+    if (pathname.startsWith('/build/admin/staff')) {
+      return { label: 'Staff & permissions', sub: 'Manage admins and access' };
+    }
+    return { label: 'Overview', sub: 'Operations at a glance' };
   }
   return { label: NAV[section].label, sub: NAV[section].sub };
 }
@@ -343,7 +382,11 @@ export function AppShell({ section, children }: { section: Section; children: Re
         </header>
 
         <div
-          className={`shell-content${section === 'client' || section === 'surveyor' ? ' shell-content--wide' : ''}`}
+          className={`shell-content${
+            section === 'client' || section === 'surveyor' || section === 'admin'
+              ? ' shell-content--wide'
+              : ''
+          }`}
         >
           {children}
         </div>

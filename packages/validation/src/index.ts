@@ -85,6 +85,17 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/**
+ * Marketplace-only password reset. Staff / admin accounts are intentionally
+ * excluded — the API refuses to trigger a reset email for them.
+ */
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+  /** Required marketplace workspace: client or surveyor (never admin). */
+  role: signupRoleSchema,
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
 export const addMembershipSchema = z.object({
   role: workspaceRoleSchema,
 });

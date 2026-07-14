@@ -266,6 +266,47 @@ export class AuthService {
     return session;
   }
 
+  /**
+   * Marketplace forgot-password. Sends an Auth0 reset email only when the
+   * account has the requested client/surveyor membership. Staff-only accounts
+   * never receive a reset from this path (anti-enumeration still returns ok).
+   */
+  async forgotPassword(
+    email: string,
+    role: 'client' | 'surveyor',
+  ): Promise<{ ok: true; message: string }> {
+    const message =
+      'If an account exists for that email, we sent a password reset link. Check your inbox.';
+    const normalized = email.trim().toLowerCase();
+
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: normalized, mode: 'insensitive' } },
+    });
+
+    if (!user) {
+      return { ok: true, message };
+    }
+
+    const memberships = await listMemberships(this.prisma, user.id);
+    if (!memberships.includes(role)) {
+      // Wrong workspace or staff-only — do not reset.
+      return { ok: true, message };
+    }
+
+    // Google-only marketplace users have no DB password to reset.
+    if (user.authProvider === GOOGLE_PROVIDER_NAME) {
+      return { ok: true, message };
+    }
+
+    if (devAuthEnabled(this.config)) {
+      // Local bypass has no outbound email; keep response identical.
+      return { ok: true, message };
+    }
+
+    await this.identity.requestPasswordReset(user.email);
+    return { ok: true, message };
+  }
+
   private async ensureDevUser(): Promise<void> {
     const user = await this.prisma.user.upsert({
       where: { authSubject: DEV_SUBJECT },
