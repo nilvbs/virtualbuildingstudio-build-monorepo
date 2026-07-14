@@ -7,6 +7,9 @@ import {
   SURVEY_SERVICES,
   WORKSPACE_ROLES,
   MEMBERSHIP_ROLES,
+  STAFF_PERMISSIONS,
+  STAFF_PERMISSION_PRESETS,
+  STAFF_LEVELS,
 } from '@surveylink/types';
 
 /**
@@ -41,8 +44,11 @@ export const centsSchema = z.number().int().nonnegative();
 export const roleHintSchema = z.enum(ROLE_HINTS);
 export const workspaceRoleSchema = z.enum(WORKSPACE_ROLES);
 export const membershipRoleSchema = z.enum(MEMBERSHIP_ROLES);
-/** Signup may provision marketplace or staff (admin) membership. */
-export const signupRoleSchema = z.enum(['client', 'surveyor', 'admin']);
+/** Signup may provision marketplace roles only. Staff are invited by super admin. */
+export const signupRoleSchema = z.enum(['client', 'surveyor']);
+export const staffPermissionSchema = z.enum(STAFF_PERMISSIONS);
+export const staffPermissionPresetSchema = z.enum(STAFF_PERMISSION_PRESETS);
+export const staffLevelSchema = z.enum(STAFF_LEVELS);
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 export const matchStatusSchema = z.enum(MATCH_STATUSES);
 export const notificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
@@ -178,6 +184,43 @@ export const adminSurveyorQuerySchema = z.object({
   minRating: z.coerce.number().optional(),
 });
 export type AdminSurveyorQuery = z.infer<typeof adminSurveyorQuerySchema>;
+
+export const createStaffAdminSchema = z.object({
+  fullName: z.string().min(1).max(200),
+  email: emailSchema,
+  phone: phoneSchema,
+  password: passwordSchema,
+  title: z.string().max(120).optional(),
+  permissionPreset: staffPermissionPresetSchema.default('matcher'),
+  permissions: z.array(staffPermissionSchema).default([]),
+});
+export type CreateStaffAdminInput = z.infer<typeof createStaffAdminSchema>;
+
+export const updateStaffAdminSchema = z
+  .object({
+    title: z.string().max(120).nullable().optional(),
+    permissionPreset: staffPermissionPresetSchema.optional(),
+    permissions: z.array(staffPermissionSchema).optional(),
+    status: z.enum(['active', 'suspended']).optional(),
+  })
+  .refine(
+    (v) =>
+      v.title !== undefined ||
+      v.permissionPreset !== undefined ||
+      v.permissions !== undefined ||
+      v.status !== undefined,
+    { message: 'Provide at least one field to update' },
+  )
+  .superRefine((v, ctx) => {
+    if (v.permissionPreset === 'custom' && (!v.permissions || v.permissions.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Custom preset requires at least one permission',
+        path: ['permissions'],
+      });
+    }
+  });
+export type UpdateStaffAdminInput = z.infer<typeof updateStaffAdminSchema>;
 
 export const createProjectSchema = z.object({
   title: z.string().min(1).max(200),

@@ -17,10 +17,13 @@ import type {
   GoogleAuthResult,
   MembershipRole,
   RoleHint,
+  StaffLevel,
+  StaffPermission,
+  StaffPermissionPreset,
   UserStatus,
   WorkspaceRole,
 } from '@surveylink/types';
-import { ROLE_HINTS } from '@surveylink/types';
+import { ROLE_HINTS, resolveStaffPermissions } from '@surveylink/types';
 import type {
   AddMembershipInput,
   CompleteRegistrationInput,
@@ -89,8 +92,7 @@ export class AuthService {
    */
   async signup(input: SignupInput): Promise<AuthenticatedUser> {
     const membershipRole = input.roleHint as MembershipRole;
-    const legacyHint: RoleHint =
-      membershipRole === 'admin' ? 'client' : (membershipRole as WorkspaceRole);
+    const legacyHint = membershipRole as WorkspaceRole;
 
     const existing = await this.prisma.user.findFirst({
       where: { OR: [{ email: input.email }, { phone: input.phone }] },
@@ -118,12 +120,7 @@ export class AuthService {
         },
       });
       await ensureMembership(this.prisma, user.id, membershipRole);
-      const memberships = await listMemberships(this.prisma, user.id);
-      return this.toAuthenticatedUser(
-        user,
-        membershipRole === 'admin' ? ['admin'] : [],
-        memberships,
-      );
+      return this.hydrateUser(user, []);
     }
 
     const identity = await this.identity.createIdentity({
@@ -153,12 +150,7 @@ export class AuthService {
       this.phone.startVerification(input.phone),
     ]);
 
-    const memberships = await listMemberships(this.prisma, user.id);
-    return this.toAuthenticatedUser(
-      user,
-      membershipRole === 'admin' ? ['admin'] : [],
-      memberships,
-    );
+    return this.hydrateUser(user, []);
   }
 
   /**
@@ -195,11 +187,7 @@ export class AuthService {
     await ensureMembership(this.prisma, existing.id, membershipRole);
     const refreshed = await this.prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
     const next = await listMemberships(this.prisma, existing.id);
-    return this.toAuthenticatedUser(
-      refreshed,
-      next.includes('admin') ? ['admin'] : [],
-      next,
-    );
+    return this.hydrateUser(refreshed, next.includes('admin') ? ['admin'] : []);
   }
 
   private async assertPasswordForUser(user: User, password: string): Promise<void> {
@@ -470,19 +458,19 @@ export class AuthService {
     // Best-effort, consistent with signup: a missing Twilio config must not fail this.
     await Promise.allSettled([this.phone.startVerification(input.phone)]);
 
-    return this.toAuthenticatedUser(user, principal.roles, await listMemberships(this.prisma, user.id));
+    return this.hydrateUser(user, principal.roles);
   }
 
   async addMembership(principal: AuthPrincipal, input: AddMembershipInput): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
     await ensureMembership(this.prisma, user.id, input.role);
     const updated = await this.requireUser(principal.sub);
-    return this.toAuthenticatedUser(updated, principal.roles, await listMemberships(this.prisma, updated.id));
+    return this.hydrateUser(updated, principal.roles);
   }
 
   async me(principal: AuthPrincipal): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
-    return this.toAuthenticatedUser(user, principal.roles, await listMemberships(this.prisma, user.id));
+    return this.hydrateUser(user, principal.roles);
   }
 
   /** Re-sync email-verified status from the provider, resending if still unverified. */
@@ -527,13 +515,22 @@ export class AuthService {
   }
 
   private async hydrateUser(user: User, roles: AppRole[]): Promise<AuthenticatedUser> {
-    return this.toAuthenticatedUser(user, roles, await listMemberships(this.prisma, user.id));
+    const memberships = await listMemberships(this.prisma, user.id);
+    const adminProfile = memberships.includes('admin')
+      ? await this.prisma.adminProfile.findUnique({ where: { userId: user.id } })
+      : null;
+    return this.toAuthenticatedUser(user, roles, memberships, adminProfile);
   }
 
   private toAuthenticatedUser(
     user: User,
     roles: AppRole[],
     memberships: MembershipRole[] = [],
+    adminProfile: {
+      staffLevel: string;
+      permissionPreset: string;
+      permissions: unknown;
+    } | null = null,
   ): AuthenticatedUser {
     const merged = memberships.length
       ? memberships
@@ -545,6 +542,22 @@ export class AuthService {
     const staffRoles = roles.includes('admin') || merged.includes('admin')
       ? (Array.from(new Set([...roles, ...(merged.includes('admin') ? (['admin'] as AppRole[]) : [])])) as AppRole[])
       : roles;
+
+    const staffLevel = (adminProfile?.staffLevel as StaffLevel | undefined) ?? null;
+    const permissionPreset =
+      (adminProfile?.permissionPreset as StaffPermissionPreset | undefined) ?? null;
+    const storedPermissions = Array.isArray(adminProfile?.permissions)
+      ? (adminProfile!.permissions as StaffPermission[])
+      : [];
+    const permissions =
+      staffLevel != null
+        ? resolveStaffPermissions({
+            staffLevel,
+            permissionPreset,
+            permissions: storedPermissions,
+          })
+        : undefined;
+
     return {
       id: user.id,
       fullName: user.fullName,
@@ -556,6 +569,9 @@ export class AuthService {
       memberships: merged,
       status: user.status as UserStatus,
       roles: staffRoles,
+      staffLevel,
+      permissionPreset,
+      permissions,
     };
   }
 }

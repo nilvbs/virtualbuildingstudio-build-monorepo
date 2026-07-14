@@ -10,9 +10,10 @@ import {
   LayoutDashboard,
   LogOut,
   type LucideIcon,
+  Shield,
   UserRound,
 } from 'lucide-react';
-import type { AuthenticatedUser, WorkspaceRole } from '@surveylink/types';
+import type { AuthenticatedUser, WorkspaceRole, StaffPermission } from '@surveylink/types';
 import { api, ApiError } from '../lib/api';
 import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
 import { clearSession, isAuthenticated, setActiveRole } from '../lib/session';
@@ -33,6 +34,7 @@ interface NavItem {
   exact?: boolean;
   /** Surveyor: hide until profile is 100% complete. */
   requiresCompleteProfile?: boolean;
+  requiresPermission?: StaffPermission;
 }
 
 const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; items: NavItem[] }> = {
@@ -53,8 +55,15 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
   admin: {
     label: 'Operations',
     sub: 'Match projects to surveyors',
-    sectionLabel: 'Operations',
-    items: [{ href: '/build/admin/queue', label: 'Match queue', icon: LayoutDashboard, exact: true }],
+    items: [
+      { href: '/build/admin/queue', label: 'Match queue', icon: LayoutDashboard, exact: true },
+      {
+        href: '/build/admin/staff',
+        label: 'Staff',
+        icon: Shield,
+        requiresPermission: 'staff:manage',
+      },
+    ],
   },
 };
 
@@ -206,7 +215,9 @@ export function AppShell({ section, children }: { section: Section; children: Re
   const workspaces = user ? workspaceMemberships(user) : [];
   const roleLabel =
     user?.roles.includes('admin') && section === 'admin'
-      ? 'Administrator'
+      ? user.staffLevel === 'super_admin'
+        ? 'Super admin'
+        : 'Administrator'
       : section === 'client'
         ? 'Client'
         : section === 'surveyor'
@@ -216,8 +227,11 @@ export function AppShell({ section, children }: { section: Section; children: Re
             : '';
 
   const navItems = nav.items.filter((item) => {
-    if (!item.requiresCompleteProfile) return true;
-    return profileComplete;
+    if (item.requiresCompleteProfile && !profileComplete) return false;
+    if (item.requiresPermission) {
+      return Boolean(user?.permissions?.includes(item.requiresPermission));
+    }
+    return true;
   });
 
   return (

@@ -1,37 +1,51 @@
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import type { AppRole, AuthPrincipal } from '@surveylink/types';
+import { ForbiddenException } from '@nestjs/common';
 import { RolesGuard } from './roles.guard';
 
-function contextWith(user?: AuthPrincipal): ExecutionContext {
-  return {
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
-    getHandler: () => undefined,
-    getClass: () => undefined,
-  } as unknown as ExecutionContext;
-}
-
-function guardRequiring(roles: AppRole[] | undefined): RolesGuard {
+function guardRequiring(roles: string[] | undefined, staffCtx: unknown = null): RolesGuard {
   const reflector = {
     getAllAndOverride: jest.fn().mockReturnValue(roles),
-  } as unknown as Reflector;
-  return new RolesGuard(reflector);
+  };
+  const staff = {
+    getBySubject: jest.fn().mockResolvedValue(staffCtx),
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new RolesGuard(reflector as any, staff as any);
+}
+
+function contextWith(user: { sub: string; roles: string[] } | undefined) {
+  return {
+    switchToHttp: () => ({
+      getRequest: () => ({ user }),
+    }),
+    getHandler: () => ({}),
+    getClass: () => ({}),
+  } as never;
 }
 
 describe('RolesGuard', () => {
-  it('allows routes with no role requirement', () => {
+  it('allows routes with no role requirement', async () => {
     const guard = guardRequiring(undefined);
-    expect(guard.canActivate(contextWith({ sub: 'x', roles: [] }))).toBe(true);
+    await expect(guard.canActivate(contextWith({ sub: 'x', roles: [] }))).resolves.toBe(true);
   });
 
-  it('allows an admin through an admin-only route', () => {
+  it('allows when JWT carries the required role', async () => {
     const guard = guardRequiring(['admin']);
-    expect(guard.canActivate(contextWith({ sub: 'x', roles: ['admin'] }))).toBe(true);
+    await expect(guard.canActivate(contextWith({ sub: 'x', roles: ['admin'] }))).resolves.toBe(
+      true,
+    );
   });
 
-  it('forbids a non-admin from an admin-only route', () => {
-    const guard = guardRequiring(['admin']);
-    expect(() => guard.canActivate(contextWith({ sub: 'x', roles: [] }))).toThrow(
+  it('allows admin via DB staff membership when JWT claim is missing', async () => {
+    const guard = guardRequiring(['admin'], {
+      staffLevel: 'admin',
+      permissions: ['queue:view'],
+    });
+    await expect(guard.canActivate(contextWith({ sub: 'x', roles: [] }))).resolves.toBe(true);
+  });
+
+  it('rejects when neither JWT nor DB grants the role', async () => {
+    const guard = guardRequiring(['admin'], null);
+    await expect(guard.canActivate(contextWith({ sub: 'x', roles: [] }))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });

@@ -77,6 +77,67 @@ export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 export const APP_ROLES = ['admin'] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
+/** Staff tier within the admin membership. */
+export const STAFF_LEVELS = ['super_admin', 'admin'] as const;
+export type StaffLevel = (typeof STAFF_LEVELS)[number];
+
+/** Fine-grained staff actions (super_admin has all implicitly). */
+export const STAFF_PERMISSIONS = [
+  'queue:view',
+  'surveyors:view',
+  'match:create',
+  'match:update',
+  'project:update_status',
+  'staff:manage',
+] as const;
+export type StaffPermission = (typeof STAFF_PERMISSIONS)[number];
+
+/** Named presets; `custom` means the stored permissions array is authoritative. */
+export const STAFF_PERMISSION_PRESETS = ['viewer', 'matcher', 'full', 'custom'] as const;
+export type StaffPermissionPreset = (typeof STAFF_PERMISSION_PRESETS)[number];
+
+export const STAFF_PERMISSION_PRESET_MAP: Record<
+  Exclude<StaffPermissionPreset, 'custom'>,
+  StaffPermission[]
+> = {
+  viewer: ['queue:view', 'surveyors:view'],
+  matcher: ['queue:view', 'surveyors:view', 'match:create', 'match:update', 'project:update_status'],
+  full: [
+    'queue:view',
+    'surveyors:view',
+    'match:create',
+    'match:update',
+    'project:update_status',
+  ],
+};
+
+export const STAFF_PERMISSION_LABELS: Record<StaffPermission, string> = {
+  'queue:view': 'View match queue',
+  'surveyors:view': 'Browse surveyors',
+  'match:create': 'Create matches',
+  'match:update': 'Update matches',
+  'project:update_status': 'Update project status',
+  'staff:manage': 'Manage staff admins',
+};
+
+export function resolveStaffPermissions(input: {
+  staffLevel: StaffLevel | null | undefined;
+  permissionPreset?: StaffPermissionPreset | null;
+  permissions?: StaffPermission[] | null;
+}): StaffPermission[] {
+  if (input.staffLevel === 'super_admin') {
+    return [...STAFF_PERMISSIONS];
+  }
+  if (!input.staffLevel) return [];
+  const preset = input.permissionPreset ?? 'matcher';
+  if (preset === 'custom') {
+    return (input.permissions ?? []).filter((p): p is StaffPermission =>
+      STAFF_PERMISSIONS.includes(p),
+    );
+  }
+  return [...STAFF_PERMISSION_PRESET_MAP[preset]];
+}
+
 /**
  * The authenticated principal decoded from a validated Auth0 access token and
  * attached to each request. `sub` is the provider subject (Auth0 user_id),
@@ -103,6 +164,25 @@ export interface AuthenticatedUser {
   memberships: MembershipRole[];
   status: UserStatus;
   roles: AppRole[];
+  /** Present when the user has an admin membership. */
+  staffLevel?: StaffLevel | null;
+  /** Effective permissions for staff UI/API gating. */
+  permissions?: StaffPermission[];
+  permissionPreset?: StaffPermissionPreset | null;
+}
+
+/** Staff member row for super-admin management UI. */
+export interface StaffAdmin {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  status: UserStatus;
+  staffLevel: StaffLevel;
+  permissionPreset: StaffPermissionPreset;
+  permissions: StaffPermission[];
+  title: string | null;
+  createdAt: string;
 }
 
 /** Token bundle returned by `POST /auth/login`. */

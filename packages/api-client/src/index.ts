@@ -17,6 +17,10 @@ import type {
   MatchStatus,
   ProjectStatus,
   Notification,
+  StaffAdmin,
+  StaffPermission,
+  StaffPermissionPreset,
+  UserStatus,
 } from '@surveylink/types';
 
 export interface CreateProjectBody {
@@ -49,7 +53,7 @@ export interface SignupBody {
   email: string;
   phone: string;
   password: string;
-  roleHint?: 'client' | 'surveyor' | 'admin';
+  roleHint?: 'client' | 'surveyor';
 }
 
 export interface LoginBody {
@@ -91,6 +95,23 @@ export interface CreateMatchBody {
 export interface UpdateMatchBody {
   status?: MatchStatus;
   adminNotes?: string;
+}
+
+export interface CreateStaffAdminBody {
+  fullName: string;
+  email: string;
+  phone: string;
+  password: string;
+  title?: string;
+  permissionPreset?: StaffPermissionPreset;
+  permissions?: StaffPermission[];
+}
+
+export interface UpdateStaffAdminBody {
+  title?: string | null;
+  permissionPreset?: StaffPermissionPreset;
+  permissions?: StaffPermission[];
+  status?: UserStatus;
 }
 
 export interface ApiClientOptions {
@@ -249,6 +270,22 @@ export class SurveyLinkClient {
     return this.request<ProjectDetail>('PATCH', `/admin/projects/${id}/status`, { status });
   }
 
+  async listStaffAdmins(): Promise<StaffAdmin[]> {
+    return this.request<StaffAdmin[]>('GET', '/admin/staff');
+  }
+
+  async createStaffAdmin(body: CreateStaffAdminBody): Promise<StaffAdmin> {
+    return this.request<StaffAdmin>('POST', '/admin/staff', body);
+  }
+
+  async updateStaffAdmin(userId: string, body: UpdateStaffAdminBody): Promise<StaffAdmin> {
+    return this.request<StaffAdmin>('PATCH', `/admin/staff/${userId}`, body);
+  }
+
+  async removeStaffAdmin(userId: string): Promise<void> {
+    await this.request<void>('DELETE', `/admin/staff/${userId}`);
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -273,6 +310,7 @@ export class SurveyLinkClient {
         payload,
       );
     }
+    if (res.status === 204) return undefined as T;
     return payload as T;
   }
 }

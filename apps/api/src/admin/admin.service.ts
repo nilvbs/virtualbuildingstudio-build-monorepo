@@ -1,14 +1,18 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma, type Match as MatchRow } from '@prisma/client';
 import {
   MATCH_STATUS_TRANSITIONS,
   PROJECT_STATUS_TRANSITIONS,
   isValidTransition,
+  resolveStaffPermissions,
   type AdminQueues,
   type AdminSurveyor,
   type Match,
@@ -16,17 +20,35 @@ import {
   type ProjectDetail,
   type ProjectStatus,
   type RoleHint,
+  type StaffAdmin,
+  type StaffLevel,
+  type StaffPermission,
+  type StaffPermissionPreset,
   type SurveyService,
+  type UserStatus,
 } from '@surveylink/types';
 import type {
   AdminSurveyorQuery,
   CreateMatchInput,
+  CreateStaffAdminInput,
   UpdateMatchInput,
   UpdateProjectStatusInput,
+  UpdateStaffAdminInput,
 } from '@surveylink/validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ProjectsService } from '../projects/projects.service';
+import { IDENTITY_PROVIDER, type IdentityProvider } from '../auth/identity/identity-provider';
+import {
+  AUTH_PROVIDER_NAME,
+} from '../auth/identity/auth0.identity-provider';
+import {
+  rememberDevSignup,
+  devAuthEnabled,
+  devSubjectForEmail,
+} from '../auth/dev-auth';
+import { ensureMembership } from '../auth/memberships';
+import { StaffContextService } from '../auth/staff-context.service';
 
 interface GeoRow {
   id: string;
@@ -42,6 +64,9 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly projects: ProjectsService,
+    private readonly config: ConfigService,
+    private readonly staffContext: StaffContextService,
+    @Inject(IDENTITY_PROVIDER) private readonly identity: IdentityProvider,
   ) {}
 
   async getQueues(): Promise<AdminQueues> {
@@ -233,6 +258,206 @@ export class AdminService {
 
     await this.prisma.project.update({ where: { id }, data: { status: input.status } });
     return this.projects.getById(adminSubject, roles, id);
+  }
+
+  async listStaffAdmins(): Promise<StaffAdmin[]> {
+    const rows = await this.prisma.adminProfile.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { user: true },
+    });
+    return rows.map((row) => this.toStaffAdminDto(row));
+  }
+
+  async createStaffAdmin(
+    actorSubject: string,
+    input: CreateStaffAdminInput,
+  ): Promise<StaffAdmin> {
+    await this.requireSuperAdmin(actorSubject);
+
+    const email = input.email.trim().toLowerCase();
+    const existing = await this.prisma.user.findFirst({
+      where: { OR: [{ email }, { phone: input.phone }] },
+    });
+    if (existing) {
+      const memberships = await this.prisma.userRole.findMany({
+        where: { userId: existing.id },
+        select: { role: true },
+      });
+      if (memberships.some((m) => m.role === 'admin')) {
+        throw new ConflictException('That account already has staff access');
+      }
+      throw new ConflictException(
+        'An account with this email or phone already exists. Use a dedicated staff email.',
+      );
+    }
+
+    const preset = input.permissionPreset;
+    const permissions =
+      preset === 'custom'
+        ? input.permissions
+        : resolveStaffPermissions({
+            staffLevel: 'admin',
+            permissionPreset: preset,
+            permissions: input.permissions,
+          });
+
+    let user;
+    if (devAuthEnabled(this.config)) {
+      const subject = devSubjectForEmail(email);
+      rememberDevSignup(email, input.password, subject);
+      user = await this.prisma.user.create({
+        data: {
+          fullName: input.fullName,
+          email,
+          phone: input.phone,
+          emailVerified: true,
+          phoneVerified: true,
+          authProvider: 'dev',
+          authSubject: subject,
+          roleHint: 'client',
+        },
+      });
+    } else {
+      const identity = await this.identity.createIdentity({
+        fullName: input.fullName,
+        email,
+        phone: input.phone,
+        password: input.password,
+      });
+      user = await this.prisma.user.create({
+        data: {
+          fullName: input.fullName,
+          email,
+          phone: input.phone,
+          emailVerified: identity.emailVerified,
+          authProvider: AUTH_PROVIDER_NAME,
+          authSubject: identity.subject,
+          roleHint: 'client',
+        },
+      });
+    }
+
+    await ensureMembership(this.prisma, user.id, 'admin');
+    const profile = await this.prisma.adminProfile.update({
+      where: { userId: user.id },
+      data: {
+        staffLevel: 'admin',
+        permissionPreset: preset,
+        permissions: permissions as unknown as Prisma.InputJsonValue,
+        title: input.title ?? null,
+      },
+      include: { user: true },
+    });
+    return this.toStaffAdminDto(profile);
+  }
+
+  async updateStaffAdmin(
+    actorSubject: string,
+    staffUserId: string,
+    input: UpdateStaffAdminInput,
+  ): Promise<StaffAdmin> {
+    await this.requireSuperAdmin(actorSubject);
+
+    const profile = await this.prisma.adminProfile.findUnique({
+      where: { userId: staffUserId },
+      include: { user: true },
+    });
+    if (!profile) throw new NotFoundException('Staff admin not found');
+    if (profile.staffLevel === 'super_admin') {
+      throw new ForbiddenException('Cannot edit the super admin from this screen');
+    }
+
+    const nextPreset = (input.permissionPreset ??
+      profile.permissionPreset) as StaffPermissionPreset;
+    let nextPermissions = Array.isArray(profile.permissions)
+      ? (profile.permissions as StaffPermission[])
+      : [];
+    if (input.permissions) nextPermissions = input.permissions;
+    if (nextPreset !== 'custom') {
+      nextPermissions = resolveStaffPermissions({
+        staffLevel: 'admin',
+        permissionPreset: nextPreset,
+        permissions: nextPermissions,
+      });
+    }
+
+    if (input.status) {
+      await this.prisma.user.update({
+        where: { id: staffUserId },
+        data: { status: input.status },
+      });
+    }
+
+    const updated = await this.prisma.adminProfile.update({
+      where: { userId: staffUserId },
+      data: {
+        title: input.title === undefined ? undefined : input.title,
+        permissionPreset: nextPreset,
+        permissions: nextPermissions as unknown as Prisma.InputJsonValue,
+      },
+      include: { user: true },
+    });
+    return this.toStaffAdminDto(updated);
+  }
+
+  async removeStaffAdmin(actorSubject: string, staffUserId: string): Promise<void> {
+    await this.requireSuperAdmin(actorSubject);
+    const profile = await this.prisma.adminProfile.findUnique({
+      where: { userId: staffUserId },
+    });
+    if (!profile) throw new NotFoundException('Staff admin not found');
+    if (profile.staffLevel === 'super_admin') {
+      throw new ForbiddenException('Cannot remove the super admin');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.adminProfile.delete({ where: { userId: staffUserId } }),
+      this.prisma.userRole.deleteMany({ where: { userId: staffUserId, role: 'admin' } }),
+    ]);
+  }
+
+  private async requireSuperAdmin(subject: string): Promise<void> {
+    const ctx = await this.staffContext.getBySubject(subject);
+    if (!ctx || ctx.staffLevel !== 'super_admin') {
+      throw new ForbiddenException('Super admin access required');
+    }
+  }
+
+  private toStaffAdminDto(row: {
+    userId: string;
+    title: string | null;
+    staffLevel: string;
+    permissionPreset: string;
+    permissions: unknown;
+    createdAt: Date;
+    user: {
+      fullName: string;
+      email: string;
+      phone: string;
+      status: string;
+    };
+  }): StaffAdmin {
+    const staffLevel = row.staffLevel as StaffLevel;
+    const permissionPreset = row.permissionPreset as StaffPermissionPreset;
+    const stored = Array.isArray(row.permissions)
+      ? (row.permissions as StaffPermission[])
+      : [];
+    return {
+      id: row.userId,
+      fullName: row.user.fullName,
+      email: row.user.email,
+      phone: row.user.phone,
+      status: row.user.status as UserStatus,
+      staffLevel,
+      permissionPreset,
+      permissions: resolveStaffPermissions({
+        staffLevel,
+        permissionPreset,
+        permissions: stored,
+      }),
+      title: row.title,
+      createdAt: row.createdAt.toISOString(),
+    };
   }
 
   private async requireUserId(subject: string): Promise<string> {

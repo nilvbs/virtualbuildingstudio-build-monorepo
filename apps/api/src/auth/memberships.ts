@@ -50,7 +50,12 @@ export async function ensureMembership(
   if (role === 'admin') {
     await prisma.adminProfile.upsert({
       where: { userId },
-      create: { userId },
+      create: {
+        userId,
+        staffLevel: 'admin',
+        permissionPreset: 'matcher',
+        permissions: [],
+      },
       update: {},
     });
   }

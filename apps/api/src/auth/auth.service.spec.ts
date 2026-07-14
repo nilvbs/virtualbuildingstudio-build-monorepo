@@ -43,6 +43,13 @@ describe('AuthService', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
+    userRole: {
+      findMany: jest.Mock;
+      upsert: jest.Mock;
+    };
+    clientProfile: { upsert: jest.Mock };
+    surveyorProfile: { upsert: jest.Mock };
+    adminProfile: { findUnique: jest.Mock; upsert: jest.Mock };
   };
   let identity: jest.Mocked<IdentityProvider>;
   let phone: jest.Mocked<PhoneVerifier>;
@@ -55,6 +62,16 @@ describe('AuthService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+      },
+      userRole: {
+        findMany: jest.fn().mockResolvedValue([{ role: 'client' }]),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      clientProfile: { upsert: jest.fn().mockResolvedValue({}) },
+      surveyorProfile: { upsert: jest.fn().mockResolvedValue({}) },
+      adminProfile: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({}),
       },
     };
     identity = {
@@ -108,7 +125,8 @@ describe('AuthService', () => {
     });
 
     it('rejects a duplicate email/phone without touching the provider', async () => {
-      prisma.user.findFirst.mockResolvedValue({ id: 'existing' });
+      prisma.user.findFirst.mockResolvedValue(makeUser({ id: 'existing' }));
+      prisma.userRole.findMany.mockResolvedValue([{ role: 'client' }]);
 
       await expect(service.signup(signupInput)).rejects.toBeInstanceOf(ConflictException);
       expect(identity.createIdentity).not.toHaveBeenCalled();

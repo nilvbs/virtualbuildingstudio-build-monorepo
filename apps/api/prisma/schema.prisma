@@ -74,11 +74,17 @@ model ClientProfile {
 }
 
 model AdminProfile {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @unique @map("user_id") @db.Uuid
-  title     String?
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  title            String?
+  /** super_admin | admin */
+  staffLevel       String   @default("admin") @map("staff_level")
+  /** viewer | matcher | full | custom */
+  permissionPreset String   @default("matcher") @map("permission_preset")
+  /** JSON array of StaffPermission strings when preset is custom (or overrides). */
+  permissions      Json     @default("[]")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
