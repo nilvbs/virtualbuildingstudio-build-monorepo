@@ -87,18 +87,20 @@ describe('ProfilesService', () => {
 
   describe('getStatus', () => {
     it('shows the mapping headline with a live profile and no proposed match', async () => {
-      prisma.surveyorProfile.findUnique.mockResolvedValue({ id: 'profile-1', isMatchable: true });
+      prisma.surveyorProfile.findUnique.mockResolvedValue(profileRow());
       prisma.match.findMany.mockResolvedValue([]);
 
       const status = await service.getStatus('auth0|1');
 
       expect(status.hasProfile).toBe(true);
+      expect(status.profileComplete).toBe(true);
+      expect(status.completionPercent).toBe(100);
       expect(status.headline).toBe("We're mapping projects to you.");
       expect(status.matches).toEqual([]);
     });
 
     it('switches to the matched headline when a proposed match exists', async () => {
-      prisma.surveyorProfile.findUnique.mockResolvedValue({ id: 'profile-1', isMatchable: true });
+      prisma.surveyorProfile.findUnique.mockResolvedValue(profileRow());
       prisma.match.findMany.mockResolvedValue([
         {
           id: 'match-1',
@@ -124,7 +126,24 @@ describe('ProfilesService', () => {
       const status = await service.getStatus('auth0|1');
 
       expect(status.hasProfile).toBe(false);
+      expect(status.completionPercent).toBe(0);
+      expect(status.profileComplete).toBe(false);
       expect(status.matches).toEqual([]);
+    });
+
+    it('gates live status messaging until the profile is complete', async () => {
+      prisma.surveyorProfile.findUnique.mockResolvedValue(
+        profileRow({ services: [], equipment: [], bio: null, baseCity: null, dayRateCents: null }),
+      );
+      prisma.$queryRaw.mockResolvedValue([{ lng: null, lat: null }]);
+      prisma.match.findMany.mockResolvedValue([]);
+
+      const status = await service.getStatus('auth0|1');
+
+      expect(status.profileComplete).toBe(false);
+      expect(status.completionPercent).toBe(0);
+      expect(status.headline).toBe('Finish your profile to go live');
+      expect(status.isMatchable).toBe(false);
     });
   });
 });

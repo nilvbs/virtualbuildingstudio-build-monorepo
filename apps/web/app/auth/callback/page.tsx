@@ -35,11 +35,13 @@ function CallbackInner() {
     (async () => {
       try {
         const res = await api.exchangeGoogle({ code, state });
+        // Prefer workspace from OAuth state (session.activeRole). Never force
+        // "both" accounts onto /client — that ignored Expert (surveyor) signup.
         const activeRole: WorkspaceRole | undefined =
-          res.roleHint === 'surveyor' || res.roleHint === 'client'
-            ? res.roleHint
-            : res.roleHint === 'both'
-              ? 'client'
+          res.session.activeRole === 'client' || res.session.activeRole === 'surveyor'
+            ? res.session.activeRole
+            : res.roleHint === 'surveyor' || res.roleHint === 'client'
+              ? res.roleHint
               : undefined;
         setSession({
           accessToken: res.session.accessToken,
@@ -56,7 +58,7 @@ function CallbackInner() {
         }
 
         const q = new URLSearchParams({
-          role: res.roleHint,
+          role: activeRole ?? (res.roleHint === 'surveyor' ? 'surveyor' : 'client'),
           email: res.profile.email,
           name: res.profile.fullName,
         });

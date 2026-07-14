@@ -8,6 +8,8 @@ export function hintFromMemberships(memberships: MembershipRole[]): RoleHint {
   const hasSurveyor = memberships.includes('surveyor');
   if (hasClient && hasSurveyor) return 'both';
   if (hasSurveyor) return 'surveyor';
+  if (hasClient) return 'client';
+  // Admin-only accounts keep a neutral legacy hint (marketplace unused).
   return 'client';
 }
 

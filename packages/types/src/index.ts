@@ -288,6 +288,63 @@ export interface SurveyorProfile {
   updatedAt: string;
 }
 
+/** Fields that count toward surveyor profile completion (%). */
+export const SURVEYOR_PROFILE_COMPLETION_CHECKS = [
+  { key: 'services', label: 'Services offered' },
+  { key: 'baseCity', label: 'Base city' },
+  { key: 'location', label: 'Map location' },
+  { key: 'equipment', label: 'Equipment' },
+  { key: 'bio', label: 'Bio' },
+  { key: 'dayRate', label: 'Day rate' },
+] as const;
+
+export type SurveyorProfileCompletionKey =
+  (typeof SURVEYOR_PROFILE_COMPLETION_CHECKS)[number]['key'];
+
+export interface SurveyorProfileCompletion {
+  percent: number;
+  complete: boolean;
+  done: SurveyorProfileCompletionKey[];
+  missing: SurveyorProfileCompletionKey[];
+}
+
+type ProfileCompletionSource = {
+  services?: SurveyService[] | null;
+  equipment?: string[] | null;
+  bio?: string | null;
+  baseCity?: string | null;
+  location?: GeoPoint | null;
+  dayRateCents?: number | null;
+};
+
+export function surveyorProfileCompletion(
+  profile: ProfileCompletionSource | null | undefined,
+): SurveyorProfileCompletion {
+  if (!profile) {
+    return {
+      percent: 0,
+      complete: false,
+      done: [],
+      missing: SURVEYOR_PROFILE_COMPLETION_CHECKS.map((c) => c.key),
+    };
+  }
+
+  const checks: Record<SurveyorProfileCompletionKey, boolean> = {
+    services: (profile.services?.length ?? 0) > 0,
+    baseCity: Boolean(profile.baseCity?.trim()),
+    location: Boolean(profile.location),
+    equipment: (profile.equipment?.length ?? 0) > 0,
+    bio: Boolean(profile.bio?.trim()),
+    dayRate: profile.dayRateCents != null && profile.dayRateCents > 0,
+  };
+
+  const done = SURVEYOR_PROFILE_COMPLETION_CHECKS.filter((c) => checks[c.key]).map((c) => c.key);
+  const missing = SURVEYOR_PROFILE_COMPLETION_CHECKS.filter((c) => !checks[c.key]).map((c) => c.key);
+  const percent = Math.round((done.length / SURVEYOR_PROFILE_COMPLETION_CHECKS.length) * 100);
+
+  return { percent, complete: missing.length === 0, done, missing };
+}
+
 export interface SurveyorStatusMatch {
   matchId: string;
   status: MatchStatus;
@@ -296,9 +353,8 @@ export interface SurveyorStatusMatch {
 }
 
 /**
- * Drives the surveyor's signature status screen. `headline` is the polished
- * message the surveyor sees ("We're mapping projects to you." or, once matched,
- * "You've been matched to a project — we'll reach out.").
+ * Drives the surveyor dashboard. `headline` is the polished status message;
+ * `completionPercent` gates Dashboard access until the profile is finished.
  */
 export interface SurveyorStatus {
   hasProfile: boolean;
@@ -306,6 +362,9 @@ export interface SurveyorStatus {
   headline: string;
   subtext: string;
   matches: SurveyorStatusMatch[];
+  /** 0–100 profile completion used for nav gating and progress UI. */
+  completionPercent: number;
+  profileComplete: boolean;
 }
 
 // --- Client projects ---

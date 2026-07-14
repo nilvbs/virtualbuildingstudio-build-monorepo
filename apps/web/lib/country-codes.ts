@@ -52,7 +52,7 @@ export const COUNTRY_DIALS: CountryDial[] = [
   { iso: 'VN', name: 'Vietnam', dial: '+84', example: '91 234 56 78', placeholder: '912345678' },
 ];
 
-export const DEFAULT_COUNTRY_ISO = 'US';
+export const DEFAULT_COUNTRY_ISO = 'IN';
 
 export function findCountry(iso: string): CountryDial {
   return COUNTRY_DIALS.find((c) => c.iso === iso) ?? COUNTRY_DIALS[0]!;
@@ -60,6 +60,26 @@ export function findCountry(iso: string): CountryDial {
 
 /** Build E.164 from dial code + national digits (strips spaces/punctuation/leading zeros). */
 export function toE164(dial: string, national: string): string {
-  const digits = national.replace(/\D/g, '').replace(/^0+/, '');
+  const trimmed = national.trim();
+  const dialDigits = dial.replace(/\D/g, '');
+
+  // Pasted full international number, e.g. +919509393218
+  if (trimmed.startsWith('+')) {
+    const intl = trimmed.replace(/\D/g, '');
+    return intl ? `+${intl}` : dial;
+  }
+
+  let digits = trimmed.replace(/\D/g, '').replace(/^0+/, '');
+  if (!digits) return dial;
+
+  // User typed country code without +, e.g. 919509393218 with dial +91
+  if (dialDigits && digits.startsWith(dialDigits) && digits.length > dialDigits.length) {
+    return `+${digits}`;
+  }
+
   return `${dial}${digits}`;
+}
+
+export function isE164(phone: string): boolean {
+  return /^\+[1-9]\d{6,14}$/.test(phone);
 }

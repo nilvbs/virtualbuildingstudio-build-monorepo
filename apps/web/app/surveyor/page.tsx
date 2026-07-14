@@ -6,9 +6,8 @@ import Link from 'next/link';
 import { Radar, Sparkles, UserRoundPlus } from 'lucide-react';
 import type { SurveyorStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../lib/api';
-import { StatusBadge } from '../../components/status';
 
-export default function SurveyorStatusPage() {
+export default function SurveyorDashboardPage() {
   const router = useRouter();
   const [status, setStatus] = useState<SurveyorStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +16,13 @@ export default function SurveyorStatusPage() {
   useEffect(() => {
     api
       .getSurveyorStatus()
-      .then(setStatus)
+      .then((next) => {
+        if (!next.profileComplete) {
+          router.replace('/surveyor/profile?complete=1');
+          return;
+        }
+        setStatus(next);
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) router.replace('/login');
         else setError(errorMessage(err));
@@ -42,13 +47,12 @@ export default function SurveyorStatusPage() {
       <div className="page-head">
         <div>
           <p className="kicker">Surveyor</p>
-          <h1 className="page-title">Your status</h1>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-sub">Live matching status for your expert workspace.</p>
         </div>
-        {status.hasProfile && (
-          <Link className="btn secondary" href="/surveyor/profile">
-            Edit profile
-          </Link>
-        )}
+        <Link className="btn secondary" href="/surveyor/profile">
+          Edit profile
+        </Link>
       </div>
 
       {!status.hasProfile ? (
@@ -65,42 +69,32 @@ export default function SurveyorStatusPage() {
           </Link>
         </div>
       ) : (
-        <>
-          <section
-            className="card card-pad-lg"
-            style={{ display: 'grid', placeItems: 'center', textAlign: 'center', background: 'var(--brand-grad-soft)', borderColor: 'transparent' }}
-          >
-            <div className="pulse" aria-hidden>
-              {status.isMatchable ? <Radar size={26} /> : <Sparkles size={26} />}
-            </div>
-            <h2 style={{ fontSize: 25, margin: '18px 0 8px', maxWidth: 520 }}>{status.headline}</h2>
-            <p style={{ color: 'var(--text-soft)', maxWidth: 480 }}>{status.subtext}</p>
-            {!status.isMatchable && (
-              <span className="badge badge-gray" style={{ marginTop: 16 }}>
-                Profile paused — not receiving new matches
-              </span>
-            )}
-          </section>
-
-          {status.matches.length > 0 && (
-            <section style={{ marginTop: 22 }}>
-              <div className="section-title">
-                Your matches <span className="count">{status.matches.length}</span>
-              </div>
-              <div className="list">
-                {status.matches.map((m) => (
-                  <div className="row-item" key={m.matchId}>
-                    <div>
-                      <strong>{m.projectTitle}</strong>
-                      <div className="row-meta">{new Date(m.createdAt).toLocaleDateString()}</div>
-                    </div>
-                    <StatusBadge status={m.status} />
-                  </div>
-                ))}
-              </div>
-            </section>
+        <section
+          className="card card-pad-lg"
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            textAlign: 'center',
+            background: 'var(--brand-grad-soft)',
+            borderColor: 'transparent',
+          }}
+        >
+          <div className="pulse" aria-hidden>
+            {status.isMatchable ? <Radar size={26} /> : <Sparkles size={26} />}
+          </div>
+          <h2 style={{ fontSize: 25, margin: '18px 0 8px', maxWidth: 520 }}>{status.headline}</h2>
+          <p style={{ color: 'var(--text-soft)', maxWidth: 480 }}>{status.subtext}</p>
+          {!status.isMatchable && (
+            <span className="badge badge-gray" style={{ marginTop: 16 }}>
+              Profile paused — not receiving new matches
+            </span>
           )}
-        </>
+          {status.matches.length > 0 && (
+            <Link className="btn secondary" href="/surveyor/matches" style={{ marginTop: 18 }}>
+              View {status.matches.length} match{status.matches.length === 1 ? '' : 'es'}
+            </Link>
+          )}
+        </section>
       )}
     </>
   );

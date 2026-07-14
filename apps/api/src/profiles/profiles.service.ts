@@ -10,6 +10,7 @@ import type {
   SurveyorProfile,
   SurveyorStatus,
 } from '@surveylink/types';
+import { surveyorProfileCompletion } from '@surveylink/types';
 import type {
   CreateSurveyorProfileInput,
   UpdateSurveyorProfileInput,
@@ -103,7 +104,6 @@ export class ProfilesService {
     const user = await this.requireUser(subject);
     const profile = await this.prisma.surveyorProfile.findUnique({
       where: { userId: user.id },
-      select: { id: true, isMatchable: true },
     });
 
     if (!profile) {
@@ -113,8 +113,27 @@ export class ProfilesService {
         headline: 'Set up your surveyor profile',
         subtext: 'Tell us your services and coverage so we can start mapping projects to you.',
         matches: [],
+        completionPercent: 0,
+        profileComplete: false,
       };
     }
+
+    const geo = await this.prisma.$queryRaw<GeoRow[]>`
+      SELECT ST_X(base_location::geometry) AS lng, ST_Y(base_location::geometry) AS lat
+      FROM surveyor_profiles WHERE id = ${profile.id}::uuid`;
+    const point = geo[0];
+    const location =
+      point && point.lng != null && point.lat != null
+        ? { lng: Number(point.lng), lat: Number(point.lat) }
+        : null;
+    const completion = surveyorProfileCompletion({
+      services: (profile.services as unknown as SurveyService[]) ?? [],
+      equipment: (profile.equipment as unknown as string[]) ?? [],
+      bio: profile.bio,
+      baseCity: profile.baseCity,
+      location,
+      dayRateCents: profile.dayRateCents != null ? Number(profile.dayRateCents) : null,
+    });
 
     const matches = await this.prisma.match.findMany({
       where: { surveyorId: profile.id },
@@ -123,16 +142,20 @@ export class ProfilesService {
     });
 
     const hasProposed = matches.some((m) => m.status === 'proposed');
-    const headline = hasProposed
-      ? "You've been matched to a project — we'll reach out."
-      : "We're mapping projects to you.";
-    const subtext = hasProposed
-      ? 'Keep an eye on your phone and email; our team will confirm the details with you directly.'
-      : "Your profile is live. When a project fits, we'll match you and get in touch.";
+    const headline = !completion.complete
+      ? 'Finish your profile to go live'
+      : hasProposed
+        ? "You've been matched to a project — we'll reach out."
+        : "We're mapping projects to you.";
+    const subtext = !completion.complete
+      ? `Your profile is ${completion.percent}% complete. Dashboard unlocks at 100%.`
+      : hasProposed
+        ? 'Keep an eye on your phone and email; our team will confirm the details with you directly.'
+        : "Your profile is live. When a project fits, we'll match you and get in touch.";
 
     return {
       hasProfile: true,
-      isMatchable: profile.isMatchable,
+      isMatchable: profile.isMatchable && completion.complete,
       headline,
       subtext,
       matches: matches.map((m) => ({
@@ -141,6 +164,8 @@ export class ProfilesService {
         projectTitle: m.project.title,
         createdAt: m.createdAt.toISOString(),
       })),
+      completionPercent: completion.percent,
+      profileComplete: completion.complete,
     };
   }
 

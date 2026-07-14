@@ -6,17 +6,17 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   ChevronDown,
+  Handshake,
   LayoutDashboard,
   LogOut,
   type LucideIcon,
-  PlusCircle,
-  Radar,
   UserRound,
 } from 'lucide-react';
 import type { AuthenticatedUser, WorkspaceRole } from '@surveylink/types';
 import { api, ApiError } from '../lib/api';
 import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
 import { clearSession, isAuthenticated, setActiveRole } from '../lib/session';
+import { IncompleteProfileModal, SidebarProfileMeter } from './profile-completion';
 
 type Section = 'client' | 'surveyor' | 'admin';
 
@@ -31,35 +31,66 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   exact?: boolean;
+  /** Surveyor: hide until profile is 100% complete. */
+  requiresCompleteProfile?: boolean;
 }
 
-const NAV: Record<Section, { label: string; sub: string; items: NavItem[] }> = {
+const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; items: NavItem[] }> = {
   client: {
-    label: 'Client workspace',
+    label: 'Your projects',
     sub: 'Post and track your survey projects',
-    items: [
-      { href: '/client', label: 'Projects', icon: LayoutDashboard, exact: true },
-      { href: '/client/projects/new', label: 'Post a project', icon: PlusCircle },
-    ],
+    items: [{ href: '/client', label: 'Projects', icon: LayoutDashboard }],
   },
   surveyor: {
     label: 'Surveyor workspace',
-    sub: 'Your matches and profile',
+    sub: 'Dashboard, profile, and matches',
     items: [
-      { href: '/surveyor', label: 'Status', icon: Radar, exact: true },
+      { href: '/surveyor', label: 'Dashboard', icon: LayoutDashboard, exact: true, requiresCompleteProfile: true },
       { href: '/surveyor/profile', label: 'Profile', icon: UserRound },
+      { href: '/surveyor/matches', label: 'My Matches', icon: Handshake },
     ],
   },
   admin: {
     label: 'Operations',
     sub: 'Match projects to surveyors',
+    sectionLabel: 'Operations',
     items: [{ href: '/build/admin/queue', label: 'Match queue', icon: LayoutDashboard, exact: true }],
   },
 };
 
+const SURVEYOR_SNOOZE_KEY = 'bld.surveyor.profilePromptSnoozed';
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
+}
+
+function topbarCopy(section: Section, pathname: string): { label: string; sub: string } {
+  if (section === 'client') {
+    if (pathname.startsWith('/client/projects/new')) {
+      return { label: 'Post a project', sub: 'Brief, site, and timing' };
+    }
+    if (/^\/client\/projects\/[^/]+/.test(pathname)) {
+      return { label: 'Project details', sub: 'Status, progress, and brief' };
+    }
+    return { label: 'Your projects', sub: 'Post and track survey work' };
+  }
+  if (section === 'surveyor') {
+    if (pathname.startsWith('/surveyor/profile')) {
+      return { label: 'Profile', sub: 'Services, coverage, and rates' };
+    }
+    if (pathname.startsWith('/surveyor/matches')) {
+      return { label: 'My Matches', sub: 'Projects matched to you' };
+    }
+    return { label: 'Dashboard', sub: 'Live matching status' };
+  }
+  return { label: NAV[section].label, sub: NAV[section].sub };
+}
+
+function isNavActive(pathname: string, item: NavItem): boolean {
+  if (item.exact) return pathname === item.href;
+  if (item.href === '/client') return pathname === '/client' || pathname.startsWith('/client/');
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 export function AppShell({ section, children }: { section: Section; children: ReactNode }) {
@@ -68,6 +99,9 @@ export function AppShell({ section, children }: { section: Section; children: Re
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [completionPercent, setCompletionPercent] = useState<number | null>(null);
+  const [profileComplete, setProfileComplete] = useState(false);
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -86,16 +120,56 @@ export function AppShell({ section, children }: { section: Section; children: Re
   }, [router, section]);
 
   useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    if (section !== 'surveyor' || !isAuthenticated()) return;
+    let cancelled = false;
+
+    function refreshStatus() {
+      api
+        .getSurveyorStatus()
+        .then((status) => {
+          if (cancelled) return;
+          setCompletionPercent(status.completionPercent);
+          setProfileComplete(status.profileComplete);
+          const snoozed =
+            typeof window !== 'undefined' && sessionStorage.getItem(SURVEYOR_SNOOZE_KEY) === '1';
+          const forcePrompt =
+            typeof window !== 'undefined' &&
+            window.location.pathname.startsWith('/surveyor/profile') &&
+            new URLSearchParams(window.location.search).get('complete') === '1';
+          setShowProfilePrompt(!status.profileComplete && (forcePrompt || !snoozed));
+        })
+        .catch(() => {
+          /* leave completion null; nav still shows Profile + Matches */
+        });
     }
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
+
+    refreshStatus();
+    function onProfileSaved() {
+      refreshStatus();
+    }
+    window.addEventListener('bld:surveyor-profile-saved', onProfileSaved);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('bld:surveyor-profile-saved', onProfileSaved);
+    };
+  }, [section, pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [menuOpen]);
 
   function signOut() {
+    setMenuOpen(false);
     clearSession();
-    router.replace(section === 'admin' ? '/build/admin' : '/login');
+    if (typeof window !== 'undefined') sessionStorage.removeItem(SURVEYOR_SNOOZE_KEY);
+    window.location.assign(section === 'admin' ? '/build/admin' : '/?auth=login');
   }
 
   function switchWorkspace(role: WorkspaceRole) {
@@ -117,94 +191,135 @@ export function AppShell({ section, children }: { section: Section; children: Re
     }
   }
 
+  function snoozeProfilePrompt() {
+    if (typeof window !== 'undefined') sessionStorage.setItem(SURVEYOR_SNOOZE_KEY, '1');
+    setShowProfilePrompt(false);
+    if (pathname === '/surveyor') {
+      router.replace('/surveyor/profile');
+    } else if (pathname.startsWith('/surveyor/profile')) {
+      router.replace('/surveyor/profile');
+    }
+  }
+
   const nav = NAV[section];
+  const header = topbarCopy(section, pathname);
   const workspaces = user ? workspaceMemberships(user) : [];
-  const roleLabel = user?.roles.includes('admin') && section === 'admin'
-    ? 'Administrator'
-    : section === 'client'
-      ? 'Client workspace'
-      : section === 'surveyor'
-        ? 'Expert (surveyor)'
-        : user
-          ? user.roleHint.charAt(0).toUpperCase() + user.roleHint.slice(1)
-          : '';
+  const roleLabel =
+    user?.roles.includes('admin') && section === 'admin'
+      ? 'Administrator'
+      : section === 'client'
+        ? 'Client'
+        : section === 'surveyor'
+          ? 'Expert (surveyor)'
+          : user
+            ? user.roleHint.charAt(0).toUpperCase() + user.roleHint.slice(1)
+            : '';
+
+  const navItems = nav.items.filter((item) => {
+    if (!item.requiresCompleteProfile) return true;
+    return profileComplete;
+  });
 
   return (
     <div className="shell">
       <aside className="sidebar">
-        <Link href={SECTION_HOME[section]} className="brand plain" aria-label="BLD home">
-          <Image
-            src="/brand/bld-logo-dark.png"
-            alt="BLD"
-            width={636}
-            height={236}
-            className="brand-logo"
-            priority
-          />
-        </Link>
+        <div className="sidebar-top">
+          <Link
+            href={section === 'surveyor' && !profileComplete ? '/surveyor/profile' : SECTION_HOME[section]}
+            className="brand plain"
+            aria-label="BLD home"
+          >
+            <Image
+              src="/brand/bld-logo-dark.png"
+              alt="BLD"
+              width={636}
+              height={236}
+              className="brand-logo"
+              priority
+            />
+          </Link>
 
-        <div className="nav-section">{nav.label}</div>
-        <nav className="nav">
-          {nav.items.map((item) => {
-            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`nav-item plain ${active ? 'active' : ''}`}
-              >
-                <Icon size={18} strokeWidth={2} />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+          {nav.sectionLabel ? <div className="nav-section">{nav.sectionLabel}</div> : null}
+          <nav className={`nav${nav.sectionLabel ? '' : ' nav--flush'}`}>
+            {navItems.map((item) => {
+              const active = isNavActive(pathname, item);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`nav-item plain ${active ? 'active' : ''}`}
+                >
+                  <Icon size={18} strokeWidth={2} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
 
-        <div className="sidebar-foot">BLD · Phase 1</div>
+          {section === 'surveyor' && completionPercent != null && (
+            <div className="sidebar-completion">
+              <SidebarProfileMeter percent={completionPercent} complete={profileComplete} />
+            </div>
+          )}
+        </div>
+
+        <div className="sidebar-foot">
+          <span className="sidebar-foot-mark" aria-hidden>
+            B
+          </span>
+          <span>Phase 1</span>
+        </div>
       </aside>
 
       <div className="shell-body">
         <header className="topbar">
-          <div>
-            <div className="topbar-title">{nav.label}</div>
-            <div className="topbar-sub">{nav.sub}</div>
+          <div className="topbar-copy">
+            <div className="topbar-title">{header.label}</div>
+            <div className="topbar-sub">{header.sub}</div>
           </div>
 
           <div className="usermenu" ref={menuRef}>
-            <button className="usermenu-trigger" onClick={() => setMenuOpen((o) => !o)}>
+            <button className="usermenu-trigger" type="button" onClick={() => setMenuOpen((o) => !o)}>
               <span className="avatar">{user ? initials(user.fullName) : '·'}</span>
-              <span style={{ textAlign: 'left' }}>
-                <span className="usermenu-name" style={{ display: 'block' }}>
-                  {user?.fullName ?? 'Loading…'}
-                </span>
+              <span className="usermenu-text">
+                <span className="usermenu-name">{user?.fullName ?? 'Loading…'}</span>
                 <span className="usermenu-role">{roleLabel}</span>
               </span>
-              <ChevronDown size={15} style={{ color: 'var(--muted)' }} />
+              <ChevronDown size={15} className="usermenu-caret" />
             </button>
             {menuOpen && (
-              <div className="menu">
+              <div className="menu" role="menu">
                 {section !== 'admin' && workspaces.includes('client') && section !== 'client' && (
-                  <button className="menu-item" type="button" onClick={() => switchWorkspace('client')}>
+                  <button className="menu-item" type="button" role="menuitem" onClick={() => switchWorkspace('client')}>
                     Switch to client
                   </button>
                 )}
                 {section !== 'admin' && workspaces.includes('surveyor') && section !== 'surveyor' && (
-                  <button className="menu-item" type="button" onClick={() => switchWorkspace('surveyor')}>
+                  <button className="menu-item" type="button" role="menuitem" onClick={() => switchWorkspace('surveyor')}>
                     Switch to expert (surveyor)
                   </button>
                 )}
                 {section !== 'admin' && !workspaces.includes('client') && (
-                  <button className="menu-item" type="button" onClick={() => addWorkspace('client')}>
+                  <button className="menu-item" type="button" role="menuitem" onClick={() => addWorkspace('client')}>
                     Add client workspace
                   </button>
                 )}
                 {section !== 'admin' && !workspaces.includes('surveyor') && (
-                  <button className="menu-item" type="button" onClick={() => addWorkspace('surveyor')}>
+                  <button className="menu-item" type="button" role="menuitem" onClick={() => addWorkspace('surveyor')}>
                     Add expert (surveyor) workspace
                   </button>
                 )}
-                <button className="menu-item danger" onClick={signOut}>
+                <button
+                  className="menu-item danger"
+                  type="button"
+                  role="menuitem"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    signOut();
+                  }}
+                >
                   <LogOut size={16} />
                   Sign out
                 </button>
@@ -213,8 +328,24 @@ export function AppShell({ section, children }: { section: Section; children: Re
           </div>
         </header>
 
-        <div className="shell-content">{children}</div>
+        <div
+          className={`shell-content${section === 'client' || section === 'surveyor' ? ' shell-content--wide' : ''}`}
+        >
+          {children}
+        </div>
       </div>
+
+      {section === 'surveyor' && completionPercent != null && (
+        <IncompleteProfileModal
+          open={showProfilePrompt && !profileComplete}
+          percent={completionPercent}
+          onClose={snoozeProfilePrompt}
+          onGoToProfile={() => {
+            setShowProfilePrompt(false);
+            router.push('/surveyor/profile');
+          }}
+        />
+      )}
     </div>
   );
 }

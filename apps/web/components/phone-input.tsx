@@ -6,6 +6,7 @@ import {
   COUNTRY_DIALS,
   DEFAULT_COUNTRY_ISO,
   findCountry,
+  isE164,
   toE164,
   type CountryDial,
 } from '../lib/country-codes';
@@ -80,6 +81,10 @@ export function PhoneInput({
 export function phoneInputToE164(value: PhoneInputValue): string {
   const country: CountryDial = findCountry(value.countryIso);
   return toE164(country.dial, value.national);
+}
+
+export function phoneInputIsValid(value: PhoneInputValue): boolean {
+  return isE164(phoneInputToE164(value)) && value.national.replace(/\D/g, '').length >= 6;
 }
 
 export function defaultPhoneInput(): PhoneInputValue {

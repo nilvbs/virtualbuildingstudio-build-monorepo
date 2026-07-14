@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { DM_Sans, Fraunces } from 'next/font/google';
+import 'leaflet/dist/leaflet.css';
 import './globals.css';
 
 const dmSans = DM_Sans({

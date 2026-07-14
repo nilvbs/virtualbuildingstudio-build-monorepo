@@ -49,7 +49,7 @@ export interface SignupBody {
   email: string;
   phone: string;
   password: string;
-  roleHint?: 'client' | 'surveyor';
+  roleHint?: 'client' | 'surveyor' | 'admin';
 }
 
 export interface LoginBody {

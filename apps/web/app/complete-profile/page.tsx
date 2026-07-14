@@ -4,14 +4,14 @@ import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, User } from 'lucide-react';
-import type { RoleHint } from '@surveylink/types';
+import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
-import { homePathForRoleHint } from '../../lib/home';
-import { isAuthenticated } from '../../lib/session';
-import { defaultPhoneInput, PhoneInput, phoneInputToE164 } from '../../components/phone-input';
+import { homePathForWorkspace } from '../../lib/home';
+import { getSession, isAuthenticated, setSession } from '../../lib/session';
+import { defaultPhoneInput, PhoneInput, phoneInputIsValid, phoneInputToE164 } from '../../components/phone-input';
 
-function roleFrom(raw: string | null): RoleHint {
-  return raw === 'surveyor' || raw === 'both' ? raw : 'client';
+function roleFrom(raw: string | null): WorkspaceRole {
+  return raw === 'surveyor' ? 'surveyor' : 'client';
 }
 
 function CompleteProfileForm() {
@@ -20,11 +20,12 @@ function CompleteProfileForm() {
 
   const [fullName, setFullName] = useState(params.get('name') ?? '');
   const [phone, setPhone] = useState(defaultPhoneInput);
-  const [roleHint, setRoleHint] = useState<RoleHint>(roleFrom(params.get('role')));
+  const [roleHint, setRoleHint] = useState<WorkspaceRole>(roleFrom(params.get('role')));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const email = params.get('email') ?? undefined;
+  const roleLocked = params.get('role') === 'client' || params.get('role') === 'surveyor';
 
   useEffect(() => {
     if (!isAuthenticated()) router.replace('/login');
@@ -33,6 +34,10 @@ function CompleteProfileForm() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!phoneInputIsValid(phone)) {
+      setError('Enter a valid phone number for the selected country (E.164).');
+      return;
+    }
     setBusy(true);
     try {
       await api.completeRegistration({
@@ -41,7 +46,11 @@ function CompleteProfileForm() {
         phone: phoneInputToE164(phone),
         roleHint,
       });
-      router.replace(homePathForRoleHint(roleHint));
+      const current = getSession();
+      if (current) {
+        setSession({ ...current, activeRole: roleHint });
+      }
+      router.replace(homePathForWorkspace(roleHint));
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);
@@ -108,11 +117,17 @@ function CompleteProfileForm() {
             <select
               id="roleHint"
               value={roleHint}
-              onChange={(e) => setRoleHint(e.target.value as RoleHint)}
+              disabled={roleLocked}
+              onChange={(e) => setRoleHint(e.target.value as WorkspaceRole)}
             >
               <option value="client">Client — I need surveys</option>
-              <option value="surveyor">Surveyor — I offer surveys</option>
+              <option value="surveyor">Expert (surveyor) — I offer surveys</option>
             </select>
+            {roleLocked ? (
+              <p className="hint" style={{ marginTop: 6 }}>
+                Chosen on the previous step. Sign out and start again to change it.
+              </p>
+            ) : null}
           </div>
 
           <button className="btn block" type="submit" disabled={busy} style={{ marginTop: 4 }}>

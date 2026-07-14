@@ -5,7 +5,8 @@ import { HeroBrand } from './hero-brand';
 import { LandingAuthOverlay, useLandingAuth } from './landing-auth';
 
 export function LandingPage() {
-  const { open, mode, roleHint, created, openAuth, closeAuth, setMode, setRole } = useLandingAuth();
+  const { open, mode, role, created, openAuth, closeAuth, setMode, setRole, clearRole } =
+    useLandingAuth();
 
   return (
     <div className={`mkt ${open ? 'mkt-auth-open' : ''}`}>
@@ -100,11 +101,12 @@ export function LandingPage() {
       <LandingAuthOverlay
         open={open}
         mode={mode}
-        roleHint={roleHint}
+        role={role}
         created={created}
         onClose={closeAuth}
         onModeChange={setMode}
         onRoleChange={setRole}
+        onClearRole={clearRole}
       />
     </div>
   );

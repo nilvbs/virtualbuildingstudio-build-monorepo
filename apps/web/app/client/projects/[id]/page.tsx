@@ -1,10 +1,16 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Check, Sparkles } from 'lucide-react';
-import { clientProjectHeadline, type ProjectDetail, type ProjectStatus } from '@surveylink/types';
+import {
+  SURVEY_SERVICE_LABELS,
+  clientProjectHeadline,
+  type ProjectDetail,
+  type ProjectStatus,
+  type SurveyService,
+} from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 import { StatusBadge } from '../../../../components/status';
 
@@ -13,19 +19,39 @@ const FINDING = new Set<ProjectStatus>(['submitted', 'matching']);
 const STEPS: Array<{ status: ProjectStatus; title: string; desc: string }> = [
   { status: 'submitted', title: 'Project submitted', desc: 'We received your request.' },
   { status: 'matching', title: 'Finding a surveyor', desc: 'Matching you to someone nearby.' },
-  { status: 'matched', title: 'Surveyor matched', desc: "We've found a surveyor for you." },
-  { status: 'confirmed', title: 'Visit confirmed', desc: 'Timing and details are locked in.' },
-  { status: 'completed', title: 'Survey complete', desc: 'Your deliverables are on the way.' },
+  { status: 'matched', title: 'Surveyor matched', desc: "We'll show you who we found." },
+  { status: 'confirmed', title: 'Visit confirmed', desc: 'Timing and details will be locked in.' },
+  { status: 'completed', title: 'Survey complete', desc: 'Your deliverables will be on the way.' },
 ];
 
-function Detail({ label, value }: { label: string; value: string | number | null }) {
-  if (value === null || value === '' || value === undefined) return null;
+const TIMELINE_LABELS: Record<string, string> = {
+  asap: 'As soon as possible',
+  '2_weeks': 'Within 2 weeks',
+  '1_month': 'Within a month',
+  flexible: 'Flexible',
+};
+
+function progressIndex(status: ProjectStatus): number {
+  if (status === 'submitted' || status === 'matching') return 1;
+  return STEPS.findIndex((s) => s.status === status);
+}
+
+function serviceLabel(service: string): string {
+  return SURVEY_SERVICE_LABELS[service as SurveyService] ?? service.replaceAll('_', ' ');
+}
+
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+  if (children === null || children === undefined || children === '') return null;
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '11px 0', borderBottom: '1px solid var(--border)' }}>
-      <span style={{ color: 'var(--muted)' }}>{label}</span>
-      <span style={{ fontWeight: 500, textAlign: 'right' }}>{value}</span>
+    <div className="detail-row">
+      <span className="detail-row-label">{label}</span>
+      <div className="detail-row-value">{children}</div>
     </div>
   );
+}
+
+function Chip({ children }: { children: ReactNode }) {
+  return <span className="info-chip">{children}</span>;
 }
 
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -69,61 +95,58 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const { headline, subtext } = clientProjectHeadline(project.status);
   const searching = FINDING.has(project.status);
   const cancelled = project.status === 'cancelled';
-  const currentIndex = STEPS.findIndex((s) => s.status === project.status);
+  const currentIndex = progressIndex(project.status);
+  const timelineLabel = project.neededWithin
+    ? (TIMELINE_LABELS[project.neededWithin] ?? project.neededWithin.replaceAll('_', ' '))
+    : null;
 
   return (
-    <>
-      <Link
-        href="/client"
-        className="plain"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)', fontSize: 13.5, marginBottom: 14 }}
-      >
-        <ArrowLeft size={15} /> Your projects
+    <div className="project-detail">
+      <Link href="/client" className="project-detail-back plain">
+        <ArrowLeft size={15} /> Back
       </Link>
 
       <div className="page-head">
         <div>
-          <p className="kicker">Project</p>
           <h1 className="page-title">{project.title}</h1>
         </div>
         <StatusBadge status={project.status} />
       </div>
 
-      <section
-        className="card card-pad-lg"
-        style={{ display: 'grid', placeItems: 'center', textAlign: 'center', background: 'var(--brand-grad-soft)', borderColor: 'transparent' }}
-      >
-        <div className={`pulse ${searching ? '' : 'green'}`} aria-hidden>
-          {searching ? <Sparkles size={26} /> : <Check size={28} strokeWidth={2.6} />}
+      <section className="card project-status-hero">
+        <div className="project-status-hero-ico">
+          <div className={`pulse ${searching ? '' : 'green'}`} aria-hidden>
+            {searching ? <Sparkles size={22} /> : <Check size={24} strokeWidth={2.6} />}
+          </div>
         </div>
-        <h2 style={{ fontSize: 24, margin: '18px 0 8px', maxWidth: 520 }}>{headline}</h2>
-        <p style={{ color: 'var(--text-soft)', maxWidth: 460 }}>{subtext}</p>
+        <h2 className="project-status-hero-title">{headline}</h2>
+        <p className="project-status-hero-sub">{subtext}</p>
       </section>
 
       {!cancelled && (
-        <section className="card" style={{ marginTop: 22 }}>
+        <section className="card">
           <div className="section-title">Progress</div>
-          <div className="timeline">
+          <ol className="timeline">
             {STEPS.map((step, i) => {
               const state = i < currentIndex ? 'done' : i === currentIndex ? 'current' : 'todo';
               return (
-                <div className={`tl-step ${state}`} key={step.status}>
-                  <span className="tl-dot">
-                    {state === 'done' ? <Check size={15} strokeWidth={3} /> : i + 1}
+                <li className={`tl-step ${state}`} key={step.status}>
+                  <span className="tl-dot" aria-hidden>
+                    {state === 'done' ? <Check size={14} strokeWidth={3} /> : i + 1}
                   </span>
-                  <div>
+                  <div className="tl-copy">
                     <div className="tl-title">{step.title}</div>
                     <div className="tl-desc">{step.desc}</div>
                   </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ol>
         </section>
       )}
 
       {project.matches.length > 0 && (
-        <section style={{ marginTop: 22 }}>
+        <section>
           <div className="section-title">Your match</div>
           <div className="list">
             {project.matches.map((m) => (
@@ -139,21 +162,40 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         </section>
       )}
 
-      <section className="card" style={{ marginTop: 22 }}>
+      <section className="card">
         <div className="section-title">Project details</div>
-        <Detail label="Services" value={project.services.join(', ')} />
-        <Detail label="Location" value={project.locationText} />
-        <Detail
-          label="Coordinates"
-          value={project.location ? `${project.location.lat}, ${project.location.lng}` : null}
-        />
-        <Detail label="Building type" value={project.buildingType} />
-        <Detail label="Building age" value={project.buildingAge} />
-        <Detail label="Floors" value={project.floors} />
-        <Detail label="Area (sq ft)" value={project.areaSqft} />
-        <Detail label="Needed within" value={project.neededWithin} />
-        <Detail label="Notes" value={project.notes} />
+        <Detail label="Services">
+          {project.services.length > 0 ? (
+            <div className="info-chip-row">
+              {project.services.map((service) => (
+                <Chip key={service}>{serviceLabel(service)}</Chip>
+              ))}
+            </div>
+          ) : null}
+        </Detail>
+        <Detail label="Location">{project.locationText}</Detail>
+        <Detail label="Coordinates">
+          {project.location ? `${project.location.lat}, ${project.location.lng}` : null}
+        </Detail>
+        <Detail label="Building type">
+          {project.buildingType ? (
+            <div className="info-chip-row">
+              <Chip>{project.buildingType}</Chip>
+            </div>
+          ) : null}
+        </Detail>
+        <Detail label="Building age">{project.buildingAge}</Detail>
+        <Detail label="Floors">{project.floors}</Detail>
+        <Detail label="Area (sq ft)">{project.areaSqft}</Detail>
+        <Detail label="Needed within">
+          {timelineLabel ? (
+            <div className="info-chip-row">
+              <Chip>{timelineLabel}</Chip>
+            </div>
+          ) : null}
+        </Detail>
+        <Detail label="Notes">{project.notes}</Detail>
       </section>
-    </>
+    </div>
   );
 }

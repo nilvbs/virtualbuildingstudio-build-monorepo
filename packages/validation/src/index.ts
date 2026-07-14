@@ -41,6 +41,8 @@ export const centsSchema = z.number().int().nonnegative();
 export const roleHintSchema = z.enum(ROLE_HINTS);
 export const workspaceRoleSchema = z.enum(WORKSPACE_ROLES);
 export const membershipRoleSchema = z.enum(MEMBERSHIP_ROLES);
+/** Signup may provision marketplace or staff (admin) membership. */
+export const signupRoleSchema = z.enum(['client', 'surveyor', 'admin']);
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);
 export const matchStatusSchema = z.enum(MATCH_STATUSES);
 export const notificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
@@ -61,8 +63,8 @@ export const signupSchema = z.object({
   email: emailSchema,
   phone: phoneSchema,
   password: passwordSchema,
-  /** Marketplace role to provision (client or surveyor). */
-  roleHint: workspaceRoleSchema.default('client'),
+  /** Marketplace: client | surveyor. Staff portal: admin. */
+  roleHint: signupRoleSchema.default('client'),
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 

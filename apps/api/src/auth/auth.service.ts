@@ -88,15 +88,19 @@ export class AuthService {
    * not before signup completes).
    */
   async signup(input: SignupInput): Promise<AuthenticatedUser> {
+    const membershipRole = input.roleHint as MembershipRole;
+    const legacyHint: RoleHint =
+      membershipRole === 'admin' ? 'client' : (membershipRole as WorkspaceRole);
+
     const existing = await this.prisma.user.findFirst({
       where: { OR: [{ email: input.email }, { phone: input.phone }] },
-      select: { id: true },
     });
-    if (existing) {
-      throw new ConflictException('An account with this email or phone already exists');
-    }
 
-    const workspaceRole = input.roleHint as WorkspaceRole;
+    // Same identity, different workspace: add the missing membership instead of
+    // creating a second user (email/phone stay unique on `users`).
+    if (existing) {
+      return this.addRoleToExistingUser(existing, input, membershipRole);
+    }
 
     if (devAuthEnabled(this.config)) {
       const subject = devSubjectForEmail(input.email);
@@ -106,15 +110,20 @@ export class AuthService {
           fullName: input.fullName,
           email: input.email,
           phone: input.phone,
-          roleHint: workspaceRole,
+          roleHint: legacyHint,
           emailVerified: true,
           phoneVerified: true,
           authProvider: 'dev',
           authSubject: subject,
         },
       });
-      await ensureMembership(this.prisma, user.id, workspaceRole);
-      return this.toAuthenticatedUser(user, [], await listMemberships(this.prisma, user.id));
+      await ensureMembership(this.prisma, user.id, membershipRole);
+      const memberships = await listMemberships(this.prisma, user.id);
+      return this.toAuthenticatedUser(
+        user,
+        membershipRole === 'admin' ? ['admin'] : [],
+        memberships,
+      );
     }
 
     const identity = await this.identity.createIdentity({
@@ -129,13 +138,13 @@ export class AuthService {
         fullName: input.fullName,
         email: input.email,
         phone: input.phone,
-        roleHint: workspaceRole,
+        roleHint: legacyHint,
         emailVerified: identity.emailVerified,
         authProvider: AUTH_PROVIDER_NAME,
         authSubject: identity.subject,
       },
     });
-    await ensureMembership(this.prisma, user.id, workspaceRole);
+    await ensureMembership(this.prisma, user.id, membershipRole);
 
     await Promise.allSettled([
       identity.emailVerified
@@ -144,7 +153,80 @@ export class AuthService {
       this.phone.startVerification(input.phone),
     ]);
 
-    return this.toAuthenticatedUser(user, [], await listMemberships(this.prisma, user.id));
+    const memberships = await listMemberships(this.prisma, user.id);
+    return this.toAuthenticatedUser(
+      user,
+      membershipRole === 'admin' ? ['admin'] : [],
+      memberships,
+    );
+  }
+
+  /**
+   * Attach another segregated role (client / surveyor / admin) to an existing
+   * identity after verifying the password. Profile tables stay separate.
+   */
+  private async addRoleToExistingUser(
+    existing: User,
+    input: SignupInput,
+    membershipRole: MembershipRole,
+  ): Promise<AuthenticatedUser> {
+    const emailMatch = existing.email.toLowerCase() === input.email.trim().toLowerCase();
+    const phoneMatch = existing.phone === input.phone;
+    if (!emailMatch || !phoneMatch) {
+      throw new ConflictException(
+        'That email or phone is already used by another account. Use the same email and phone as your existing account to add this role, or pick different contact details.',
+      );
+    }
+
+    const memberships = await listMemberships(this.prisma, existing.id);
+    if (memberships.includes(membershipRole)) {
+      throw new ConflictException(
+        `This account already has the ${membershipRole} role. Sign in to that workspace instead.`,
+      );
+    }
+
+    await this.assertPasswordForUser(existing, input.password);
+
+    // Keepdev password map in sync when adding roles under AUTH_DEV_MODE.
+    if (devAuthEnabled(this.config) && existing.authSubject) {
+      rememberDevSignup(input.email, input.password, existing.authSubject);
+    }
+
+    await ensureMembership(this.prisma, existing.id, membershipRole);
+    const refreshed = await this.prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
+    const next = await listMemberships(this.prisma, existing.id);
+    return this.toAuthenticatedUser(
+      refreshed,
+      next.includes('admin') ? ['admin'] : [],
+      next,
+    );
+  }
+
+  private async assertPasswordForUser(user: User, password: string): Promise<void> {
+    if (devAuthEnabled(this.config)) {
+      if (user.email.toLowerCase() === DEV_EMAIL && password === DEV_PASSWORD) return;
+      const local = findDevSignup(user.email);
+      if (local) {
+        if (local.password === password) return;
+        throw new UnauthorizedException(
+          'Email already registered. Enter the same password as that account to add this role.',
+        );
+      }
+      // Dev password map is in-memory and clears on API restart. Re-bind for
+      // localdev identities so admin/client role linking still works.
+      if (user.authProvider === 'dev' && user.authSubject) {
+        rememberDevSignup(user.email, password, user.authSubject);
+        return;
+      }
+    }
+    try {
+      await this.identity.login(user.email, password);
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException(
+        'Email already registered. Enter the same password as that account to add this role.',
+      );
+    }
   }
 
   async login(email: string, password: string, role?: WorkspaceRole): Promise<AuthSession> {
@@ -257,6 +339,8 @@ export class AuthService {
    */
   async exchangeGoogle(code: string, state: string): Promise<GoogleAuthResult> {
     const { role } = decodeState(state);
+    const workspaceRole: WorkspaceRole | undefined =
+      role === 'client' || role === 'surveyor' ? role : undefined;
 
     // Dev bypass: fabricate a session for the fixed Google dev identity.
     if (devAuthEnabled(this.config) && code === DEV_GOOGLE_CODE) {
@@ -269,17 +353,12 @@ export class AuthService {
         where: { authSubject: DEV_GOOGLE_SUBJECT },
       });
       if (existing) {
-        return {
-          session,
-          registered: true,
-          roleHint: existing.roleHint as RoleHint,
-          profile: { email: existing.email, fullName: existing.fullName },
-        };
+        return this.googleResultForExistingUser(existing, session, workspaceRole);
       }
       return {
-        session,
+        session: { ...session, activeRole: workspaceRole },
         registered: false,
-        roleHint: role,
+        roleHint: workspaceRole ?? 'client',
         profile: { email: DEV_GOOGLE_EMAIL, fullName: 'Dev Google User' },
       };
     }
@@ -293,12 +372,7 @@ export class AuthService {
       where: { authSubject: identity.subject },
     });
     if (existing) {
-      return {
-        session,
-        registered: true,
-        roleHint: existing.roleHint as RoleHint,
-        profile: { email: existing.email, fullName: existing.fullName },
-      };
+      return this.googleResultForExistingUser(existing, session, workspaceRole);
     }
 
     // Account linking (same email, different provider) is out of scope for
@@ -313,10 +387,39 @@ export class AuthService {
     }
 
     return {
-      session,
+      session: { ...session, activeRole: workspaceRole },
       registered: false,
-      roleHint: role,
+      roleHint: workspaceRole ?? 'client',
       profile: { email: identity.email, fullName: identity.fullName },
+    };
+  }
+
+  /**
+   * Returning Google user: honor the workspace chosen on the landing auth step
+   * (add membership if missing) so "Sign up as surveyor" does not land on /client.
+   */
+  private async googleResultForExistingUser(
+    existing: User,
+    session: AuthSession,
+    workspaceRole: WorkspaceRole | undefined,
+  ): Promise<GoogleAuthResult> {
+    if (workspaceRole) {
+      await ensureMembership(this.prisma, existing.id, workspaceRole);
+    }
+    const memberships = await listMemberships(this.prisma, existing.id);
+    const activeRole =
+      workspaceRole ??
+      (memberships.includes('surveyor') && !memberships.includes('client')
+        ? 'surveyor'
+        : memberships.includes('client')
+          ? 'client'
+          : undefined);
+
+    return {
+      session: { ...session, activeRole },
+      registered: true,
+      roleHint: hintFromMemberships(memberships),
+      profile: { email: existing.email, fullName: existing.fullName },
     };
   }
 
