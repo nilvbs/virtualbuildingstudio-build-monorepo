@@ -26,8 +26,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@types/react": "19.2.17",
-      "@types/react-dom": "19.2.2"
+      "@surveylink/web>@types/react": "19.2.17",
+      "@surveylink/web>@types/react-dom": "19.2.2"
     }
   }
 }

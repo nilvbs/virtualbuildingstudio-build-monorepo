@@ -445,7 +445,13 @@ export interface SurveyorStatusMatch {
  */
 export interface SurveyorStatus {
   hasProfile: boolean;
+  /**
+   * Effective "live for matches" flag used by the dashboard and match pipeline.
+   * Only true when the DB preference is on AND the profile is 100% complete.
+   */
   isMatchable: boolean;
+  /** Raw toggle preference stored on the surveyor profile (independent of completion). */
+  matchablePreference: boolean;
   headline: string;
   subtext: string;
   matches: SurveyorStatusMatch[];

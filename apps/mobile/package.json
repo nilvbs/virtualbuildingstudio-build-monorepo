@@ -12,17 +12,35 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/runtime": "^7.26.0",
+    "@expo-google-fonts/fraunces": "^0.4.1",
+    "@expo/metro-runtime": "~6.1.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/bottom-tabs": "^7",
+    "@react-navigation/native": "^7",
+    "@react-navigation/native-stack": "^7",
     "@surveylink/api-client": "workspace:*",
     "@surveylink/types": "workspace:*",
     "@surveylink/validation": "workspace:*",
-    "expo": "~52.0.0",
-    "expo-status-bar": "~2.0.0",
-    "react": "18.3.1",
-    "react-native": "0.76.5"
+    "expo": "~54.0.36",
+    "expo-constants": "~18.0.13",
+    "expo-font": "~14.0.12",
+    "expo-linking": "~8.0.12",
+    "expo-modules-core": "~3.0.30",
+    "expo-status-bar": "~3.0.9",
+    "expo-web-browser": "~15.0.11",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1",
+    "react-native-web": "~0.21.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
-    "@types/react": "~18.3.12",
-    "typescript": "^5.6.3"
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
   }
 }

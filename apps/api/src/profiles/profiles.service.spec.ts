@@ -144,6 +144,7 @@ describe('ProfilesService', () => {
       expect(status.completionPercent).toBe(0);
       expect(status.headline).toBe('Finish your profile to go live');
       expect(status.isMatchable).toBe(false);
+      expect(status.matchablePreference).toBe(true);
     });
   });
 });

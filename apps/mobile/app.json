@@ -2,25 +2,32 @@
   "expo": {
     "name": "SurveyLink",
     "slug": "surveylink",
+    "scheme": "surveylink",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#0b1220"
+      "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0b1220"
+        "backgroundColor": "#00246B"
       }
     },
     "web": {
       "bundler": "metro"
-    }
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-font"
+    ]
   }
 }

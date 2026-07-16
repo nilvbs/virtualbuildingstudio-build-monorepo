@@ -23,15 +23,16 @@ async function bootstrap(): Promise<void> {
   // Request bodies are validated at the boundary with the shared zod schemas
   // (@surveylink/validation) via a zod pipe, added alongside feature DTOs.
 
-  // Lock CORS to explicit web origins in any deployed environment. Set
-  // CORS_ORIGINS (comma-separated) or fall back to WEB_APP_URL. If neither is
-  // set (local dev), reflect the request origin so the SPA still works.
+  // Lock CORS to explicit web origins in deployed environments. Set
+  // CORS_ORIGINS (comma-separated) or fall back to WEB_APP_URL.
+  // In local development, reflect any origin so Expo (8081) and web (3000) both work.
+  const isDev = (process.env.NODE_ENV ?? 'development') !== 'production';
   const allowedOrigins = (process.env.CORS_ORIGINS ?? process.env.WEB_APP_URL ?? '')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
   app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    origin: isDev ? true : allowedOrigins.length > 0 ? allowedOrigins : true,
     credentials: true,
   });
 

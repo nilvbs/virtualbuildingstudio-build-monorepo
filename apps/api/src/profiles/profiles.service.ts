@@ -110,6 +110,7 @@ export class ProfilesService {
       return {
         hasProfile: false,
         isMatchable: false,
+        matchablePreference: false,
         headline: 'Set up your surveyor profile',
         subtext: 'Tell us your services and coverage so we can start mapping projects to you.',
         matches: [],
@@ -156,6 +157,7 @@ export class ProfilesService {
     return {
       hasProfile: true,
       isMatchable: profile.isMatchable && completion.complete,
+      matchablePreference: profile.isMatchable,
       headline,
       subtext,
       matches: matches.map((m) => ({
