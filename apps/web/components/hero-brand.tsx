@@ -10,7 +10,6 @@ export function HeroBrand() {
   if (reduce) {
     return (
       <div className="mkt-hero-brand">
-        <p className="mkt-hero-kicker">Managed survey marketplace</p>
         <div className="mkt-hero-logo-wrap" role="img" aria-label="BLD">
           <span className="mkt-logo-piece mkt-logo-l" aria-hidden />
           <span className="mkt-logo-piece mkt-logo-b" aria-hidden />
@@ -29,15 +28,6 @@ export function HeroBrand() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.7, ease: easeClassic }}
     >
-      <motion.p
-        className="mkt-hero-kicker"
-        initial={{ opacity: 0, y: 10, letterSpacing: '0.55em' }}
-        animate={{ opacity: 1, y: 0, letterSpacing: '0.28em' }}
-        transition={{ duration: 1.35, delay: 0.15, ease: easeClassic }}
-      >
-        Managed survey marketplace
-      </motion.p>
-
       <div className="mkt-hero-logo-wrap" role="img" aria-label="BLD">
         {/* Building (L) rises first */}
         <motion.span
