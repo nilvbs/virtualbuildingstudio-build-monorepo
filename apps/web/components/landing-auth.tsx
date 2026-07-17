@@ -143,7 +143,8 @@ export function LandingAuthOverlay({
         expiresAt: Date.now() + session.expiresIn * 1000,
         activeRole: session.activeRole ?? role,
       });
-      router.push(homePathForWorkspace(session.activeRole ?? role));
+      const onboarding = await api.getOnboarding().catch(() => null);
+      router.push(onboarding && onboarding.step !== 'done' ? '/onboarding' : homePathForWorkspace(session.activeRole ?? role));
     } catch (err) {
       setLoginError(errorMessage(err));
     } finally {
@@ -165,15 +166,21 @@ export function LandingAuthOverlay({
     setSignupBusy(true);
     try {
       const e164 = phoneInputToE164(signupPhone);
-      await api.signup({
+      const { session } = await api.signup({
         ...signup,
         phone: e164,
         roleHint: role,
       });
+      setSession({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresAt: Date.now() + session.expiresIn * 1000,
+        activeRole: session.activeRole ?? role,
+      });
       setLoginEmail(signup.email);
       setLoginPassword('');
       setSignupPhone(defaultPhoneInput());
-      onModeChange('login', { created: true, role });
+      router.push('/onboarding');
     } catch (err) {
       setSignupError(errorMessage(err));
     } finally {

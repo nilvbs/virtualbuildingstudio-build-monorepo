@@ -3,7 +3,9 @@ import type {
   AuthSession,
   AuthenticatedUser,
   GoogleAuthResult,
+  OnboardingStatus,
   RoleHint,
+  SignupResult,
   SurveyorProfile,
   SurveyorStatus,
   SurveyService,
@@ -163,8 +165,8 @@ export class SurveyLinkClient {
 
   // --- Auth ---
 
-  async signup(body: SignupBody): Promise<AuthenticatedUser> {
-    return this.request<AuthenticatedUser>('POST', '/auth/signup', body);
+  async signup(body: SignupBody): Promise<SignupResult> {
+    return this.request<SignupResult>('POST', '/auth/signup', body);
   }
 
   async login(body: LoginBody): Promise<AuthSession> {
@@ -205,8 +207,59 @@ export class SurveyLinkClient {
     return this.request<AuthenticatedUser>('GET', '/auth/me');
   }
 
-  async verifyEmail(): Promise<AuthenticatedUser> {
-    return this.request<AuthenticatedUser>('POST', '/auth/verify-email', {});
+  async updateMe(body: {
+    fullName?: string;
+    avatarKey?: string | null;
+    companyName?: string | null;
+  }): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('PATCH', '/auth/me', body);
+  }
+
+  async uploadAvatar(
+    photo: Blob | { uri: string; name?: string; type?: string },
+    filename = 'profile-photo',
+  ): Promise<AuthenticatedUser> {
+    const form = new FormData();
+    if (typeof Blob !== 'undefined' && photo instanceof Blob) {
+      form.append('photo', photo, filename);
+    } else {
+      const file = photo as { uri: string; name?: string; type?: string };
+      // React Native FormData expects a file-shaped object, not a Blob.
+      form.append('photo', {
+        uri: file.uri,
+        name: file.name ?? filename,
+        type: file.type ?? 'image/jpeg',
+      } as unknown as Blob);
+    }
+    return this.request<AuthenticatedUser>('POST', '/auth/me/avatar', form);
+  }
+
+  async getOnboarding(): Promise<OnboardingStatus> {
+    return this.request<OnboardingStatus>('GET', '/auth/onboarding');
+  }
+
+  async completeProfile(body: {
+    fullName?: string;
+    avatarKey?: string | null;
+    companyName?: string | null;
+  } = {}): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/onboarding/complete-profile', body);
+  }
+
+  async completePortfolio(): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/onboarding/complete-portfolio', {});
+  }
+
+  async startEmailVerification(): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>('POST', '/auth/verify-email/start', {});
+  }
+
+  async verifyEmail(code: string): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/verify-email', { code });
+  }
+
+  async startPhoneVerification(): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>('POST', '/auth/verify-phone/start', {});
   }
 
   async verifyPhone(code: string): Promise<AuthenticatedUser> {
@@ -314,13 +367,18 @@ export class SurveyLinkClient {
   ): Promise<T> {
     const token = await this.options.getAuthToken?.();
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined
+        ? undefined
+        : isFormData
+          ? body as FormData
+          : JSON.stringify(body),
     });
 
     const payload = await res.json().catch(() => undefined);

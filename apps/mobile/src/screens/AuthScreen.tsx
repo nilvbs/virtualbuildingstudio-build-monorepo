@@ -14,7 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
 import { setSession } from '../lib/session';
-import { homeForWorkspace } from '../lib/home';
+import { destinationAfterAuth } from '../lib/auth-flow';
 import { signInWithGoogle } from '../lib/google';
 import { colors, radius, shadows, spacing } from '../lib/theme';
 import { AlertBox, BackButton, Button, Divider, Field, GoogleButton } from '../components/ui';
@@ -48,10 +48,20 @@ export function AuthScreen({ navigation, route }: Props) {
     setInfo(null);
   }, [mode, role]);
 
-  async function enterHome(nextRole: WorkspaceRole) {
+  async function enterApp(nextRole: WorkspaceRole) {
+    const dest = await destinationAfterAuth(nextRole);
     navigation.reset({
       index: 0,
-      routes: [{ name: homeForWorkspace(nextRole) === 'client' ? 'ClientHome' : 'SurveyorHome' }],
+      routes: [
+        {
+          name:
+            dest.kind === 'onboarding'
+              ? 'Onboarding'
+              : dest.home === 'client'
+                ? 'ClientHome'
+                : 'SurveyorHome',
+        },
+      ],
     });
   }
 
@@ -67,7 +77,7 @@ export function AuthScreen({ navigation, route }: Props) {
         expiresAt: Date.now() + session.expiresIn * 1000,
         activeRole: session.activeRole ?? role,
       });
-      await enterHome(session.activeRole ?? role);
+      await enterApp(session.activeRole ?? role);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -80,10 +90,14 @@ export function AuthScreen({ navigation, route }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await api.signup({ fullName, email, phone, password, roleHint: role });
-      setMode('login');
-      setInfo('Account ready — sign in to continue.');
-      setPassword('');
+      const { session } = await api.signup({ fullName, email, phone, password, roleHint: role });
+      await setSession({
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresAt: Date.now() + session.expiresIn * 1000,
+        activeRole: session.activeRole ?? role,
+      });
+      await enterApp(session.activeRole ?? role);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -113,7 +127,7 @@ export function AuthScreen({ navigation, route }: Props) {
     try {
       const outcome = await signInWithGoogle(role);
       if (outcome.kind === 'authed') {
-        await enterHome(outcome.role);
+        await enterApp(outcome.role);
       } else if (outcome.kind === 'needsRegistration') {
         setFullName(outcome.fullName);
         setEmail(outcome.email);
@@ -133,7 +147,7 @@ export function AuthScreen({ navigation, route }: Props) {
     setError(null);
     try {
       await api.completeRegistration({ fullName, phone, roleHint: role });
-      await enterHome(role);
+      await enterApp(role);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -150,7 +164,6 @@ export function AuthScreen({ navigation, route }: Props) {
       setMode('login');
       return;
     }
-    // Came from a path card with a role already? go home. Otherwise reopen who-are-you.
     if (route.params?.role) {
       navigation.goBack();
     } else {
@@ -160,7 +173,6 @@ export function AuthScreen({ navigation, route }: Props) {
 
   return (
     <View style={[styles.root, !needsRole && styles.rootSolid]}>
-      {/* Dimmed backdrop while choosing role */}
       {needsRole ? <View style={styles.dim} /> : null}
 
       {!needsRole ? (
@@ -337,12 +349,7 @@ export function AuthScreen({ navigation, route }: Props) {
         </SafeAreaView>
       ) : null}
 
-      {/* Who are you — slides up from bottom, ~70% height */}
-      <BottomSheet
-        visible={needsRole}
-        heightRatio={0.7}
-        onClose={() => navigation.goBack()}
-      >
+      <BottomSheet visible={needsRole} heightRatio={0.7} onClose={() => navigation.goBack()}>
         <Text style={styles.sheetKicker}>Get started</Text>
         <Text style={styles.sheetTitle}>Who are you?</Text>
         <Text style={styles.sheetLede}>
@@ -393,7 +400,6 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 28, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
   lede: { color: colors.muted, fontSize: 14.5, lineHeight: 21, marginTop: 6, marginBottom: 20 },
-
   sheetKicker: {
     color: colors.accent,
     fontSize: 12,
@@ -404,7 +410,6 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },
   sheetLede: { color: colors.muted, fontSize: 14.5, lineHeight: 21, marginTop: 8, marginBottom: 22 },
-
   roles: { gap: spacing.md },
   role: {
     flexDirection: 'row',
@@ -426,7 +431,6 @@ const styles = StyleSheet.create({
   },
   roleTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
   roleCopy: { color: colors.muted, marginTop: 3, fontSize: 13.5 },
-
   tabs: {
     flexDirection: 'row',
     backgroundColor: 'rgba(12,21,36,0.05)',

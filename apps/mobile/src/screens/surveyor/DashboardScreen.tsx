@@ -51,7 +51,7 @@ export function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <AppHeader showLogout />
+      <AppHeader showLogout showAccountMenu />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -91,16 +91,16 @@ export function DashboardScreen() {
                 ? 'Receiving matches'
                 : incomplete
                   ? preferenceOn
-                    ? 'Almost ready — finish your profile'
-                    : 'Profile incomplete'
+                    ? 'Almost ready — finish your portfolio'
+                    : 'Portfolio incomplete'
                   : 'Not receiving matches';
               const copy = live
-                ? 'Your profile is active. The ops team can match you to nearby projects.'
+                ? 'Your portfolio is active. The ops team can match you to nearby projects.'
                 : incomplete
                   ? preferenceOn
-                    ? `Matchable is on in your profile, but you are ${status.completionPercent}% complete. Matching goes live at 100% (map location is required).`
-                    : `Your profile is ${status.completionPercent}% complete. Finish it, then turn Matchable on to go live.`
-                  : 'Matching is off. Turn Matchable on in your profile when you are ready for new work.';
+                    ? `Matchable is on in your portfolio, but you are ${status.completionPercent}% complete. Matching goes live at 100% (map location is required).`
+                    : `Your portfolio is ${status.completionPercent}% complete. Finish it, then turn Matchable on to go live.`
+                  : 'Matching is off. Turn Matchable on in your portfolio when you are ready for new work.';
               const iconName = live ? 'radio' : incomplete ? 'alert-circle' : 'pause-circle';
               const iconColor = live ? colors.ok : incomplete ? colors.accent : colors.text;
               const iconBg = live
@@ -129,10 +129,10 @@ export function DashboardScreen() {
                   <Text style={styles.statusCopy}>{copy}</Text>
                   {!live ? (
                     <Button
-                      label={incomplete ? 'Finish profile' : 'Open profile'}
-                      icon={incomplete ? 'arrow-right' : 'user'}
+                      label={incomplete ? 'Finish portfolio' : 'Open portfolio'}
+                      icon={incomplete ? 'arrow-right' : 'briefcase'}
                       variant="outline"
-                      onPress={() => navigation.navigate('Profile')}
+                      onPress={() => navigation.navigate('Portfolio')}
                       style={{ marginTop: 4 }}
                     />
                   ) : null}
@@ -142,7 +142,7 @@ export function DashboardScreen() {
 
             <View style={styles.card}>
               <View style={styles.rowBetween}>
-                <Text style={styles.cardLabel}>Profile completion</Text>
+                <Text style={styles.cardLabel}>Portfolio completion</Text>
                 <Text style={styles.pct}>{pct}%</Text>
               </View>
               <View style={styles.track}>
@@ -155,9 +155,9 @@ export function DashboardScreen() {
               </Text>
               {!status.profileComplete ? (
                 <Button
-                  label="Finish profile"
+                  label="Finish portfolio"
                   icon="arrow-right"
-                  onPress={() => navigation.navigate('Profile')}
+                  onPress={() => navigation.navigate('Portfolio')}
                 />
               ) : null}
             </View>

@@ -2,7 +2,9 @@ import 'reflect-metadata';
 import * as Sentry from '@sentry/node';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
+import express from 'express';
 import { AppModule } from './app.module';
+import { avatarUploadRoot } from './auth/avatar-storage.service';
 
 async function bootstrap(): Promise<void> {
   // Error tracking from day one. No-op locally when SENTRY_DSN is unset.
@@ -39,6 +41,11 @@ async function bootstrap(): Promise<void> {
   // Behind an ALB/CloudFront: trust the proxy so client IPs (X-Forwarded-For)
   // are correct for rate limiting and logs.
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  app.use(
+    '/uploads',
+    express.static(avatarUploadRoot(), { immutable: true, maxAge: '7d' }),
+  );
 
   app.enableShutdownHooks();
 

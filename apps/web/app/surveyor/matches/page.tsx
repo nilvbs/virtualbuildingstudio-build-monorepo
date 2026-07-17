@@ -44,13 +44,13 @@ export default function SurveyorMatchesPage() {
           <div className="empty-ico">
             <Handshake size={24} />
           </div>
-          <h2 style={{ fontSize: 20 }}>Complete your profile first</h2>
+          <h2 style={{ fontSize: 20 }}>Complete your portfolio first</h2>
           <p style={{ color: 'var(--muted)', maxWidth: 440, margin: '8px auto 18px' }}>
-            Matches appear once your profile is 100% complete and our team starts mapping projects to
+            Matches appear once your portfolio is 100% complete and our team starts mapping projects to
             you.
           </p>
           <Link className="btn" href="/surveyor/profile">
-            Finish profile · {status.completionPercent}%
+            Finish portfolio · {status.completionPercent}%
           </Link>
         </div>
       ) : status.matches.length === 0 ? (

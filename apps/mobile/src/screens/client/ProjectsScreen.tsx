@@ -10,9 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { CompositeNavigationProp } from '@react-navigation/native';
 import {
   SURVEY_SERVICE_LABELS,
   clientProjectHeadline,
@@ -24,12 +22,7 @@ import { colors, radius, shadows, spacing } from '../../lib/theme';
 import { AlertBox, Badge } from '../../components/ui';
 import { AppHeader } from '../../components/AppHeader';
 import { FadeInUp, PressCard } from '../../components/motion';
-import type { ClientTabParamList, RootStackParamList } from '../../navigation/types';
-
-type ProjectsNav = CompositeNavigationProp<
-  BottomTabNavigationProp<ClientTabParamList, 'Projects'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
+import type { RootStackParamList } from '../../navigation/types';
 
 type BadgeTone = 'neutral' | 'accent' | 'success' | 'warn' | 'danger';
 
@@ -54,7 +47,7 @@ function formatDate(iso: string): string {
 }
 
 export function ProjectsScreen() {
-  const navigation = useNavigation<ProjectsNav>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,7 +71,7 @@ export function ProjectsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <AppHeader showLogout />
+      <AppHeader showLogout showAccountMenu />
 
       <FlatList
         data={projects ?? []}

@@ -16,7 +16,9 @@ export function errorMessage(err: unknown): string {
     if (Array.isArray(msg)) return msg.join(', ');
     if (typeof msg === 'string') return msg;
     if (err.status === 401) return 'Please sign in to continue.';
-    if (err.status === 503) return 'Auth is not configured yet on the server.';
+    if (err.status === 503) {
+      return 'Auth provider is unavailable. For local testing, make sure AUTH_DEV_MODE=true on the API and restart it.';
+    }
     return `Request failed (${err.status}).`;
   }
   if (err instanceof Error) return err.message;

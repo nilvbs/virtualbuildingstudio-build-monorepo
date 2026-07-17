@@ -36,6 +36,7 @@ import type {
   UpdateProjectStatusInput,
   UpdateStaffAdminInput,
 } from '@surveylink/validation';
+import { normalizeEmail } from '@surveylink/validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -278,9 +279,11 @@ export class AdminService {
   ): Promise<StaffAdmin> {
     await this.requireSuperAdmin(actorSubject);
 
-    const email = input.email.trim().toLowerCase();
+    const email = normalizeEmail(input.email);
     const existing = await this.prisma.user.findFirst({
-      where: { OR: [{ email }, { phone: input.phone }] },
+      where: {
+        OR: [{ email: { equals: email, mode: 'insensitive' } }, { phone: input.phone }],
+      },
     });
     if (existing) {
       const memberships = await this.prisma.userRole.findMany({

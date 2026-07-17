@@ -1,17 +1,19 @@
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 import { colors } from '../lib/theme';
 import { BootScreen } from '../screens/BootScreen';
 import { LandingScreen } from '../screens/LandingScreen';
 import { AuthScreen } from '../screens/AuthScreen';
+import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { ProjectsScreen } from '../screens/client/ProjectsScreen';
-import { ClientProfileScreen } from '../screens/client/ProfileScreen';
+import { PersonalProfileScreen } from '../screens/PersonalProfileScreen';
 import { ProjectDetailScreen } from '../screens/client/ProjectDetailScreen';
 import { DashboardScreen } from '../screens/surveyor/DashboardScreen';
-import { ProfileScreen } from '../screens/surveyor/ProfileScreen';
+import { ProfileScreen as PortfolioScreen } from '../screens/surveyor/ProfileScreen';
 import { MatchesScreen } from '../screens/surveyor/MatchesScreen';
 import type { ClientTabParamList, RootStackParamList, SurveyorTabParamList } from './types';
 
@@ -21,13 +23,13 @@ const SurveyorTab = createBottomTabNavigator<SurveyorTabParamList>();
 
 const CLIENT_TAB_ICONS: Record<keyof ClientTabParamList, keyof typeof Feather.glyphMap> = {
   Projects: 'folder',
-  Profile: 'user',
+  PersonalProfile: 'user',
 };
 
 const SURVEYOR_TAB_ICONS: Record<keyof SurveyorTabParamList, keyof typeof Feather.glyphMap> = {
   Dashboard: 'grid',
   Matches: 'zap',
-  Profile: 'user',
+  Portfolio: 'briefcase',
 };
 
 const tabScreenOptions = {
@@ -46,6 +48,10 @@ const tabScreenOptions = {
   tabBarLabelStyle: { fontSize: 11.5, fontWeight: '700' as const },
 };
 
+function ClientPersonalProfileTab() {
+  return <PersonalProfileScreen role="client" />;
+}
+
 function ClientHome() {
   return (
     <ClientTab.Navigator
@@ -62,7 +68,11 @@ function ClientHome() {
       })}
     >
       <ClientTab.Screen name="Projects" component={ProjectsScreen} options={{ title: 'Projects' }} />
-      <ClientTab.Screen name="Profile" component={ClientProfileScreen} options={{ title: 'Profile' }} />
+      <ClientTab.Screen
+        name="PersonalProfile"
+        component={ClientPersonalProfileTab}
+        options={{ title: 'Profile' }}
+      />
     </ClientTab.Navigator>
   );
 }
@@ -84,9 +94,15 @@ function SurveyorHome() {
     >
       <SurveyorTab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard' }} />
       <SurveyorTab.Screen name="Matches" component={MatchesScreen} options={{ title: 'Matches' }} />
-      <SurveyorTab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
+      <SurveyorTab.Screen name="Portfolio" component={PortfolioScreen} options={{ title: 'Portfolio' }} />
     </SurveyorTab.Navigator>
   );
+}
+
+function StackPersonalProfile({
+  route,
+}: NativeStackScreenProps<RootStackParamList, 'PersonalProfile'>) {
+  return <PersonalProfileScreen role={route.params.role} />;
 }
 
 const navTheme = {
@@ -116,9 +132,11 @@ export function RootNavigator() {
             contentStyle: { backgroundColor: 'transparent' },
           }}
         />
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="ClientHome" component={ClientHome} />
         <Stack.Screen name="SurveyorHome" component={SurveyorHome} />
         <Stack.Screen name="ProjectDetail" component={ProjectDetailScreen} />
+        <Stack.Screen name="PersonalProfile" component={StackPersonalProfile} />
       </Stack.Navigator>
     </NavigationContainer>
   );

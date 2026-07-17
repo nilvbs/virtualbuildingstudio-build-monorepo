@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, User } from 'lucide-react';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
-import { homePathForWorkspace } from '../../lib/home';
 import { getSession, isAuthenticated, setSession } from '../../lib/session';
 import { defaultPhoneInput, PhoneInput, phoneInputIsValid, phoneInputToE164 } from '../../components/phone-input';
 
@@ -50,7 +49,7 @@ function CompleteProfileForm() {
       if (current) {
         setSession({ ...current, activeRole: roleHint });
       }
-      router.replace(homePathForWorkspace(roleHint));
+      router.replace('/onboarding');
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);

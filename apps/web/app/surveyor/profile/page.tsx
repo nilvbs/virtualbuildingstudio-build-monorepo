@@ -30,7 +30,7 @@ function CompletionRing({ percent }: { percent: number }) {
   const offset = c - (clamped / 100) * c;
 
   return (
-    <div className="svy-ring" aria-hidden={false} role="img" aria-label={`Profile ${clamped}% complete`}>
+    <div className="svy-ring" aria-hidden={false} role="img" aria-label={`Portfolio ${clamped}% complete`}>
       <svg viewBox="0 0 108 108" className="svy-ring-svg">
         <circle className="svy-ring-track" cx="54" cy="54" r={r} />
         <circle
@@ -174,11 +174,11 @@ export default function SurveyorProfilePage() {
         <div className="svy-profile-hero-copy">
           <p className="svy-profile-kicker">Expert workspace</p>
           <h1 className="svy-profile-title">
-            {mode === 'edit' ? 'Shape your expert profile' : 'Build your expert profile'}
+            {mode === 'edit' ? 'Shape your expert portfolio' : 'Build your expert portfolio'}
           </h1>
           <p className="svy-profile-lede">
             {liveCompletion.complete
-              ? 'Profile complete — Dashboard is unlocked and matching can use your coverage.'
+              ? 'Portfolio complete — Dashboard is unlocked and matching can use your coverage.'
               : 'Complete each section below. Dashboard unlocks at 100%.'}
           </p>
 
@@ -369,7 +369,7 @@ export default function SurveyorProfilePage() {
               <span>
                 {liveCompletion.complete
                   ? 'Stay visible so our team can send you fitted projects.'
-                  : 'Unlocks automatically once your profile hits 100%.'}
+                  : 'Unlocks automatically once your portfolio hits 100%.'}
               </span>
             </span>
             <input
@@ -382,7 +382,7 @@ export default function SurveyorProfilePage() {
 
           <button className="btn svy-save" type="submit" disabled={!canSubmit}>
             {busy ? <span className="spin" /> : <UserRound size={17} />}
-            {busy ? 'Saving…' : mode === 'edit' ? 'Save profile' : 'Create profile'}
+            {busy ? 'Saving…' : mode === 'edit' ? 'Save portfolio' : 'Create portfolio'}
           </button>
         </footer>
       </form>

@@ -21,6 +21,31 @@ export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
 export const USER_STATUSES = ['active', 'suspended'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
+/** Marketplace post-signup onboarding gate (client + surveyor). */
+export const ONBOARDING_STEPS = [
+  'verify_contact',
+  'complete_profile',
+  'portfolio',
+  'done',
+] as const;
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
+/** Snapshot of where the user is in post-signup onboarding. */
+export interface OnboardingStatus {
+  step: OnboardingStep;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  /** At least one contact channel is verified — unlocks personal profile. */
+  canCompleteProfile: boolean;
+  /** Remaining contact channel still needs OTP (if any). */
+  pendingContact: 'email' | 'phone' | 'both' | 'none';
+  /** Surveyors must finish portfolio after personal profile; clients skip. */
+  requiresPortfolio: boolean;
+  avatarKey: string | null;
+  fullName: string;
+  companyName: string | null;
+}
+
 // --- Projects ---
 
 export const PROJECT_STATUSES = [
@@ -176,6 +201,8 @@ export interface AuthenticatedUser {
   phone: string;
   emailVerified: boolean;
   phoneVerified: boolean;
+  avatarKey: string | null;
+  onboardingStep: OnboardingStep;
   /** @deprecated Derived from memberships for older clients. */
   roleHint: RoleHint;
   /** Segregated role memberships (client / surveyor / admin). */
@@ -212,6 +239,12 @@ export interface AuthSession {
   expiresIn: number;
   /** Workspace chosen at login (client or surveyor). */
   activeRole?: WorkspaceRole;
+}
+
+/** Result of password signup — session is issued so OTP screens can run authenticated. */
+export interface SignupResult {
+  session: AuthSession;
+  user: AuthenticatedUser;
 }
 
 /** Minimal profile resolved from a social login, used to prefill signup. */

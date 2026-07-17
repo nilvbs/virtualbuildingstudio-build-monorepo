@@ -47,7 +47,7 @@ export function MatchesScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <AppHeader />
+      <AppHeader showAccountMenu />
       <FlatList
         data={matches ?? []}
         keyExtractor={(m) => m.matchId}

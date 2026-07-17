@@ -5,6 +5,7 @@ import type { SignupInput } from '@surveylink/validation';
 import { AuthService } from './auth.service';
 import type { IdentityProvider } from './identity/identity-provider';
 import type { PhoneVerifier } from './phone/phone-verifier';
+import type { EmailOtpService } from './email/email-otp.service';
 
 function makeUser(overrides: Partial<User> = {}): User {
   const now = new Date();
@@ -15,6 +16,8 @@ function makeUser(overrides: Partial<User> = {}): User {
     phone: '+14155552671',
     emailVerified: false,
     phoneVerified: false,
+    avatarKey: null,
+    onboardingStep: 'verify_contact',
     roleHint: 'client',
     status: 'active',
     authProvider: 'auth0',
@@ -47,12 +50,13 @@ describe('AuthService', () => {
       findMany: jest.Mock;
       upsert: jest.Mock;
     };
-    clientProfile: { upsert: jest.Mock };
+    clientProfile: { upsert: jest.Mock; findUnique: jest.Mock };
     surveyorProfile: { upsert: jest.Mock };
     adminProfile: { findUnique: jest.Mock; upsert: jest.Mock };
   };
   let identity: jest.Mocked<IdentityProvider>;
   let phone: jest.Mocked<PhoneVerifier>;
+  let emailOtp: jest.Mocked<Pick<EmailOtpService, 'start' | 'check'>>;
   let service: AuthService;
 
   beforeEach(() => {
@@ -67,7 +71,10 @@ describe('AuthService', () => {
         findMany: jest.fn().mockResolvedValue([{ role: 'client' }]),
         upsert: jest.fn().mockResolvedValue({}),
       },
-      clientProfile: { upsert: jest.fn().mockResolvedValue({}) },
+      clientProfile: {
+        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       surveyorProfile: { upsert: jest.fn().mockResolvedValue({}) },
       adminProfile: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -76,7 +83,11 @@ describe('AuthService', () => {
     };
     identity = {
       createIdentity: jest.fn(),
-      login: jest.fn(),
+      login: jest.fn().mockResolvedValue({
+        accessToken: 'tok',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+      }),
       requestPasswordReset: jest.fn().mockResolvedValue(undefined),
       sendEmailVerification: jest.fn().mockResolvedValue(undefined),
       getIdentity: jest.fn(),
@@ -88,13 +99,17 @@ describe('AuthService', () => {
       startVerification: jest.fn().mockResolvedValue(undefined),
       checkVerification: jest.fn(),
     };
+    emailOtp = {
+      start: jest.fn().mockResolvedValue(undefined),
+      check: jest.fn(),
+    };
     const config = { get: () => undefined } as unknown as import('@nestjs/config').ConfigService;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new AuthService(prisma as any, identity, phone, config);
+    service = new AuthService(prisma as any, identity, phone, emailOtp as any, config);
   });
 
   describe('signup', () => {
-    it('creates the identity + local user, unverified, and starts verifications', async () => {
+    it('creates the identity + local user, starts OTPs, and returns a session', async () => {
       prisma.user.findFirst.mockResolvedValue(null);
       identity.createIdentity.mockResolvedValue({ subject: 'auth0|123', emailVerified: false });
       prisma.user.create.mockResolvedValue(makeUser());
@@ -113,15 +128,18 @@ describe('AuthService', () => {
             authProvider: 'auth0',
             authSubject: 'auth0|123',
             emailVerified: false,
+            onboardingStep: 'verify_contact',
           }),
         }),
       );
-      expect(identity.sendEmailVerification).toHaveBeenCalledWith('auth0|123');
+      expect(emailOtp.start).toHaveBeenCalledWith('user-uuid', signupInput.email);
       expect(phone.startVerification).toHaveBeenCalledWith(signupInput.phone);
-      expect(result).toMatchObject({
+      expect(identity.login).toHaveBeenCalledWith(signupInput.email, signupInput.password);
+      expect(result.session.accessToken).toBe('tok');
+      expect(result.user).toMatchObject({
         emailVerified: false,
         phoneVerified: false,
-        roles: [],
+        onboardingStep: 'verify_contact',
       });
     });
 
@@ -135,19 +153,22 @@ describe('AuthService', () => {
   });
 
   describe('verifyPhone', () => {
-    it('flips phone_verified when the OTP is approved', async () => {
+    it('flips phone_verified and advances onboarding when the OTP is approved', async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
       phone.checkVerification.mockResolvedValue(true);
-      prisma.user.update.mockResolvedValue(makeUser({ phoneVerified: true }));
+      prisma.user.update.mockResolvedValue(
+        makeUser({ phoneVerified: true, onboardingStep: 'complete_profile' }),
+      );
 
       const result = await service.verifyPhone(principal, '123456');
 
       expect(phone.checkVerification).toHaveBeenCalledWith('+14155552671', '123456');
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-uuid' },
-        data: { phoneVerified: true },
+        data: { phoneVerified: true, onboardingStep: 'complete_profile' },
       });
       expect(result.phoneVerified).toBe(true);
+      expect(result.onboardingStep).toBe('complete_profile');
     });
 
     it('rejects an invalid OTP and does not update the user', async () => {
@@ -162,32 +183,27 @@ describe('AuthService', () => {
   });
 
   describe('verifyEmail', () => {
-    it('syncs the local flag once the provider reports the email verified', async () => {
+    it('flips email_verified when the OTP is approved', async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser({ emailVerified: false }));
-      identity.getIdentity.mockResolvedValue({
-        subject: 'auth0|123',
-        email: 'ada@example.com',
-        emailVerified: true,
-      });
-      prisma.user.update.mockResolvedValue(makeUser({ emailVerified: true }));
+      emailOtp.check.mockResolvedValue(true);
+      prisma.user.update.mockResolvedValue(
+        makeUser({ emailVerified: true, onboardingStep: 'complete_profile' }),
+      );
 
-      const result = await service.verifyEmail(principal);
+      const result = await service.verifyEmail(principal, '654321');
 
+      expect(emailOtp.check).toHaveBeenCalledWith('user-uuid', 'ada@example.com', '654321');
       expect(result.emailVerified).toBe(true);
-      expect(identity.sendEmailVerification).not.toHaveBeenCalled();
+      expect(result.onboardingStep).toBe('complete_profile');
     });
 
-    it('resends the verification email while still unverified', async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser({ emailVerified: false }));
-      identity.getIdentity.mockResolvedValue({
-        subject: 'auth0|123',
-        email: 'ada@example.com',
-        emailVerified: false,
-      });
+    it('rejects an invalid email OTP', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+      emailOtp.check.mockResolvedValue(false);
 
-      await service.verifyEmail(principal);
-
-      expect(identity.sendEmailVerification).toHaveBeenCalledWith('auth0|123');
+      await expect(service.verifyEmail(principal, '000000')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });

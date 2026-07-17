@@ -27,7 +27,17 @@ export const phoneSchema = z
   .string()
   .regex(/^\+[1-9]\d{6,14}$/, 'Phone must be E.164 format, e.g. +14155552671');
 
-export const emailSchema = z.string().email().max(320);
+export const emailSchema = z
+  .string()
+  .trim()
+  .email()
+  .max(320)
+  .transform((value) => value.toLowerCase());
+
+/** Canonical form for storage + lookups (trim + lowercase). */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
 
 /** Longitude/latitude pair in WGS84 (EPSG:4326). */
 export const geoPointSchema = z.object({
@@ -106,9 +116,33 @@ export const verifyPhoneSchema = z.object({
 });
 export type VerifyPhoneInput = z.infer<typeof verifyPhoneSchema>;
 
-/** Verify-email is a no-body resync/resend; kept as a schema for consistency. */
-export const verifyEmailSchema = z.object({}).strict();
+/** Confirm email OTP (replaces Auth0 link-only verify for marketplace signup). */
+export const verifyEmailSchema = z.object({
+  code: z.string().regex(/^\d{4,10}$/, 'Code must be 4-10 digits'),
+});
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+
+/** Personal profile fields collected after contact OTP. */
+export const updateMeSchema = z
+  .object({
+    fullName: z.string().min(1).max(200).optional(),
+    /** Optional object-storage key from a prior upload. */
+    avatarKey: z.string().min(1).max(500).nullable().optional(),
+    /** Client company name (ignored for surveyor-only accounts). */
+    companyName: z.string().min(1).max(200).nullable().optional(),
+  })
+  .strict();
+export type UpdateMeInput = z.infer<typeof updateMeSchema>;
+
+/** Advance from complete_profile → portfolio|done after personal details are saved. */
+export const completeProfileSchema = z
+  .object({
+    fullName: z.string().min(1).max(200).optional(),
+    avatarKey: z.string().min(1).max(500).nullable().optional(),
+    companyName: z.string().min(1).max(200).nullable().optional(),
+  })
+  .strict();
+export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 
 /** Body posted from the OAuth callback page to exchange the provider code. */
 export const googleExchangeSchema = z.object({

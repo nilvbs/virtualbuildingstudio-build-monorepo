@@ -13,6 +13,7 @@ import {
   devSubjectForEmail,
 } from './dev-auth';
 import { ensureMembership } from './memberships';
+import { normalizeEmail } from '@surveylink/validation';
 
 /**
  * Ensures the configured SUPER_ADMIN_EMAIL account exists as staffLevel=super_admin.
@@ -58,16 +59,26 @@ export class SuperAdminBootstrapService implements OnModuleInit {
     phone: string;
     fullName: string;
   }): Promise<void> {
-    let user = await this.prisma.user.findUnique({ where: { email: input.email } });
+    const email = normalizeEmail(input.email);
+    let user = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
+
+    if (user && user.email !== email) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { email },
+      });
+    }
 
     if (!user) {
       if (devAuthEnabled(this.config)) {
-        const subject = devSubjectForEmail(input.email);
-        rememberDevSignup(input.email, input.password, subject);
+        const subject = devSubjectForEmail(email);
+        rememberDevSignup(email, input.password, subject);
         user = await this.prisma.user.create({
           data: {
             fullName: input.fullName,
-            email: input.email,
+            email,
             phone: input.phone,
             emailVerified: true,
             phoneVerified: true,
@@ -76,18 +87,18 @@ export class SuperAdminBootstrapService implements OnModuleInit {
             roleHint: 'client',
           },
         });
-        this.logger.log(`Created super admin user (dev) ${input.email}`);
+        this.logger.log(`Created super admin user (dev) ${email}`);
       } else {
         const identity = await this.identity.createIdentity({
           fullName: input.fullName,
-          email: input.email,
+          email,
           phone: input.phone,
           password: input.password,
         });
         user = await this.prisma.user.create({
           data: {
             fullName: input.fullName,
-            email: input.email,
+            email,
             phone: input.phone,
             emailVerified: identity.emailVerified,
             phoneVerified: true,
@@ -96,10 +107,10 @@ export class SuperAdminBootstrapService implements OnModuleInit {
             roleHint: 'client',
           },
         });
-        this.logger.log(`Created super admin user ${input.email}`);
+        this.logger.log(`Created super admin user ${email}`);
       }
     } else if (devAuthEnabled(this.config) && user.authSubject) {
-      rememberDevSignup(input.email, input.password, user.authSubject);
+      rememberDevSignup(email, input.password, user.authSubject);
     }
 
     await ensureMembership(this.prisma, user.id, 'admin');
@@ -112,6 +123,6 @@ export class SuperAdminBootstrapService implements OnModuleInit {
         title: 'Super Admin',
       },
     });
-    this.logger.log(`Ensured super_admin privileges for ${input.email}`);
+    this.logger.log(`Ensured super_admin privileges for ${email}`);
   }
 }

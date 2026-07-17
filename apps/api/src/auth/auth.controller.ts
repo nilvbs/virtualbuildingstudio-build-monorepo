@@ -1,11 +1,28 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request } from 'express';
 import type {
   AuthenticatedUser,
   AuthPrincipal,
   AuthSession,
   GoogleAuthResult,
+  OnboardingStatus,
+  SignupResult,
 } from '@surveylink/types';
 import {
+  completeProfileSchema,
   completeRegistrationSchema,
   forgotPasswordSchema,
   googleExchangeSchema,
@@ -13,28 +30,37 @@ import {
   logoutSchema,
   addMembershipSchema,
   signupSchema,
+  updateMeSchema,
+  verifyEmailSchema,
   verifyPhoneSchema,
   type AddMembershipInput,
+  type CompleteProfileInput,
   type CompleteRegistrationInput,
   type ForgotPasswordInput,
   type GoogleExchangeInput,
   type LoginInput,
   type LogoutInput,
   type SignupInput,
+  type UpdateMeInput,
+  type VerifyEmailInput,
   type VerifyPhoneInput,
 } from '@surveylink/validation';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { AvatarStorageService } from './avatar-storage.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly avatarStorage: AvatarStorageService,
+  ) {}
 
   @Public()
   @Post('signup')
-  signup(@Body(new ZodValidationPipe(signupSchema)) body: SignupInput): Promise<AuthenticatedUser> {
+  signup(@Body(new ZodValidationPipe(signupSchema)) body: SignupInput): Promise<SignupResult> {
     return this.auth.signup(body);
   }
 
@@ -101,10 +127,70 @@ export class AuthController {
     return this.auth.me(principal);
   }
 
+  @Patch('me')
+  updateMe(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(updateMeSchema)) body: UpdateMeInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.updateMe(principal, body);
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async uploadAvatar(
+    @CurrentUser() principal: AuthPrincipal,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() request: Request,
+  ): Promise<AuthenticatedUser> {
+    const configuredBaseUrl = process.env.API_PUBLIC_URL?.trim();
+    const requestBaseUrl = `${request.protocol}://${request.get('host')}`;
+    const avatarKey = await this.avatarStorage.save(
+      principal.sub,
+      file,
+      configuredBaseUrl || requestBaseUrl,
+    );
+    return this.auth.updateMe(principal, { avatarKey });
+  }
+
+  @Get('onboarding')
+  onboarding(@CurrentUser() principal: AuthPrincipal): Promise<OnboardingStatus> {
+    return this.auth.getOnboarding(principal);
+  }
+
+  @Post('onboarding/complete-profile')
+  @HttpCode(HttpStatus.OK)
+  completeProfile(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(completeProfileSchema)) body: CompleteProfileInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.completeProfile(principal, body);
+  }
+
+  @Post('onboarding/complete-portfolio')
+  @HttpCode(HttpStatus.OK)
+  completePortfolio(@CurrentUser() principal: AuthPrincipal): Promise<AuthenticatedUser> {
+    return this.auth.completePortfolio(principal);
+  }
+
+  @Post('verify-email/start')
+  @HttpCode(HttpStatus.OK)
+  startEmailVerification(@CurrentUser() principal: AuthPrincipal): Promise<{ ok: true }> {
+    return this.auth.startEmailVerification(principal);
+  }
+
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
-  verifyEmail(@CurrentUser() principal: AuthPrincipal): Promise<AuthenticatedUser> {
-    return this.auth.verifyEmail(principal);
+  verifyEmail(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(verifyEmailSchema)) body: VerifyEmailInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.verifyEmail(principal, body.code);
+  }
+
+  @Post('verify-phone/start')
+  @HttpCode(HttpStatus.OK)
+  startPhoneVerification(@CurrentUser() principal: AuthPrincipal): Promise<{ ok: true }> {
+    return this.auth.startPhoneVerification(principal);
   }
 
   @Post('verify-phone')

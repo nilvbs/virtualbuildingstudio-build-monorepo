@@ -51,7 +51,7 @@ export default function SurveyorDashboardPage() {
           <p className="page-sub">Live matching status for your expert workspace.</p>
         </div>
         <Link className="btn secondary" href="/surveyor/profile">
-          Edit profile
+          Edit portfolio
         </Link>
       </div>
 
@@ -65,7 +65,7 @@ export default function SurveyorDashboardPage() {
             {status.subtext}
           </p>
           <Link className="btn" href="/surveyor/profile">
-            <UserRoundPlus size={17} /> Set up your profile
+            <UserRoundPlus size={17} /> Set up your portfolio
           </Link>
         </div>
       ) : (
@@ -86,7 +86,7 @@ export default function SurveyorDashboardPage() {
           <p style={{ color: 'var(--text-soft)', maxWidth: 480 }}>{status.subtext}</p>
           {!status.isMatchable && (
             <span className="badge badge-gray" style={{ marginTop: 16 }}>
-              Profile paused — not receiving new matches
+              Portfolio paused — not receiving new matches
             </span>
           )}
           {status.matches.length > 0 && (

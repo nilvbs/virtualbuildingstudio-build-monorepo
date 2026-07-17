@@ -51,6 +51,11 @@ function CallbackInner() {
         });
 
         if (res.registered) {
+          const onboarding = await api.getOnboarding().catch(() => null);
+          if (onboarding && onboarding.step !== 'done') {
+            router.replace('/onboarding');
+            return;
+          }
           router.replace(
             activeRole ? homePathForWorkspace(activeRole) : homePathForRoleHint(res.roleHint),
           );

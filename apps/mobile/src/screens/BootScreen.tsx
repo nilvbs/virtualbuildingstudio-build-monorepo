@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api } from '../lib/api';
 import { clearSession, getSession } from '../lib/session';
+import { destinationAfterAuth } from '../lib/auth-flow';
 import { homeForUser } from '../lib/home';
 import { colors } from '../lib/theme';
 import type { RootStackParamList } from '../navigation/types';
@@ -21,11 +22,23 @@ export function BootScreen({ navigation }: Props) {
       }
       try {
         const me = await api.me();
-        const home = await homeForUser(me);
+        const dest = await destinationAfterAuth(
+          (await homeForUser(me)) === 'client' ? 'client' : 'surveyor',
+          me,
+        );
         if (!active) return;
         navigation.reset({
           index: 0,
-          routes: [{ name: home === 'client' ? 'ClientHome' : 'SurveyorHome' }],
+          routes: [
+            {
+              name:
+                dest.kind === 'onboarding'
+                  ? 'Onboarding'
+                  : dest.home === 'client'
+                    ? 'ClientHome'
+                    : 'SurveyorHome',
+            },
+          ],
         });
       } catch {
         await clearSession();

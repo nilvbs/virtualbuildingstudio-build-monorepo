@@ -10,6 +10,7 @@ import {
   Handshake,
   LayoutDashboard,
   LogOut,
+  CircleUserRound,
   type LucideIcon,
   Shield,
   Users,
@@ -48,10 +49,10 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
   },
   surveyor: {
     label: 'Surveyor workspace',
-    sub: 'Dashboard, profile, and matches',
+    sub: 'Dashboard, portfolio, and matches',
     items: [
       { href: '/surveyor', label: 'Dashboard', icon: LayoutDashboard, exact: true, requiresCompleteProfile: true },
-      { href: '/surveyor/profile', label: 'Profile', icon: UserRound },
+      { href: '/surveyor/profile', label: 'Portfolio', icon: UserRound },
       { href: '/surveyor/matches', label: 'My Matches', icon: Handshake },
     ],
   },
@@ -95,8 +96,15 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
 }
 
+function avatarUrl(value: string | null | undefined): string | null {
+  return /^(https?:\/\/|\/)/.test(value ?? '') ? value! : null;
+}
+
 function topbarCopy(section: Section, pathname: string): { label: string; sub: string } {
   if (section === 'client') {
+    if (pathname.startsWith('/client/personal-profile')) {
+      return { label: 'Personal profile', sub: 'Contact details and verification' };
+    }
     if (pathname.startsWith('/client/projects/new')) {
       return { label: 'Post a project', sub: 'Brief, site, and timing' };
     }
@@ -106,8 +114,11 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     return { label: 'Your projects', sub: 'Post and track survey work' };
   }
   if (section === 'surveyor') {
+    if (pathname.startsWith('/surveyor/personal-profile')) {
+      return { label: 'Personal profile', sub: 'Contact details and verification' };
+    }
     if (pathname.startsWith('/surveyor/profile')) {
-      return { label: 'Profile', sub: 'Services, coverage, and rates' };
+      return { label: 'Portfolio', sub: 'Services, coverage, and rates' };
     }
     if (pathname.startsWith('/surveyor/matches')) {
       return { label: 'My Matches', sub: 'Projects matched to you' };
@@ -132,7 +143,7 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     }
     return { label: 'Overview', sub: 'Operations at a glance' };
   }
-  return { label: NAV[section].label, sub: NAV[section].sub };
+  return { label: 'Workspace', sub: '' };
 }
 
 function isNavActive(pathname: string, item: NavItem): boolean {
@@ -156,19 +167,36 @@ export function AppShell({ section, children }: { section: Section; children: Re
       router.replace(section === 'admin' ? '/build/admin' : '/login');
       return;
     }
-    api
-      .me()
-      .then(setUser)
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 401) {
-          clearSession();
-          router.replace(section === 'admin' ? '/build/admin' : '/login');
-        }
-      });
-  }, [router, section]);
+
+    function loadUser() {
+      api
+        .me()
+        .then((nextUser) => {
+          setUser(nextUser);
+          const isMarketplace = section === 'client' || section === 'surveyor';
+          if (isMarketplace && nextUser.onboardingStep !== 'done') {
+            router.replace('/onboarding');
+          }
+        })
+        .catch((err) => {
+          if (err instanceof ApiError && err.status === 401) {
+            clearSession();
+            router.replace(section === 'admin' ? '/build/admin' : '/login');
+          }
+        });
+    }
+
+    loadUser();
+    function onUserUpdated() {
+      loadUser();
+    }
+    window.addEventListener('bld:user-updated', onUserUpdated);
+    return () => window.removeEventListener('bld:user-updated', onUserUpdated);
+  }, [router, section, pathname]);
 
   useEffect(() => {
     if (section !== 'surveyor' || !isAuthenticated()) return;
+    if (user && user.onboardingStep !== 'done') return;
     let cancelled = false;
 
     function refreshStatus() {
@@ -200,7 +228,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
       cancelled = true;
       window.removeEventListener('bld:surveyor-profile-saved', onProfileSaved);
     };
-  }, [section, pathname]);
+  }, [section, pathname, user]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -224,19 +252,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
     setActiveRole(role);
     setMenuOpen(false);
     router.push(homePathForWorkspace(role));
-  }
-
-  async function addWorkspace(role: WorkspaceRole) {
-    try {
-      const updated = await api.addMembership({ role });
-      setUser(updated);
-      switchWorkspace(role);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        clearSession();
-        router.replace('/login');
-      }
-    }
   }
 
   function snoozeProfilePrompt() {
@@ -273,6 +288,8 @@ export function AppShell({ section, children }: { section: Section; children: Re
     return true;
   });
 
+  const photo = avatarUrl(user?.avatarKey);
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -302,9 +319,10 @@ export function AppShell({ section, children }: { section: Section; children: Re
                   key={item.href}
                   href={item.href}
                   className={`nav-item plain ${active ? 'active' : ''}`}
+                  aria-label={item.label}
                 >
                   <Icon size={18} strokeWidth={2} />
-                  {item.label}
+                  <span className="nav-item-label">{item.label}</span>
                 </Link>
               );
             })}
@@ -333,8 +351,20 @@ export function AppShell({ section, children }: { section: Section; children: Re
           </div>
 
           <div className="usermenu" ref={menuRef}>
-            <button className="usermenu-trigger" type="button" onClick={() => setMenuOpen((o) => !o)}>
-              <span className="avatar">{user ? initials(user.fullName) : '·'}</span>
+            <button
+              className="usermenu-trigger"
+              type="button"
+              aria-label="Account menu"
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              <span className={`avatar${photo ? ' has-photo' : ''}`}>
+                {photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={photo} alt="" />
+                ) : (
+                  user ? initials(user.fullName) : '·'
+                )}
+              </span>
               <span className="usermenu-text">
                 <span className="usermenu-name">{user?.fullName ?? 'Loading…'}</span>
                 <span className="usermenu-role">{roleLabel}</span>
@@ -343,6 +373,24 @@ export function AppShell({ section, children }: { section: Section; children: Re
             </button>
             {menuOpen && (
               <div className="menu" role="menu">
+                {section !== 'admin' && (
+                  <button
+                    className="menu-item"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      router.push(
+                        section === 'surveyor'
+                          ? '/surveyor/personal-profile'
+                          : '/client/personal-profile',
+                      );
+                    }}
+                  >
+                    <CircleUserRound size={16} />
+                    Personal profile
+                  </button>
+                )}
                 {section !== 'admin' && workspaces.includes('client') && section !== 'client' && (
                   <button className="menu-item" type="button" role="menuitem" onClick={() => switchWorkspace('client')}>
                     Switch to client
@@ -351,16 +399,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
                 {section !== 'admin' && workspaces.includes('surveyor') && section !== 'surveyor' && (
                   <button className="menu-item" type="button" role="menuitem" onClick={() => switchWorkspace('surveyor')}>
                     Switch to expert (surveyor)
-                  </button>
-                )}
-                {section !== 'admin' && !workspaces.includes('client') && (
-                  <button className="menu-item" type="button" role="menuitem" onClick={() => addWorkspace('client')}>
-                    Add client workspace
-                  </button>
-                )}
-                {section !== 'admin' && !workspaces.includes('surveyor') && (
-                  <button className="menu-item" type="button" role="menuitem" onClick={() => addWorkspace('surveyor')}>
-                    Add expert (surveyor) workspace
                   </button>
                 )}
                 <button

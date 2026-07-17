@@ -126,7 +126,7 @@ export function ProfileScreen() {
     try {
       const saved = await persist(buildBody());
       hydrate(saved);
-      setInfo('Profile saved to the database.');
+      setInfo('Portfolio saved to the database.');
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -146,7 +146,7 @@ export function ProfileScreen() {
       hydrate(saved);
       setInfo(
         next
-          ? 'Matchable saved on. Matching goes live once your profile is 100% complete.'
+          ? 'Matchable saved on. Matching goes live once your portfolio is 100% complete.'
           : 'Matchable saved off.',
       );
     } catch (err) {
@@ -160,7 +160,7 @@ export function ProfileScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <AppHeader />
+        <AppHeader showAccountMenu />
         <ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} />
       </SafeAreaView>
     );
@@ -170,14 +170,14 @@ export function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <AppHeader />
+      <AppHeader showAccountMenu />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.intro}>
-            <Text style={styles.title}>Your profile</Text>
+            <Text style={styles.title}>Your portfolio</Text>
             <Text style={styles.lede}>
               Keep your coverage current so the ops team can match you.
             </Text>
@@ -193,7 +193,7 @@ export function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.matchTitle}>Matchable</Text>
               <Text style={styles.matchCopy}>
-                {toggling ? 'Saving to database…' : 'Saved to your profile. Live only at 100% complete.'}
+                {toggling ? 'Saving to database…' : 'Saved to your portfolio. Live only at 100% complete.'}
               </Text>
             </View>
             <Switch
@@ -208,7 +208,7 @@ export function ProfileScreen() {
           {!hasMapLocation ? (
             <AlertBox
               tone="info"
-              message="Map location is required for profile completion (the missing piece at ~83%). Add latitude & longitude below, then Save."
+              message="Map location is required for portfolio completion (the missing piece at ~83%). Add latitude & longitude below, then Save."
             />
           ) : null}
 
@@ -286,7 +286,7 @@ export function ProfileScreen() {
           </View>
 
           <Button
-            label={saving ? 'Saving…' : 'Save profile'}
+            label={saving ? 'Saving…' : 'Save portfolio'}
             busy={saving}
             onPress={() => void save()}
           />

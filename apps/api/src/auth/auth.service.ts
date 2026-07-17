@@ -16,7 +16,10 @@ import type {
   AuthSession,
   GoogleAuthResult,
   MembershipRole,
+  OnboardingStatus,
+  OnboardingStep,
   RoleHint,
+  SignupResult,
   StaffLevel,
   StaffPermission,
   StaffPermissionPreset,
@@ -26,14 +29,18 @@ import type {
 import { ROLE_HINTS, resolveStaffPermissions } from '@surveylink/types';
 import type {
   AddMembershipInput,
+  CompleteProfileInput,
   CompleteRegistrationInput,
   SignupInput,
+  UpdateMeInput,
 } from '@surveylink/validation';
+import { normalizeEmail } from '@surveylink/validation';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { IDENTITY_PROVIDER, type IdentityProvider } from './identity/identity-provider';
 import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.identity-provider';
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
+import { EmailOtpService } from './email/email-otp.service';
 import {
   DEV_ACCESS_TOKEN,
   DEV_EMAIL,
@@ -81,62 +88,78 @@ export class AuthService {
     private readonly prisma: PrismaService,
     @Inject(IDENTITY_PROVIDER) private readonly identity: IdentityProvider,
     @Inject(PHONE_VERIFIER) private readonly phone: PhoneVerifier,
+    private readonly emailOtp: EmailOtpService,
     private readonly config: ConfigService,
   ) {}
 
   /**
-   * Create the account on the identity provider and mirror it locally, then
-   * kick off email + phone verification. The account is usable immediately;
-   * verification only flips trust flags (required before a match is confirmed,
-   * not before signup completes).
+   * Create the account, issue a session, and start email + phone OTP.
+   * Non-Google users land on `verify_contact` until at least one channel is verified.
    */
-  async signup(input: SignupInput): Promise<AuthenticatedUser> {
+  async signup(input: SignupInput): Promise<SignupResult> {
     const membershipRole = input.roleHint as MembershipRole;
     const legacyHint = membershipRole as WorkspaceRole;
+    const email = normalizeEmail(input.email);
 
-    const existing = await this.prisma.user.findFirst({
-      where: { OR: [{ email: input.email }, { phone: input.phone }] },
-    });
+    const existing =
+      (await this.findUserByEmail(email)) ??
+      (await this.prisma.user.findFirst({ where: { phone: input.phone } }));
 
     // Same identity, different workspace: add the missing membership instead of
     // creating a second user (email/phone stay unique on `users`).
     if (existing) {
-      return this.addRoleToExistingUser(existing, input, membershipRole);
+      const user = await this.addRoleToExistingUser(
+        existing,
+        { ...input, email },
+        membershipRole,
+      );
+      const session = await this.login(email, input.password, legacyHint);
+      return { session, user };
     }
 
     if (devAuthEnabled(this.config)) {
-      const subject = devSubjectForEmail(input.email);
-      rememberDevSignup(input.email, input.password, subject);
+      const subject = devSubjectForEmail(email);
+      rememberDevSignup(email, input.password, subject);
       const user = await this.prisma.user.create({
         data: {
           fullName: input.fullName,
-          email: input.email,
+          email,
           phone: input.phone,
           roleHint: legacyHint,
           emailVerified: true,
           phoneVerified: true,
+          onboardingStep: 'complete_profile',
           authProvider: 'dev',
           authSubject: subject,
         },
       });
       await ensureMembership(this.prisma, user.id, membershipRole);
-      return this.hydrateUser(user, []);
+      const hydrated = await this.hydrateUser(user, []);
+      const session: AuthSession = {
+        accessToken: issueDevUserToken(subject),
+        tokenType: 'Bearer',
+        expiresIn: 60 * 60 * 24,
+        activeRole: legacyHint,
+      };
+      return { session, user: hydrated };
     }
 
     const identity = await this.identity.createIdentity({
       fullName: input.fullName,
-      email: input.email,
+      email,
       phone: input.phone,
       password: input.password,
     });
 
+    const emailAlreadyVerified = identity.emailVerified;
     const user = await this.prisma.user.create({
       data: {
         fullName: input.fullName,
-        email: input.email,
+        email,
         phone: input.phone,
         roleHint: legacyHint,
-        emailVerified: identity.emailVerified,
+        emailVerified: emailAlreadyVerified,
+        onboardingStep: emailAlreadyVerified ? 'complete_profile' : 'verify_contact',
         authProvider: AUTH_PROVIDER_NAME,
         authSubject: identity.subject,
       },
@@ -144,13 +167,16 @@ export class AuthService {
     await ensureMembership(this.prisma, user.id, membershipRole);
 
     await Promise.allSettled([
-      identity.emailVerified
-        ? Promise.resolve()
-        : this.identity.sendEmailVerification(identity.subject),
+      emailAlreadyVerified ? Promise.resolve() : this.emailOtp.start(user.id, email),
       this.phone.startVerification(input.phone),
     ]);
 
-    return this.hydrateUser(user, []);
+    const session = await this.identity.login(email, input.password);
+    const hydrated = await this.hydrateUser(user, []);
+    return {
+      session: { ...session, activeRole: legacyHint },
+      user: hydrated,
+    };
   }
 
   /**
@@ -162,7 +188,7 @@ export class AuthService {
     input: SignupInput,
     membershipRole: MembershipRole,
   ): Promise<AuthenticatedUser> {
-    const emailMatch = existing.email.toLowerCase() === input.email.trim().toLowerCase();
+    const emailMatch = normalizeEmail(existing.email) === normalizeEmail(input.email);
     const phoneMatch = existing.phone === input.phone;
     if (!emailMatch || !phoneMatch) {
       throw new ConflictException(
@@ -181,7 +207,7 @@ export class AuthService {
 
     // Keepdev password map in sync when adding roles under AUTH_DEV_MODE.
     if (devAuthEnabled(this.config) && existing.authSubject) {
-      rememberDevSignup(input.email, input.password, existing.authSubject);
+      rememberDevSignup(normalizeEmail(input.email), input.password, existing.authSubject);
     }
 
     await ensureMembership(this.prisma, existing.id, membershipRole);
@@ -192,7 +218,7 @@ export class AuthService {
 
   private async assertPasswordForUser(user: User, password: string): Promise<void> {
     if (devAuthEnabled(this.config)) {
-      if (user.email.toLowerCase() === DEV_EMAIL && password === DEV_PASSWORD) return;
+      if (normalizeEmail(user.email) === DEV_EMAIL && password === DEV_PASSWORD) return;
       const local = findDevSignup(user.email);
       if (local) {
         if (local.password === password) return;
@@ -200,15 +226,12 @@ export class AuthService {
           'Email already registered. Enter the same password as that account to add this role.',
         );
       }
-      // Dev password map is in-memory and clears on API restart. Re-bind for
-      // localdev identities so admin/client role linking still works.
-      if (user.authProvider === 'dev' && user.authSubject) {
-        rememberDevSignup(user.email, password, user.authSubject);
-        return;
-      }
+      // Dev password map clears on API restart — re-bind without calling Auth0.
+      await this.loginLocalDevUser(user.email, password);
+      return;
     }
     try {
-      await this.identity.login(user.email, password);
+      await this.identity.login(normalizeEmail(user.email), password);
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException(
@@ -217,11 +240,49 @@ export class AuthService {
     }
   }
 
+  /**
+   * AUTH_DEV_MODE password login that never calls Auth0. Re-binds existing local
+   * accounts after API restarts (in-memory password map is empty).
+   */
+  private async loginLocalDevUser(email: string, password: string): Promise<AuthSession> {
+    const normalized = normalizeEmail(email);
+    const existing = await this.findUserByEmail(normalized);
+
+    if (!existing) {
+      throw new UnauthorizedException('Invalid email or password.');
+    }
+    if (existing.authProvider === GOOGLE_PROVIDER_NAME) {
+      throw new UnauthorizedException('This account uses Google sign-in.');
+    }
+
+    const subject =
+      existing.authSubject?.startsWith('dev|')
+        ? existing.authSubject
+        : existing.authProvider === 'dev' && existing.authSubject
+          ? existing.authSubject
+          : devSubjectForEmail(normalized);
+
+    if (existing.authProvider !== 'dev' || existing.authSubject !== subject) {
+      await this.prisma.user.update({
+        where: { id: existing.id },
+        data: { authProvider: 'dev', authSubject: subject },
+      });
+    }
+
+    rememberDevSignup(normalized, password, subject);
+    return {
+      accessToken: issueDevUserToken(subject),
+      tokenType: 'Bearer',
+      expiresIn: 60 * 60 * 24,
+    };
+  }
+
   async login(email: string, password: string, role?: WorkspaceRole): Promise<AuthSession> {
+    const normalized = normalizeEmail(email);
     let session: AuthSession;
 
     if (devAuthEnabled(this.config)) {
-      if (email.trim().toLowerCase() === DEV_EMAIL && password === DEV_PASSWORD) {
+      if (normalized === DEV_EMAIL && password === DEV_PASSWORD) {
         await this.ensureDevUser();
         session = {
           accessToken: DEV_ACCESS_TOKEN,
@@ -229,24 +290,28 @@ export class AuthService {
           expiresIn: 60 * 60 * 24,
         };
       } else {
-        const local = findDevSignup(email);
-        if (local && local.password === password) {
+        const local = findDevSignup(normalized);
+        if (local) {
+          if (local.password !== password) {
+            throw new UnauthorizedException('Invalid email or password.');
+          }
           session = {
             accessToken: issueDevUserToken(local.subject),
             tokenType: 'Bearer',
             expiresIn: 60 * 60 * 24,
           };
         } else {
-          session = await this.identity.login(email, password);
+          // Password map is in-memory and clears on API restart. Keep local
+          // AUTH_DEV_MODE users on the in-process path so mobile/web never
+          // fall through to Auth0 when it is not configured.
+          session = await this.loginLocalDevUser(normalized, password);
         }
       }
     } else {
-      session = await this.identity.login(email, password);
+      session = await this.identity.login(normalized, password);
     }
 
-    const user =
-      (await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } })) ??
-      (await this.prisma.user.findUnique({ where: { email } }));
+    const user = await this.findUserByEmail(normalized);
     if (!user) {
       return session;
     }
@@ -277,11 +342,9 @@ export class AuthService {
   ): Promise<{ ok: true; message: string }> {
     const message =
       'If an account exists for that email, we sent a password reset link. Check your inbox.';
-    const normalized = email.trim().toLowerCase();
+    const normalized = normalizeEmail(email);
 
-    const user = await this.prisma.user.findFirst({
-      where: { email: { equals: normalized, mode: 'insensitive' } },
-    });
+    const user = await this.findUserByEmail(normalized);
 
     if (!user) {
       return { ok: true, message };
@@ -307,6 +370,24 @@ export class AuthService {
     return { ok: true, message };
   }
 
+  /** Case-insensitive email lookup; rewrites legacy mixed-case rows to lowercase. */
+  private async findUserByEmail(email: string): Promise<User | null> {
+    const normalized = normalizeEmail(email);
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: normalized, mode: 'insensitive' } },
+    });
+    if (!user) return null;
+    if (user.email === normalized) return user;
+    try {
+      return await this.prisma.user.update({
+        where: { id: user.id },
+        data: { email: normalized },
+      });
+    } catch {
+      return user;
+    }
+  }
+
   private async ensureDevUser(): Promise<void> {
     const user = await this.prisma.user.upsert({
       where: { authSubject: DEV_SUBJECT },
@@ -317,6 +398,7 @@ export class AuthService {
         phone: '+10000000001',
         emailVerified: true,
         phoneVerified: true,
+        onboardingStep: 'done',
         roleHint: 'both',
         status: 'active',
         authProvider: 'dev',
@@ -407,7 +489,7 @@ export class AuthService {
     // Account linking (same email, different provider) is out of scope for
     // Phase 1 — steer the user to their existing password login instead.
     if (identity.email) {
-      const emailOwner = await this.prisma.user.findUnique({ where: { email: identity.email } });
+      const emailOwner = await this.findUserByEmail(identity.email);
       if (emailOwner) {
         throw new ConflictException(
           'An account with this email already exists. Please sign in with your email and password.',
@@ -419,7 +501,10 @@ export class AuthService {
       session: { ...session, activeRole: workspaceRole },
       registered: false,
       roleHint: workspaceRole ?? 'client',
-      profile: { email: identity.email, fullName: identity.fullName },
+      profile: {
+        email: identity.email ? normalizeEmail(identity.email) : identity.email,
+        fullName: identity.fullName,
+      },
     };
   }
 
@@ -466,15 +551,15 @@ export class AuthService {
       return this.hydrateUser(already, principal.roles);
     }
 
-    const email = principal.email ?? input.email;
-    if (!email) {
+    const rawEmail = principal.email ?? input.email;
+    if (!rawEmail) {
       throw new BadRequestException('Could not determine the account email from the identity');
     }
+    const email = normalizeEmail(rawEmail);
 
-    const clash = await this.prisma.user.findFirst({
-      where: { OR: [{ email }, { phone: input.phone }] },
-      select: { id: true },
-    });
+    const clash =
+      (await this.findUserByEmail(email)) ??
+      (await this.prisma.user.findFirst({ where: { phone: input.phone }, select: { id: true } }));
     if (clash) {
       throw new ConflictException('An account with this email or phone already exists');
     }
@@ -482,6 +567,7 @@ export class AuthService {
     const isDevGoogle = devAuthEnabled(this.config) && principal.sub === DEV_GOOGLE_SUBJECT;
 
     const workspaceRole = input.roleHint as WorkspaceRole;
+    const emailVerified = principal.emailVerified ?? true;
     const user = await this.prisma.user.create({
       data: {
         fullName: input.fullName,
@@ -489,7 +575,8 @@ export class AuthService {
         phone: input.phone,
         roleHint: workspaceRole,
         // Social providers (Google) return already-verified emails.
-        emailVerified: principal.emailVerified ?? true,
+        emailVerified,
+        onboardingStep: emailVerified ? 'complete_profile' : 'verify_contact',
         authProvider: isDevGoogle ? 'dev' : GOOGLE_PROVIDER_NAME,
         authSubject: principal.sub,
       },
@@ -514,23 +601,39 @@ export class AuthService {
     return this.hydrateUser(user, principal.roles);
   }
 
-  /** Re-sync email-verified status from the provider, resending if still unverified. */
-  async verifyEmail(principal: AuthPrincipal): Promise<AuthenticatedUser> {
+  /** Send (or resend) an email OTP for the authenticated user. */
+  async startEmailVerification(principal: AuthPrincipal): Promise<{ ok: true }> {
     const user = await this.requireUser(principal.sub);
-    const identity = await this.identity.getIdentity(principal.sub);
-
-    if (identity.emailVerified && !user.emailVerified) {
-      const updated = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { emailVerified: true },
-      });
-      return this.hydrateUser(updated, principal.roles);
+    if (user.emailVerified) {
+      return { ok: true };
     }
+    await this.emailOtp.start(user.id, user.email);
+    return { ok: true };
+  }
 
-    if (!identity.emailVerified) {
-      await this.identity.sendEmailVerification(principal.sub);
+  /** Send (or resend) a phone SMS OTP for the authenticated user. */
+  async startPhoneVerification(principal: AuthPrincipal): Promise<{ ok: true }> {
+    const user = await this.requireUser(principal.sub);
+    if (user.phoneVerified) {
+      return { ok: true };
     }
-    return this.hydrateUser(user, principal.roles);
+    await this.phone.startVerification(user.phone);
+    return { ok: true };
+  }
+
+  /** Confirm email OTP and advance onboarding when at least one contact is verified. */
+  async verifyEmail(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    const approved = await this.emailOtp.check(user.id, user.email, code);
+    if (!approved) {
+      throw new UnauthorizedException('Invalid or expired verification code');
+    }
+    const nextStep = this.stepAfterContactVerified(user);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true, onboardingStep: nextStep },
+    });
+    return this.hydrateUser(updated, principal.roles);
   }
 
   /** Confirm the SMS OTP for the authenticated user's phone number. */
@@ -540,11 +643,131 @@ export class AuthService {
     if (!approved) {
       throw new UnauthorizedException('Invalid or expired verification code');
     }
+    const nextStep = this.stepAfterContactVerified(user);
     const updated = await this.prisma.user.update({
       where: { id: user.id },
-      data: { phoneVerified: true },
+      data: { phoneVerified: true, onboardingStep: nextStep },
     });
     return this.hydrateUser(updated, principal.roles);
+  }
+
+  async getOnboarding(principal: AuthPrincipal): Promise<OnboardingStatus> {
+    const user = await this.requireUser(principal.sub);
+    const memberships = await listMemberships(this.prisma, user.id);
+    const clientProfile = memberships.includes('client')
+      ? await this.prisma.clientProfile.findUnique({ where: { userId: user.id } })
+      : null;
+    return this.toOnboardingStatus(user, memberships, clientProfile?.companyName ?? null);
+  }
+
+  /** Update personal profile fields (name, optional avatar, optional company). */
+  async updateMe(principal: AuthPrincipal, input: UpdateMeInput): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    const memberships = await listMemberships(this.prisma, user.id);
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+        ...(input.avatarKey !== undefined ? { avatarKey: input.avatarKey } : {}),
+      },
+    });
+
+    if (input.companyName !== undefined && memberships.includes('client')) {
+      await this.prisma.clientProfile.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, companyName: input.companyName },
+        update: { companyName: input.companyName },
+      });
+    }
+
+    return this.hydrateUser(updated, principal.roles);
+  }
+
+  /**
+   * Finish personal profile. Surveyors advance to portfolio builder; clients to done.
+   * Remaining contact OTP can still be completed from this step (does not block).
+   */
+  async completeProfile(
+    principal: AuthPrincipal,
+    input: CompleteProfileInput,
+  ): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    if (!user.emailVerified && !user.phoneVerified) {
+      throw new BadRequestException('Verify your email or phone before completing your profile');
+    }
+
+    const memberships = await listMemberships(this.prisma, user.id);
+    const requiresPortfolio = memberships.includes('surveyor');
+    const nextStep: OnboardingStep = requiresPortfolio ? 'portfolio' : 'done';
+
+    if (input.companyName !== undefined && memberships.includes('client')) {
+      await this.prisma.clientProfile.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, companyName: input.companyName },
+        update: { companyName: input.companyName },
+      });
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+        ...(input.avatarKey !== undefined ? { avatarKey: input.avatarKey } : {}),
+        onboardingStep: nextStep,
+      },
+    });
+    return this.hydrateUser(updated, principal.roles);
+  }
+
+  /** Surveyor-only: mark portfolio onboarding complete. */
+  async completePortfolio(principal: AuthPrincipal): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    const memberships = await listMemberships(this.prisma, user.id);
+    if (!memberships.includes('surveyor')) {
+      throw new ForbiddenException('Portfolio onboarding is only for surveyors');
+    }
+    if (user.onboardingStep !== 'portfolio' && user.onboardingStep !== 'done') {
+      throw new BadRequestException('Complete your personal profile before the portfolio builder');
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { onboardingStep: 'done' },
+    });
+    return this.hydrateUser(updated, principal.roles);
+  }
+
+  private stepAfterContactVerified(user: User): OnboardingStep {
+    const current = user.onboardingStep as OnboardingStep;
+    if (current === 'verify_contact') return 'complete_profile';
+    return current;
+  }
+
+  private toOnboardingStatus(
+    user: User,
+    memberships: MembershipRole[],
+    companyName: string | null,
+  ): OnboardingStatus {
+    const pendingContact =
+      !user.emailVerified && !user.phoneVerified
+        ? 'both'
+        : !user.emailVerified
+          ? 'email'
+          : !user.phoneVerified
+            ? 'phone'
+            : 'none';
+
+    return {
+      step: user.onboardingStep as OnboardingStep,
+      emailVerified: user.emailVerified,
+      phoneVerified: user.phoneVerified,
+      canCompleteProfile: user.emailVerified || user.phoneVerified,
+      pendingContact,
+      requiresPortfolio: memberships.includes('surveyor'),
+      avatarKey: user.avatarKey,
+      fullName: user.fullName,
+      companyName,
+    };
   }
 
   private async requireUser(subject: string): Promise<User> {
@@ -606,6 +829,8 @@ export class AuthService {
       phone: user.phone,
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
+      avatarKey: user.avatarKey,
+      onboardingStep: user.onboardingStep as OnboardingStep,
       roleHint: hintFromMemberships(merged),
       memberships: merged,
       status: user.status as UserStatus,

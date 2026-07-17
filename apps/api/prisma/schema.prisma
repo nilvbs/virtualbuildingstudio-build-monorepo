@@ -21,30 +21,56 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fullName      String   @map("full_name")
-  email         String   @unique
-  phone         String   @unique
-  emailVerified Boolean  @default(false) @map("email_verified")
-  phoneVerified Boolean  @default(false) @map("phone_verified")
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName       String   @map("full_name")
+  email          String   @unique
+  phone          String   @unique
+  emailVerified  Boolean  @default(false) @map("email_verified")
+  phoneVerified  Boolean  @default(false) @map("phone_verified")
+  /** Object-storage key for optional profile photo. */
+  avatarKey      String?  @map("avatar_key")
+  /**
+   * Post-signup gate for marketplace users (client + surveyor):
+   * verify_contact → complete_profile → portfolio (surveyor) → done
+   */
+  onboardingStep String   @default("verify_contact") @map("onboarding_step")
   /** @deprecated Prefer UserRole memberships; kept for back-compat / display. */
-  roleHint      String   @default("client") @map("role_hint")
-  status        String   @default("active")
-  authProvider  String?  @map("auth_provider")
-  authSubject   String?  @unique @map("auth_subject")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  roleHint       String   @default("client") @map("role_hint")
+  status         String   @default("active")
+  authProvider   String?  @map("auth_provider")
+  authSubject    String?  @unique @map("auth_subject")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   roles           UserRole[]
   clientProfile   ClientProfile?
   surveyorProfile SurveyorProfile?
   adminProfile    AdminProfile?
+  contactOtps     ContactOtp[]
   projects        Project[]
   matchesMade     Match[]          @relation("MatchedBy")
   notifications   Notification[]
 
   @@index([authSubject], map: "idx_users_auth_subject")
   @@map("users")
+}
+
+/** Short-lived email OTP codes (phone OTP stays on Twilio Verify). */
+model ContactOtp {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  channel     String
+  destination String
+  codeHash    String    @map("code_hash")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, channel], map: "idx_contact_otps_user_channel")
+  @@index([expiresAt], map: "idx_contact_otps_expires")
+  @@map("contact_otps")
 }
 
 model UserRole {

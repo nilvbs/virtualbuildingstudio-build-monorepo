@@ -16,7 +16,7 @@ function CompletionRing({ percent, size = 56 }: { percent: number; size?: number
       className="profile-meter-ring"
       style={{ width: size, height: size }}
       role="img"
-      aria-label={`Profile ${clamped}% complete`}
+      aria-label={`Portfolio ${clamped}% complete`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         <circle
@@ -53,7 +53,7 @@ export function ProfileCompletionBar({
   return (
     <div className={`profile-completion${compact ? ' profile-completion--compact' : ''}`}>
       <div className="profile-completion-meta">
-        <span>Profile</span>
+        <span>Portfolio</span>
         <strong>{clamped}%</strong>
       </div>
       <div
@@ -62,7 +62,7 @@ export function ProfileCompletionBar({
         aria-valuenow={clamped}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label="Profile completion"
+        aria-label="Portfolio completion"
       >
         <div className="profile-completion-fill" style={{ width: `${clamped}%` }} />
       </div>
@@ -84,7 +84,7 @@ export function SidebarProfileMeter({
     <div className={`sidebar-meter${complete ? ' is-complete' : ''}`}>
       <CompletionRing percent={clamped} size={52} />
       <div className="sidebar-meter-copy">
-        <p className="sidebar-meter-label">{complete ? 'Profile ready' : 'Profile setup'}</p>
+        <p className="sidebar-meter-label">{complete ? 'Portfolio ready' : 'Portfolio setup'}</p>
         <p className="sidebar-meter-sub">
           {complete ? 'Dashboard unlocked' : `${clamped}% complete`}
         </p>
@@ -127,22 +127,22 @@ export function IncompleteProfileModal({
           Almost ready
         </p>
         <h2 id="incomplete-profile-title" className="sheet-modal-title">
-          Complete your profile
+          Complete your portfolio
         </h2>
         <p className="sheet-modal-copy">
-          Dashboard unlocks when your profile is 100% complete. Finish the remaining details so we
+          Dashboard unlocks when your portfolio is 100% complete. Finish the remaining details so we
           can match you to projects.
         </p>
         <ProfileCompletionBar percent={percent} />
         <div className="sheet-modal-actions">
           <button type="button" className="btn block" onClick={onGoToProfile}>
-            Continue profile
+            Continue portfolio
           </button>
           <button type="button" className="btn secondary block" onClick={onClose}>
             Remind me later
           </button>
           <Link href="/surveyor/profile" className="hint" style={{ textAlign: 'center' }} onClick={onClose}>
-            Go to Profile tab
+            Go to Portfolio tab
           </Link>
         </div>
       </div>

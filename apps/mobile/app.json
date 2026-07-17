@@ -27,7 +27,13 @@
     },
     "plugins": [
       "expo-web-browser",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow SurveyLink to update your profile photo."
+        }
+      ]
     ]
   }
 }

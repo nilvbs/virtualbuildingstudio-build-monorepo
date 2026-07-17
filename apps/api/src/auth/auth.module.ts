@@ -13,11 +13,14 @@ import { IDENTITY_PROVIDER } from './identity/identity-provider';
 import { Auth0IdentityProvider } from './identity/auth0.identity-provider';
 import { PHONE_VERIFIER } from './phone/phone-verifier';
 import { TwilioPhoneVerifier } from './phone/twilio.phone-verifier';
+import { EmailOtpService } from './email/email-otp.service';
+import { EMAIL_SENDER } from '../notifications/delivery/email-sender';
+import { SendgridEmailSender } from '../notifications/delivery/sendgrid.email-sender';
+import { AvatarStorageService } from './avatar-storage.service';
 
 /**
- * Auth module — signup, email verification, phone OTP, sessions, via a managed
- * provider (Auth0) with Twilio Verify for phone OTP. Registers the app-wide
- * JWT guard (auth on by default), role guard, and permissions guard.
+ * Auth module — signup, email/phone OTP, onboarding, sessions via Auth0 + Twilio
+ * Verify + local email OTP. Registers app-wide JWT / role / permissions guards.
  */
 @Module({
   imports: [PassportModule],
@@ -27,8 +30,11 @@ import { TwilioPhoneVerifier } from './phone/twilio.phone-verifier';
     JwtStrategy,
     StaffContextService,
     SuperAdminBootstrapService,
+    EmailOtpService,
+    AvatarStorageService,
     { provide: IDENTITY_PROVIDER, useClass: Auth0IdentityProvider },
     { provide: PHONE_VERIFIER, useClass: TwilioPhoneVerifier },
+    { provide: EMAIL_SENDER, useClass: SendgridEmailSender },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

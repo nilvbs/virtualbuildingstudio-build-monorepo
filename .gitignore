@@ -9,6 +9,7 @@ build/
 out/
 .expo/
 .turbo/
+apps/api/uploads/
 *.tsbuildinfo
 
 # Env & secrets
