@@ -90,7 +90,13 @@ export function AuthScreen({ navigation, route }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const { session } = await api.signup({ fullName, email, phone, password, roleHint: role });
+      const { session } = await api.signup({
+        fullName,
+        email,
+        phone,
+        password,
+        roleHint: role,
+      });
       await setSession({
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,

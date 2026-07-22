@@ -7,6 +7,7 @@ import type {
   RoleHint,
   SignupResult,
   SurveyorProfile,
+  SurveyorPortfolioDetails,
   SurveyorStatus,
   SurveyService,
   GeoPoint,
@@ -49,6 +50,7 @@ export interface SurveyorProfileBody {
   radiusKm?: number;
   dayRateCents?: number;
   portfolio?: PortfolioItem[];
+  details?: SurveyorPortfolioDetails;
   isMatchable?: boolean;
 }
 
@@ -58,6 +60,26 @@ export interface SignupBody {
   phone: string;
   password: string;
   roleHint?: 'client' | 'surveyor';
+  accountType?: 'individual' | 'company';
+}
+
+/** Structured address collected during onboarding. */
+export interface PostalAddressBody {
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+}
+
+export interface CompleteProfileBody {
+  fullName?: string;
+  avatarKey?: string | null;
+  companyName?: string | null;
+  address?: PostalAddressBody;
+  registrationNumber?: string | null;
+  website?: string | null;
 }
 
 export interface LoginBody {
@@ -87,6 +109,7 @@ export interface CompleteRegistrationBody {
   email?: string;
   phone: string;
   roleHint?: RoleHint;
+  accountType?: 'individual' | 'company';
 }
 
 export interface AdminSurveyorQueryBody {
@@ -211,6 +234,16 @@ export class SurveyLinkClient {
     fullName?: string;
     avatarKey?: string | null;
     companyName?: string | null;
+    address?: {
+      line1: string;
+      line2?: string | null;
+      city: string;
+      state: string;
+      postalCode: string;
+      country: string;
+    };
+    registrationNumber?: string | null;
+    website?: string | null;
   }): Promise<AuthenticatedUser> {
     return this.request<AuthenticatedUser>('PATCH', '/auth/me', body);
   }
@@ -238,11 +271,30 @@ export class SurveyLinkClient {
     return this.request<OnboardingStatus>('GET', '/auth/onboarding');
   }
 
-  async completeProfile(body: {
-    fullName?: string;
-    avatarKey?: string | null;
-    companyName?: string | null;
-  } = {}): Promise<AuthenticatedUser> {
+  /** First onboarding glance — choose company vs individual. */
+  async selectAccountType(accountType: 'individual' | 'company'): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/onboarding/account-type', { accountType });
+  }
+
+  /** Middle acceptance step — records Terms & NDA acceptance (both required). */
+  async acceptTerms(): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/onboarding/accept-terms', {
+      acceptTerms: true,
+      acceptNda: true,
+    });
+  }
+
+  /** Company-only: send an OTP to the corporate work email. */
+  async startWorkEmailVerification(workEmail: string): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>('POST', '/auth/onboarding/work-email/start', { workEmail });
+  }
+
+  /** Company-only: confirm the work email OTP. */
+  async verifyWorkEmail(code: string): Promise<AuthenticatedUser> {
+    return this.request<AuthenticatedUser>('POST', '/auth/onboarding/work-email/verify', { code });
+  }
+
+  async completeProfile(body: CompleteProfileBody = {}): Promise<AuthenticatedUser> {
     return this.request<AuthenticatedUser>('POST', '/auth/onboarding/complete-profile', body);
   }
 
@@ -258,8 +310,8 @@ export class SurveyLinkClient {
     return this.request<AuthenticatedUser>('POST', '/auth/verify-email', { code });
   }
 
-  async startPhoneVerification(): Promise<{ ok: true }> {
-    return this.request<{ ok: true }>('POST', '/auth/verify-phone/start', {});
+  async startPhoneVerification(phone?: string): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>('POST', '/auth/verify-phone/start', phone ? { phone } : {});
   }
 
   async verifyPhone(code: string): Promise<AuthenticatedUser> {

@@ -15,6 +15,8 @@
     "prisma:studio": "dotenv -e ../../.env -- prisma studio"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1091.0",
+    "@aws-sdk/client-sns": "^3.1091.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",
@@ -22,7 +24,6 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.2.1",
-    "@sendgrid/mail": "^8.1.4",
     "@sentry/node": "^8.47.0",
     "@surveylink/types": "workspace:*",
     "@surveylink/validation": "workspace:*",
@@ -34,7 +35,6 @@
     "pino-http": "^10.3.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "twilio": "^5.4.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

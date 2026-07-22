@@ -10,6 +10,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type {
+  AccountType,
   AppRole,
   AuthenticatedUser,
   AuthPrincipal,
@@ -18,6 +19,7 @@ import type {
   MembershipRole,
   OnboardingStatus,
   OnboardingStep,
+  PostalAddress,
   RoleHint,
   SignupResult,
   StaffLevel,
@@ -34,6 +36,7 @@ import type {
   SignupInput,
   UpdateMeInput,
 } from '@surveylink/validation';
+import type { AccountProfile, ClientProfile } from '@prisma/client';
 import { normalizeEmail } from '@surveylink/validation';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -126,9 +129,10 @@ export class AuthService {
           email,
           phone: input.phone,
           roleHint: legacyHint,
+          accountType: input.accountType ?? 'individual',
           emailVerified: true,
           phoneVerified: true,
-          onboardingStep: 'complete_profile',
+          onboardingStep: 'select_account_type',
           authProvider: 'dev',
           authSubject: subject,
         },
@@ -158,8 +162,10 @@ export class AuthService {
         email,
         phone: input.phone,
         roleHint: legacyHint,
+        accountType: input.accountType ?? 'individual',
         emailVerified: emailAlreadyVerified,
-        onboardingStep: emailAlreadyVerified ? 'complete_profile' : 'verify_contact',
+        // Account type is chosen on the first onboarding screen.
+        onboardingStep: 'select_account_type',
         authProvider: AUTH_PROVIDER_NAME,
         authSubject: identity.subject,
       },
@@ -168,7 +174,7 @@ export class AuthService {
 
     await Promise.allSettled([
       emailAlreadyVerified ? Promise.resolve() : this.emailOtp.start(user.id, email),
-      this.phone.startVerification(input.phone),
+      this.phone.startVerification(user.id, input.phone),
     ]);
 
     const session = await this.identity.login(email, input.password);
@@ -574,17 +580,19 @@ export class AuthService {
         email,
         phone: input.phone,
         roleHint: workspaceRole,
+        accountType: input.accountType ?? 'individual',
         // Social providers (Google) return already-verified emails.
         emailVerified,
-        onboardingStep: emailVerified ? 'complete_profile' : 'verify_contact',
+        // Account type is chosen on the first onboarding screen.
+        onboardingStep: 'select_account_type',
         authProvider: isDevGoogle ? 'dev' : GOOGLE_PROVIDER_NAME,
         authSubject: principal.sub,
       },
     });
     await ensureMembership(this.prisma, user.id, workspaceRole);
 
-    // Best-effort, consistent with signup: a missing Twilio config must not fail this.
-    await Promise.allSettled([this.phone.startVerification(input.phone)]);
+    // Best-effort, consistent with signup: missing SNS config must not fail this.
+    await Promise.allSettled([this.phone.startVerification(user.id, input.phone)]);
 
     return this.hydrateUser(user, principal.roles);
   }
@@ -612,12 +620,34 @@ export class AuthService {
   }
 
   /** Send (or resend) a phone SMS OTP for the authenticated user. */
-  async startPhoneVerification(principal: AuthPrincipal): Promise<{ ok: true }> {
+  async startPhoneVerification(
+    principal: AuthPrincipal,
+    phone?: string,
+  ): Promise<{ ok: true }> {
     const user = await this.requireUser(principal.sub);
     if (user.phoneVerified) {
       return { ok: true };
     }
-    await this.phone.startVerification(user.phone);
+
+    let targetPhone = user.phone;
+    if (phone) {
+      if (phone !== user.phone) {
+        const clash = await this.prisma.user.findFirst({
+          where: { phone, NOT: { id: user.id } },
+          select: { id: true },
+        });
+        if (clash) {
+          throw new ConflictException('An account with this phone number already exists');
+        }
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { phone },
+        });
+      }
+      targetPhone = phone;
+    }
+
+    await this.phone.startVerification(user.id, targetPhone);
     return { ok: true };
   }
 
@@ -639,7 +669,7 @@ export class AuthService {
   /** Confirm the SMS OTP for the authenticated user's phone number. */
   async verifyPhone(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
-    const approved = await this.phone.checkVerification(user.phone, code);
+    const approved = await this.phone.checkVerification(user.id, user.phone, code);
     if (!approved) {
       throw new UnauthorizedException('Invalid or expired verification code');
     }
@@ -657,10 +687,99 @@ export class AuthService {
     const clientProfile = memberships.includes('client')
       ? await this.prisma.clientProfile.findUnique({ where: { userId: user.id } })
       : null;
-    return this.toOnboardingStatus(user, memberships, clientProfile?.companyName ?? null);
+    const accountProfile = await this.prisma.accountProfile.findUnique({
+      where: { userId: user.id },
+    });
+    return this.toOnboardingStatus(user, memberships, clientProfile, accountProfile);
   }
 
-  /** Update personal profile fields (name, optional avatar, optional company). */
+  /**
+   * First onboarding glance: choose company vs individual, then advance to Terms/NDA.
+   * There is no skip — login keeps routing here until a type is selected.
+   */
+  async selectAccountType(
+    principal: AuthPrincipal,
+    accountType: AccountType,
+  ): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    if (user.accountTypeSelectedAt) {
+      throw new BadRequestException('Account type was already selected');
+    }
+    const nextStep =
+      user.onboardingStep === 'select_account_type' ? 'accept_terms' : (user.onboardingStep as OnboardingStep);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        accountType,
+        accountTypeSelectedAt: new Date(),
+        onboardingStep: nextStep,
+      },
+    });
+    return this.hydrateUser(updated, principal.roles);
+  }
+
+  /**
+   * Middle acceptance gate: record Terms & NDA acceptance (both required) and
+   * advance out of `accept_terms`. There is no bypass — the client cannot skip
+   * this step, and every login routes back here until it is accepted.
+   */
+  async acceptTerms(principal: AuthPrincipal): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    if (user.onboardingStep === 'select_account_type') {
+      throw new BadRequestException('Select individual or company before accepting terms');
+    }
+    const now = new Date();
+    const nextStep =
+      user.onboardingStep === 'accept_terms' ? this.stepAfterTermsAccepted(user) : (user.onboardingStep as OnboardingStep);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        termsAcceptedAt: user.termsAcceptedAt ?? now,
+        ndaAcceptedAt: user.ndaAcceptedAt ?? now,
+        onboardingStep: nextStep,
+      },
+    });
+    return this.hydrateUser(updated, principal.roles);
+  }
+
+  /** Company-only: store the work email and send it an OTP (separate from signup email). */
+  async startWorkEmailVerification(
+    principal: AuthPrincipal,
+    workEmail: string,
+  ): Promise<{ ok: true }> {
+    const user = await this.requireUser(principal.sub);
+    if (user.accountType !== 'company') {
+      throw new BadRequestException('Work email is only required for company accounts');
+    }
+    const normalized = normalizeEmail(workEmail);
+    await this.prisma.accountProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, workEmail: normalized, workEmailVerified: false },
+      update: { workEmail: normalized, workEmailVerified: false },
+    });
+    await this.emailOtp.start(user.id, normalized, 'work_email');
+    return { ok: true };
+  }
+
+  /** Company-only: confirm the work email OTP. */
+  async verifyWorkEmail(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    const profile = await this.prisma.accountProfile.findUnique({ where: { userId: user.id } });
+    if (!profile?.workEmail) {
+      throw new BadRequestException('Add your work email before verifying it');
+    }
+    const approved = await this.emailOtp.check(user.id, profile.workEmail, code, 'work_email');
+    if (!approved) {
+      throw new UnauthorizedException('Invalid or expired verification code');
+    }
+    await this.prisma.accountProfile.update({
+      where: { userId: user.id },
+      data: { workEmailVerified: true },
+    });
+    return this.hydrateUser(user, principal.roles);
+  }
+
+  /** Update personal profile fields (name, avatar, company, address). */
   async updateMe(principal: AuthPrincipal, input: UpdateMeInput): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
     const memberships = await listMemberships(this.prisma, user.id);
@@ -681,6 +800,36 @@ export class AuthService {
       });
     }
 
+    if (
+      input.address !== undefined ||
+      input.registrationNumber !== undefined ||
+      input.website !== undefined
+    ) {
+      const addressData = input.address
+        ? {
+            addressLine1: input.address.line1,
+            addressLine2: input.address.line2?.trim() ? input.address.line2.trim() : null,
+            city: input.address.city,
+            state: input.address.state,
+            postalCode: input.address.postalCode,
+            country: input.address.country,
+          }
+        : {};
+      const companyData = {
+        ...(input.registrationNumber !== undefined
+          ? { registrationNumber: input.registrationNumber?.trim() || null }
+          : {}),
+        ...(input.website !== undefined
+          ? { website: input.website?.trim() || null }
+          : {}),
+      };
+      await this.prisma.accountProfile.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, ...addressData, ...companyData },
+        update: { ...addressData, ...companyData },
+      });
+    }
+
     return this.hydrateUser(updated, principal.roles);
   }
 
@@ -693,13 +842,49 @@ export class AuthService {
     input: CompleteProfileInput,
   ): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
+    if (!user.termsAcceptedAt || !user.ndaAcceptedAt) {
+      throw new BadRequestException('Accept the Terms & Conditions and NDA before continuing');
+    }
     if (!user.emailVerified && !user.phoneVerified) {
       throw new BadRequestException('Verify your email or phone before completing your profile');
+    }
+    if (!input.address) {
+      throw new BadRequestException('Add your address to continue');
+    }
+
+    const isCompany = user.accountType === 'company';
+    if (isCompany) {
+      const existing = await this.prisma.accountProfile.findUnique({ where: { userId: user.id } });
+      if (!existing?.workEmailVerified) {
+        throw new BadRequestException('Verify your work email before continuing');
+      }
+      if (!input.registrationNumber || !input.registrationNumber.trim()) {
+        throw new BadRequestException('Company registration number is required');
+      }
     }
 
     const memberships = await listMemberships(this.prisma, user.id);
     const requiresPortfolio = memberships.includes('surveyor');
     const nextStep: OnboardingStep = requiresPortfolio ? 'portfolio' : 'done';
+
+    const website = input.website?.trim() ? input.website.trim() : null;
+    const addressData = {
+      addressLine1: input.address.line1,
+      addressLine2: input.address.line2?.trim() ? input.address.line2.trim() : null,
+      city: input.address.city,
+      state: input.address.state,
+      postalCode: input.address.postalCode,
+      country: input.address.country,
+    };
+    const companyData = isCompany
+      ? { registrationNumber: input.registrationNumber!.trim(), website }
+      : {};
+
+    await this.prisma.accountProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, ...addressData, ...companyData },
+      update: { ...addressData, ...companyData },
+    });
 
     if (input.companyName !== undefined && memberships.includes('client')) {
       await this.prisma.clientProfile.upsert({
@@ -743,10 +928,16 @@ export class AuthService {
     return current;
   }
 
+  /** After Terms & NDA: skip contact verification when a channel is already verified. */
+  private stepAfterTermsAccepted(user: User): OnboardingStep {
+    return user.emailVerified || user.phoneVerified ? 'complete_profile' : 'verify_contact';
+  }
+
   private toOnboardingStatus(
     user: User,
     memberships: MembershipRole[],
-    companyName: string | null,
+    clientProfile: ClientProfile | null,
+    accountProfile: AccountProfile | null,
   ): OnboardingStatus {
     const pendingContact =
       !user.emailVerified && !user.phoneVerified
@@ -757,16 +948,44 @@ export class AuthService {
             ? 'phone'
             : 'none';
 
+    const address: PostalAddress = {
+      line1: accountProfile?.addressLine1 ?? null,
+      line2: accountProfile?.addressLine2 ?? null,
+      city: accountProfile?.city ?? null,
+      state: accountProfile?.state ?? null,
+      postalCode: accountProfile?.postalCode ?? null,
+      country: accountProfile?.country ?? null,
+    };
+
+    const phoneNeedsEntry =
+      !user.phoneVerified &&
+      (!user.phone || user.phone === '+10000000001' || user.phone === '+1' || user.phone.length < 10);
+
+    const effectiveStep: OnboardingStep = !user.accountTypeSelectedAt
+      ? 'select_account_type'
+      : (user.onboardingStep as OnboardingStep);
+
     return {
-      step: user.onboardingStep as OnboardingStep,
+      step: effectiveStep,
+      accountType: user.accountType as AccountType,
+      accountTypeSelected: user.accountTypeSelectedAt != null,
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
+      phone: user.phone,
+      phoneNeedsEntry,
+      termsAccepted: user.termsAcceptedAt != null,
+      ndaAccepted: user.ndaAcceptedAt != null,
       canCompleteProfile: user.emailVerified || user.phoneVerified,
       pendingContact,
       requiresPortfolio: memberships.includes('surveyor'),
       avatarKey: user.avatarKey,
       fullName: user.fullName,
-      companyName,
+      companyName: clientProfile?.companyName ?? null,
+      address,
+      workEmail: accountProfile?.workEmail ?? null,
+      workEmailVerified: accountProfile?.workEmailVerified ?? false,
+      registrationNumber: accountProfile?.registrationNumber ?? null,
+      website: accountProfile?.website ?? null,
     };
   }
 
@@ -831,6 +1050,7 @@ export class AuthService {
       phoneVerified: user.phoneVerified,
       avatarKey: user.avatarKey,
       onboardingStep: user.onboardingStep as OnboardingStep,
+      accountType: user.accountType as AccountType,
       roleHint: hintFromMemberships(merged),
       memberships: merged,
       status: user.status as UserStatus,

@@ -20,7 +20,8 @@
         { "name": "NODE_ENV", "value": "production" },
         { "name": "API_PORT", "value": "4000" },
         { "name": "LOG_LEVEL", "value": "info" },
-        { "name": "AUTH0_GOOGLE_CONNECTION", "value": "google-oauth2" }
+        { "name": "AUTH0_GOOGLE_CONNECTION", "value": "google-oauth2" },
+        { "name": "AWS_REGION", "value": "<REGION>" }
       ],
       "secrets": [
         { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/DATABASE_URL" },
@@ -34,10 +35,8 @@
         { "name": "AUTH0_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_CLIENT_SECRET" },
         { "name": "AUTH0_MGMT_CLIENT_ID", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_MGMT_CLIENT_ID" },
         { "name": "AUTH0_MGMT_CLIENT_SECRET", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/AUTH0_MGMT_CLIENT_SECRET" },
-        { "name": "TWILIO_ACCOUNT_SID", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/TWILIO_ACCOUNT_SID" },
-        { "name": "TWILIO_AUTH_TOKEN", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/TWILIO_AUTH_TOKEN" },
-        { "name": "TWILIO_VERIFY_SERVICE_SID", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/TWILIO_VERIFY_SERVICE_SID" },
-        { "name": "SENDGRID_API_KEY", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/SENDGRID_API_KEY" }
+        { "name": "SES_FROM_EMAIL", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/SES_FROM_EMAIL" },
+        { "name": "SES_FROM_NAME", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:bld/api/SES_FROM_NAME" }
       ],
       "healthCheck": {
         "command": ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health >/dev/null 2>&1 || exit 1"],

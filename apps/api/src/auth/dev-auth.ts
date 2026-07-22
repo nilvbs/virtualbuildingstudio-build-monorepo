@@ -5,7 +5,7 @@ import type { AuthPrincipal } from '@surveylink/types';
  * DEVELOPMENT-ONLY auth bypass.
  *
  * When AUTH_DEV_MODE=true (and NODE_ENV is not production), a single fixed
- * account can sign in without Auth0/Twilio, and its static bearer token is
+ * account can sign in without Auth0/SNS, and its static bearer token is
  * accepted by the JWT guard. This exists purely to exercise the app locally
  * before the managed provider is configured. It is impossible to enable in
  * production and must never be relied on as a real auth mechanism.

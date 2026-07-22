@@ -16,12 +16,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { AuthenticatedUser, WorkspaceRole } from '@surveylink/types';
+import type { AccountType, AuthenticatedUser, OnboardingStatus, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
 import { colors, radius, shadows, spacing } from '../lib/theme';
 import { AlertBox, BackButton, Button, Field } from '../components/ui';
 import { AppHeader } from '../components/AppHeader';
 import { FadeInUp } from '../components/motion';
+
+const EMPTY_ADDRESS = {
+  line1: '',
+  line2: '',
+  city: '',
+  state: '',
+  postalCode: '',
+  country: '',
+};
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -35,8 +44,12 @@ function avatarIsUrl(value: string | null | undefined): boolean {
 export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
   const navigation = useNavigation();
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [accountType, setAccountType] = useState<AccountType>('individual');
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [website, setWebsite] = useState('');
+  const [address, setAddress] = useState(EMPTY_ADDRESS);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -44,12 +57,27 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  function applyOnboarding(onboarding: OnboardingStatus) {
+    setAccountType(onboarding.accountType);
+    setCompanyName(onboarding.companyName ?? '');
+    setRegistrationNumber(onboarding.registrationNumber ?? '');
+    setWebsite(onboarding.website ?? '');
+    setAddress({
+      line1: onboarding.address.line1 ?? '',
+      line2: onboarding.address.line2 ?? '',
+      city: onboarding.address.city ?? '',
+      state: onboarding.address.state ?? '',
+      postalCode: onboarding.address.postalCode ?? '',
+      country: onboarding.address.country ?? '',
+    });
+  }
+
   const load = useCallback(async () => {
     setError(null);
     const [nextUser, onboarding] = await Promise.all([api.me(), api.getOnboarding()]);
     setUser(nextUser);
     setFullName(nextUser.fullName);
-    setCompanyName(onboarding.companyName ?? '');
+    applyOnboarding(onboarding);
   }, []);
 
   useFocusEffect(
@@ -59,18 +87,19 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
   );
 
   function startEditing() {
-    if (!user) return;
-    setFullName(user.fullName);
     setSavedMessage(null);
     setError(null);
     setEditing(true);
   }
 
-  function cancelEditing() {
-    if (!user) return;
-    setFullName(user.fullName);
+  async function cancelEditing() {
     setEditing(false);
     setError(null);
+    try {
+      await load();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   }
 
   async function save() {
@@ -78,11 +107,27 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
     setSavedMessage(null);
     setError(null);
     try {
-      const next = await api.updateMe({
-        fullName: fullName.trim(),
-        ...(role === 'client' ? { companyName: companyName.trim() || null } : {}),
+      const isCompany = accountType === 'company';
+      await api.updateMe({
+        ...(role === 'client' || isCompany
+          ? { companyName: companyName.trim() || null }
+          : {}),
+        address: {
+          line1: address.line1.trim(),
+          line2: address.line2.trim() ? address.line2.trim() : null,
+          city: address.city.trim(),
+          state: address.state.trim(),
+          postalCode: address.postalCode.trim(),
+          country: address.country.trim(),
+        },
+        ...(isCompany
+          ? {
+              registrationNumber: registrationNumber.trim() || null,
+              website: website.trim() || null,
+            }
+          : {}),
       });
-      setUser(next);
+      await load();
       setEditing(false);
       setSavedMessage('Personal details saved.');
       DeviceEventEmitter.emit('bld:user-updated');
@@ -126,6 +171,9 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
       setUploadingPhoto(false);
     }
   }
+
+  const isCompany = accountType === 'company';
+  const showCompanyName = role === 'client' || isCompany;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -188,16 +236,18 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
                     hitSlop={8}
                   >
                     {uploadingPhoto ? (
-                      <ActivityIndicator color={colors.ice} size="small" />
+                      <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                      <Feather name="edit-2" size={14} color={colors.ice} />
+                      <Feather name="edit-2" size={13} color="#fff" />
                     )}
                   </Pressable>
                 </View>
-                <Text style={styles.name}>{user.fullName}</Text>
-                <Text style={styles.role}>
-                  {role === 'surveyor' ? 'Expert (surveyor)' : 'Client'}
-                </Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name}>{user.fullName}</Text>
+                  {user.emailVerified && user.phoneVerified ? (
+                    <Feather name="check-circle" size={18} color="#2563eb" />
+                  ) : null}
+                </View>
               </View>
 
               <View style={styles.card}>
@@ -231,11 +281,11 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
                   label="Full name"
                   icon="user"
                   value={fullName}
-                  onChangeText={setFullName}
-                  editable={editing}
+                  editable={false}
                   autoCapitalize="words"
                 />
-                {role === 'client' ? (
+                <Text style={styles.hint}>From your account · not editable here</Text>
+                {showCompanyName ? (
                   <Field
                     label="Company name"
                     icon="briefcase"
@@ -246,6 +296,63 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
                     placeholder="Optional"
                   />
                 ) : null}
+                {isCompany ? (
+                  <>
+                    <Field
+                      label="Registration number"
+                      value={registrationNumber}
+                      onChangeText={setRegistrationNumber}
+                      editable={editing}
+                    />
+                    <Field
+                      label="Website"
+                      icon="globe"
+                      value={website}
+                      onChangeText={setWebsite}
+                      editable={editing}
+                      autoCapitalize="none"
+                      placeholder="https://"
+                    />
+                  </>
+                ) : null}
+                <Field
+                  label={isCompany ? 'Company address' : 'Base address'}
+                  icon="map-pin"
+                  value={address.line1}
+                  onChangeText={(line1) => setAddress((a) => ({ ...a, line1 }))}
+                  editable={editing}
+                  placeholder="Address line 1"
+                />
+                <Field
+                  label="Address line 2 (optional)"
+                  value={address.line2}
+                  onChangeText={(line2) => setAddress((a) => ({ ...a, line2 }))}
+                  editable={editing}
+                />
+                <Field
+                  label="City"
+                  value={address.city}
+                  onChangeText={(city) => setAddress((a) => ({ ...a, city }))}
+                  editable={editing}
+                />
+                <Field
+                  label="State / region"
+                  value={address.state}
+                  onChangeText={(state) => setAddress((a) => ({ ...a, state }))}
+                  editable={editing}
+                />
+                <Field
+                  label="Postal code"
+                  value={address.postalCode}
+                  onChangeText={(postalCode) => setAddress((a) => ({ ...a, postalCode }))}
+                  editable={editing}
+                />
+                <Field
+                  label="Country"
+                  value={address.country}
+                  onChangeText={(country) => setAddress((a) => ({ ...a, country }))}
+                  editable={editing}
+                />
                 {editing ? (
                   <View style={styles.actions}>
                     <Button
@@ -258,7 +365,7 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
                       label="Cancel"
                       variant="outline"
                       disabled={busy}
-                      onPress={cancelEditing}
+                      onPress={() => void cancelEditing()}
                       style={{ flex: 1 }}
                     />
                   </View>
@@ -292,13 +399,13 @@ function InfoRow({
         <Text style={styles.infoLabel}>{label}</Text>
         <Text style={styles.infoValue}>{value}</Text>
       </View>
-      <View style={[styles.badge, verified ? styles.badgeOk : styles.badgeBad]}>
+      <View style={[styles.badge, verified ? styles.badgeOk : styles.badgeWarn]}>
         <Feather
           name={verified ? 'check-circle' : 'x-circle'}
           size={13}
-          color={verified ? colors.ok : '#9b3b34'}
+          color={verified ? colors.ok : colors.danger}
         />
-        <Text style={[styles.badgeText, { color: verified ? colors.ok : '#9b3b34' }]}>
+        <Text style={[styles.badgeText, verified ? styles.badgeTextOk : styles.badgeTextWarn]}>
           {verified ? 'Verified' : 'Not verified'}
         </Text>
       </View>
@@ -307,96 +414,94 @@ function InfoRow({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.page },
-  content: { padding: spacing.xl, paddingBottom: spacing.xxxl },
-  title: { fontSize: 27, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
-  lede: { color: colors.muted, fontSize: 14, marginTop: 4, marginBottom: spacing.lg },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.lg, paddingBottom: 48, gap: 14 },
+  title: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },
+  lede: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 4, marginBottom: 6 },
+  hint: { color: colors.muted, fontSize: 12, marginTop: -6, marginBottom: 4 },
   hero: {
     alignItems: 'center',
-    backgroundColor: colors.panel,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
+    backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.xl,
-    marginBottom: spacing.md,
     ...shadows.sm,
   },
-  avatarWrap: { position: 'relative', marginBottom: spacing.md },
+  avatarWrap: { position: 'relative', marginBottom: 10 },
   avatar: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.navy,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: colors.ice,
   },
   avatarImage: { width: '100%', height: '100%' },
-  avatarText: { color: colors.ice, fontSize: 24, fontWeight: '800' },
+  avatarText: { color: colors.ice, fontSize: 22, fontWeight: '800' },
   avatarEdit: {
     position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.navy,
-    borderWidth: 3,
-    borderColor: colors.ice,
+    right: -4,
+    bottom: -4,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#00246B',
+    borderWidth: 2,
+    borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 3,
   },
-  name: { fontSize: 20, fontWeight: '800', color: colors.text, textAlign: 'center' },
-  role: { color: colors.muted, fontSize: 13, marginTop: 4 },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  name: { fontSize: 18, fontWeight: '800', color: colors.text },
   card: {
-    backgroundColor: colors.panel,
+    gap: 10,
+    padding: spacing.lg,
     borderRadius: radius.lg,
+    backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
     ...shadows.sm,
   },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    gap: 12,
   },
-  cardTitle: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 12 },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 7,
-    borderRadius: 10,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.accentSoft2,
-    marginBottom: 12,
+    backgroundColor: colors.accentSoft,
   },
   editBtnText: { color: colors.navy, fontWeight: '700', fontSize: 13 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 4 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   infoIcon: {
     width: 36,
     height: 36,
-    borderRadius: radius.sm,
+    borderRadius: 10,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  infoValue: { color: colors.text, fontSize: 14, fontWeight: '600', marginTop: 2 },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
+  infoLabel: { color: colors.muted, fontSize: 11, fontWeight: '600' },
+  infoValue: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  divider: { height: 1, backgroundColor: colors.border },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -405,8 +510,10 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 999,
   },
-  badgeOk: { backgroundColor: 'rgba(5,150,105,0.12)' },
-  badgeBad: { backgroundColor: '#fff0ee' },
+  badgeOk: { backgroundColor: colors.okSoft },
+  badgeWarn: { backgroundColor: colors.dangerSoft },
   badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeTextOk: { color: colors.ok },
+  badgeTextWarn: { color: colors.danger },
   actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
 });

@@ -13,7 +13,7 @@ Route53 ─▶ ALB (HTTPS, ACM cert) ─▶ ECS Fargate service (NestJS, 2..N ta
                                        ├─▶ RDS Proxy ─▶ Aurora PostgreSQL (PostGIS) + read replica
                                        ├─▶ ElastiCache (Redis)
                                        ├─▶ S3 (portfolio uploads)
-                                       └─▶ Auth0 / Twilio / SendGrid / Sentry
+                                       └─▶ Auth0 / SES / SNS / Sentry
 ```
 
 The API is **stateless** (auth = Auth0 JWTs), so it scales horizontally: add
@@ -41,7 +41,7 @@ tasks doesn't exhaust Postgres connections.
 12. **Secrets Manager** entries under `bld/api/*` (see the `secrets` block in the task def).
 13. **IAM**:
     - `bld-api-execution-role` (pull from ECR, read Secrets Manager, write logs).
-    - `bld-api-task-role` (app permissions: S3 uploads, etc.).
+    - `bld-api-task-role` (app permissions: S3 uploads, SES send, SNS SMS publish).
     - `bld-api-deploy-role` — trusted by GitHub OIDC (`token.actions.githubusercontent.com`)
       for the deploy workflow (ECR push, ECS update, PassRole).
 14. **Route53** records: `api.<env>.bld.app` → ALB, `app.<env>.bld.app` → CloudFront.
@@ -82,11 +82,135 @@ CI runs `prisma migrate deploy` (against `DIRECT_DATABASE_URL`) **before** the
 new tasks roll out. Keep migrations backward-compatible so old + new tasks
 coexist during the rolling deploy (zero downtime). Never `migrate dev` in CI.
 
-## Scaling notes for millions/day
+## Email & SMS (Amazon SES + SNS)
 
-- **CDN absorbs web traffic**; cache aggressively.
-- **RDS Proxy is mandatory** — set `DATABASE_URL` to the proxy endpoint.
-- Route read-heavy/geo endpoints to the **Aurora reader**; cache hot reads in Redis.
-- Ensure **GIST indexes** on the PostGIS `geography` columns (the SQL migration already creates them).
-- Put **AWS WAF** on CloudFront/ALB for bot/DDoS protection; app-level throttling
-  (`@nestjs/throttler`) is a backstop, not the front line.
+The API sends verification and notification messages through:
+
+| Channel | AWS service | App code |
+|---------|-------------|----------|
+| Email OTP + transactional email | **SES** (SESv2) | `SesEmailSender` |
+| Phone OTP + transactional SMS | **SNS** `Publish` to phone | `SnsSmsSender` + `LocalPhoneVerifier` |
+
+OTP codes are generated and stored hashed in Postgres (`contact_otps`). SNS/SES only deliver the message. No Twilio/SendGrid.
+
+Phone numbers must be **E.164** (e.g. `+14155552671`, `+919876543210`).
+
+### Env vars
+
+```env
+AWS_REGION=us-east-2          # must match the region where SMS/SES are configured
+# Local only — on ECS use the task IAM role instead of keys:
+# AWS_ACCESS_KEY_ID=
+# AWS_SECRET_ACCESS_KEY=
+# AWS_PROFILE=
+
+SES_FROM_EMAIL=noreply@yourdomain.com
+SES_FROM_NAME=BLD
+# SES_CONFIGURATION_SET=
+
+# Optional alphanumeric Sender ID (supported countries only):
+# SNS_SMS_SENDER_ID=
+```
+
+If `AWS_REGION` / `SES_FROM_EMAIL` are missing, senders log `[stub email]` / `[stub sms]` and do not call AWS (local/CI safe).
+
+### IAM (task role / local IAM user)
+
+Minimum for SMS OTP testing and production publish:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish",
+        "sns:SetSMSAttributes"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Attach this to `bld-api-task-role` in ECS. Locally, grant the same on the IAM user behind `aws configure`.
+
+### One-time: default SMS type = Transactional
+
+OTP traffic should be **Transactional**. The app also sets
+`AWS.SNS.SMS.SMSType=Transactional` on every `Publish`. Optionally set the
+account default once (CLI):
+
+```bash
+aws sns set-sms-attributes \
+  --attributes DefaultSMSType=Transactional \
+  --region "$AWS_REGION"
+```
+
+### Testing SMS while still in the SNS Sandbox
+
+In sandbox, SNS can only deliver to **verified destination phone numbers**.
+
+1. Open **AWS End User Messaging SMS** (same region as `AWS_REGION`).
+2. Go to **Verified destination phone numbers** → **Add**.
+3. Enter the number in E.164 (e.g. `+91xxxxxxxxxx`).
+4. Enter the verification code AWS texts you.
+5. Put credentials + region in `.env` (or `aws configure`).
+6. Start the API and trigger phone OTP from web/mobile onboarding.
+
+Sandbox checklist:
+
+- [ ] Destination number verified in that region  
+- [ ] IAM allows `sns:Publish`  
+- [ ] `AWS_REGION` set (otherwise the app stubs SMS)  
+- [ ] Number in the app is E.164 and matches the verified number  
+
+CLI smoke test (optional):
+
+```bash
+aws sns publish \
+  --phone-number "+919876543210" \
+  --message "Your BLD verification code is 123456" \
+  --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}' \
+  --region "$AWS_REGION"
+```
+
+### SES (email) quick path
+
+1. SES → verify domain or from-address in `AWS_REGION`.
+2. Leave SES sandbox (or verify recipient addresses while still in sandbox).
+3. Set `SES_FROM_EMAIL` / `SES_FROM_NAME` (Secrets Manager in ECS).
+
+### Production (exit SMS sandbox)
+
+After AWS approves **production SMS access**:
+
+- Any E.164 destination can receive messages (no per-number verify step).
+- Raise the monthly SMS spend limit if needed.
+- **No application code changes** — same `PublishCommand` path.
+- Keep message type **Transactional** for OTPs.
+
+### OTP flow (already implemented)
+
+```
+Generate 6-digit OTP
+       │
+       ▼
+Hash + store in contact_otps (10 min TTL)
+       │
+       ▼
+SNS Publish (Transactional SMS)
+       │
+       ▼
+User enters code → verify hash → mark consumed
+```
+
+Provider swap stays behind `SmsSender` / `EmailSender` / `PhoneVerifier` interfaces
+under `apps/api/src/notifications/delivery` and `apps/api/src/auth/phone`.
+

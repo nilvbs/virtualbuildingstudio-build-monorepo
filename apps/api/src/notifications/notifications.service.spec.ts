@@ -51,7 +51,7 @@ describe('NotificationsService', () => {
     });
 
     it('does not throw if a delivery channel fails', async () => {
-      email.send.mockRejectedValueOnce(new Error('sendgrid down'));
+      email.send.mockRejectedValueOnce(new Error('ses down'));
 
       await expect(
         service.notifyMatchCreated({

@@ -12,15 +12,18 @@ import { SuperAdminBootstrapService } from './super-admin.bootstrap';
 import { IDENTITY_PROVIDER } from './identity/identity-provider';
 import { Auth0IdentityProvider } from './identity/auth0.identity-provider';
 import { PHONE_VERIFIER } from './phone/phone-verifier';
-import { TwilioPhoneVerifier } from './phone/twilio.phone-verifier';
+import { LocalPhoneVerifier } from './phone/local.phone-verifier';
 import { EmailOtpService } from './email/email-otp.service';
 import { EMAIL_SENDER } from '../notifications/delivery/email-sender';
-import { SendgridEmailSender } from '../notifications/delivery/sendgrid.email-sender';
+import { SesEmailSender } from '../notifications/delivery/ses.email-sender';
+import { SMS_SENDER } from '../notifications/delivery/sms-sender';
+import { SnsSmsSender } from '../notifications/delivery/sns.sms-sender';
 import { AvatarStorageService } from './avatar-storage.service';
 
 /**
- * Auth module — signup, email/phone OTP, onboarding, sessions via Auth0 + Twilio
- * Verify + local email OTP. Registers app-wide JWT / role / permissions guards.
+ * Auth module — signup, email/phone OTP, onboarding, sessions via Auth0 +
+ * Amazon SES (email) + Amazon SNS (SMS). Registers app-wide JWT / role /
+ * permissions guards.
  */
 @Module({
   imports: [PassportModule],
@@ -33,8 +36,9 @@ import { AvatarStorageService } from './avatar-storage.service';
     EmailOtpService,
     AvatarStorageService,
     { provide: IDENTITY_PROVIDER, useClass: Auth0IdentityProvider },
-    { provide: PHONE_VERIFIER, useClass: TwilioPhoneVerifier },
-    { provide: EMAIL_SENDER, useClass: SendgridEmailSender },
+    { provide: EMAIL_SENDER, useClass: SesEmailSender },
+    { provide: SMS_SENDER, useClass: SnsSmsSender },
+    { provide: PHONE_VERIFIER, useClass: LocalPhoneVerifier },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

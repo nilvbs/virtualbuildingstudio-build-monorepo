@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  ACCOUNT_TYPES,
   ROLE_HINTS,
   PROJECT_STATUSES,
   MATCH_STATUSES,
@@ -52,6 +53,7 @@ export const centsSchema = z.number().int().nonnegative();
 // --- Enum schemas (mirror DB CHECK constraints) ---
 
 export const roleHintSchema = z.enum(ROLE_HINTS);
+export const accountTypeSchema = z.enum(ACCOUNT_TYPES);
 export const workspaceRoleSchema = z.enum(WORKSPACE_ROLES);
 export const membershipRoleSchema = z.enum(MEMBERSHIP_ROLES);
 /** Signup may provision marketplace roles only. Staff are invited by super admin. */
@@ -81,6 +83,8 @@ export const signupSchema = z.object({
   password: passwordSchema,
   /** Marketplace: client | surveyor. Staff portal: admin. */
   roleHint: signupRoleSchema.default('client'),
+  /** Optional; preferred path is choosing account type on the first onboarding screen. */
+  accountType: accountTypeSchema.default('individual').optional(),
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 
@@ -116,11 +120,32 @@ export const verifyPhoneSchema = z.object({
 });
 export type VerifyPhoneInput = z.infer<typeof verifyPhoneSchema>;
 
+/** Optional phone update before sending SMS OTP during onboarding. */
+export const startPhoneVerificationSchema = z
+  .object({
+    phone: phoneSchema.optional(),
+  })
+  .strict();
+export type StartPhoneVerificationInput = z.infer<typeof startPhoneVerificationSchema>;
+
 /** Confirm email OTP (replaces Auth0 link-only verify for marketplace signup). */
 export const verifyEmailSchema = z.object({
   code: z.string().regex(/^\d{4,10}$/, 'Code must be 4-10 digits'),
 });
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+
+/** Structured postal address collected during onboarding (company or base address). */
+export const postalAddressSchema = z
+  .object({
+    line1: z.string().trim().min(1, 'Address line 1 is required').max(200),
+    line2: z.string().trim().max(200).nullable().optional(),
+    city: z.string().trim().min(1, 'City is required').max(120),
+    state: z.string().trim().min(1, 'State / region is required').max(120),
+    postalCode: z.string().trim().min(1, 'Postal code is required').max(40),
+    country: z.string().trim().min(1, 'Country is required').max(120),
+  })
+  .strict();
+export type PostalAddressInput = z.infer<typeof postalAddressSchema>;
 
 /** Personal profile fields collected after contact OTP. */
 export const updateMeSchema = z
@@ -130,16 +155,58 @@ export const updateMeSchema = z
     avatarKey: z.string().min(1).max(500).nullable().optional(),
     /** Client company name (ignored for surveyor-only accounts). */
     companyName: z.string().min(1).max(200).nullable().optional(),
+    /** Base / company postal address from account profile. */
+    address: postalAddressSchema.optional(),
+    registrationNumber: z.string().trim().max(120).nullable().optional(),
+    website: z.string().trim().max(300).nullable().optional(),
   })
   .strict();
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;
 
-/** Advance from complete_profile → portfolio|done after personal details are saved. */
+/** First onboarding glance — choose company vs individual before Terms/NDA. */
+export const selectAccountTypeSchema = z
+  .object({
+    accountType: accountTypeSchema,
+  })
+  .strict();
+export type SelectAccountTypeInput = z.infer<typeof selectAccountTypeSchema>;
+
+/** Middle acceptance step — both Terms & Conditions and NDA must be accepted. */
+export const acceptTermsSchema = z
+  .object({
+    acceptTerms: z.literal(true, {
+      errorMap: () => ({ message: 'You must accept the Terms & Conditions to continue' }),
+    }),
+    acceptNda: z.literal(true, {
+      errorMap: () => ({ message: 'You must accept the NDA to continue' }),
+    }),
+  })
+  .strict();
+export type AcceptTermsInput = z.infer<typeof acceptTermsSchema>;
+
+/** Company-only: request an OTP for the corporate work email. */
+export const startWorkEmailSchema = z.object({ workEmail: emailSchema }).strict();
+export type StartWorkEmailInput = z.infer<typeof startWorkEmailSchema>;
+
+/** Company-only: confirm the work email OTP. */
+export const verifyWorkEmailSchema = z
+  .object({ code: z.string().regex(/^\d{4,10}$/, 'Code must be 4-10 digits') })
+  .strict();
+export type VerifyWorkEmailInput = z.infer<typeof verifyWorkEmailSchema>;
+
+/**
+ * Advance from complete_profile → portfolio|done after personal details are saved.
+ * Address is required for both account types; company accounts also send registration
+ * number (required) and website (optional). Work email is verified separately.
+ */
 export const completeProfileSchema = z
   .object({
     fullName: z.string().min(1).max(200).optional(),
     avatarKey: z.string().min(1).max(500).nullable().optional(),
     companyName: z.string().min(1).max(200).nullable().optional(),
+    address: postalAddressSchema.optional(),
+    registrationNumber: z.string().trim().max(120).nullable().optional(),
+    website: z.string().trim().max(300).nullable().optional(),
   })
   .strict();
 export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
@@ -160,6 +227,8 @@ export const completeRegistrationSchema = z.object({
   email: emailSchema.optional(),
   phone: phoneSchema,
   roleHint: workspaceRoleSchema.default('client'),
+  /** Optional; preferred path is choosing account type on the first onboarding screen. */
+  accountType: accountTypeSchema.default('individual').optional(),
 });
 export type CompleteRegistrationInput = z.infer<typeof completeRegistrationSchema>;
 
@@ -179,15 +248,41 @@ export const portfolioItemSchema = z.object({
   caption: z.string().max(300).optional(),
 });
 
+/** Structured Core + Identity portfolio payload (validated loosely for nested lists). */
+export const surveyorPortfolioDetailsSchema = z
+  .object({
+    travelNationwide: z.boolean().optional(),
+    internationalProjects: z.boolean().optional(),
+    remoteServices: z.boolean().optional(),
+    availability: z
+      .enum(['available_immediately', 'available_in_3_days', 'available_next_week', 'busy_until'])
+      .nullable()
+      .optional(),
+    busyUntil: z.string().max(40).nullable().optional(),
+    currency: z.string().max(8).optional(),
+    hourlyRateCents: z.number().int().nonnegative().nullable().optional(),
+    minimumProjectCents: z.number().int().nonnegative().nullable().optional(),
+    emergencyRateCents: z.number().int().nonnegative().nullable().optional(),
+    travelCharges: z.enum(['included', 'extra']).nullable().optional(),
+    languages: z.array(z.string().max(40)).max(20).optional(),
+    industries: z.array(z.string().max(40)).max(30).optional(),
+    certifications: z.array(z.record(z.string(), z.unknown())).max(40).optional(),
+    documents: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
+    projects: z.array(z.record(z.string(), z.unknown())).max(40).optional(),
+    identity: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .passthrough();
+
 export const createSurveyorProfileSchema = z.object({
-  bio: z.string().max(2000).optional(),
+  bio: z.string().max(8000).optional(),
   services: z.array(surveyServiceSchema).min(1, 'Select at least one service'),
-  equipment: z.array(z.string().min(1).max(120)).max(50).default([]),
+  equipment: z.array(z.string().min(1).max(120)).max(80).default([]),
   location: geoPointSchema.optional(),
   baseCity: z.string().max(200).optional(),
-  radiusKm: z.number().int().min(1).max(1000).default(25),
+  radiusKm: z.number().int().min(1).max(10000).default(25),
   dayRateCents: centsSchema.optional(),
   portfolio: z.array(portfolioItemSchema).max(30).default([]),
+  details: surveyorPortfolioDetailsSchema.optional(),
   isMatchable: z.boolean().default(true),
 });
 export type CreateSurveyorProfileInput = z.infer<typeof createSurveyorProfileSchema>;

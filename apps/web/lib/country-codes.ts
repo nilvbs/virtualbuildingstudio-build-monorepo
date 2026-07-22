@@ -83,3 +83,31 @@ export function toE164(dial: string, national: string): string {
 export function isE164(phone: string): boolean {
   return /^\+[1-9]\d{6,14}$/.test(phone);
 }
+
+export interface PhoneInputValue {
+  countryIso: string;
+  national: string;
+}
+
+/** Map stored E.164 back into country + national for the phone input. */
+export function e164ToPhoneInput(phone: string): PhoneInputValue {
+  if (!phone || !phone.startsWith('+')) {
+    return { countryIso: DEFAULT_COUNTRY_ISO, national: '' };
+  }
+  const digits = phone.slice(1);
+  const sorted = [...COUNTRY_DIALS].sort((a, b) => b.dial.length - a.dial.length);
+  for (const country of sorted) {
+    const dialDigits = country.dial.replace(/\D/g, '');
+    if (digits.startsWith(dialDigits)) {
+      return {
+        countryIso: country.iso,
+        national: digits.slice(dialDigits.length),
+      };
+    }
+  }
+  return { countryIso: DEFAULT_COUNTRY_ISO, national: digits };
+}
+
+export function isPlaceholderPhone(phone: string): boolean {
+  return !phone || phone === '+10000000001' || phone === '+1' || phone.length < 8;
+}

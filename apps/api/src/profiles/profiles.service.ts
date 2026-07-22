@@ -7,10 +7,11 @@ import { Prisma, type SurveyorProfile as SurveyorProfileRow, type User } from '@
 import type {
   PortfolioItem,
   SurveyService,
+  SurveyorPortfolioDetails,
   SurveyorProfile,
   SurveyorStatus,
 } from '@surveylink/types';
-import { surveyorProfileCompletion } from '@surveylink/types';
+import { normalizePortfolioDetails, surveyorProfileCompletion } from '@surveylink/types';
 import type {
   CreateSurveyorProfileInput,
   UpdateSurveyorProfileInput,
@@ -20,6 +21,15 @@ import { PrismaService } from '../prisma/prisma.service';
 interface GeoRow {
   lng: number | null;
   lat: number | null;
+}
+
+function identityBio(details: SurveyorPortfolioDetails): string | null {
+  const identity = details.identity;
+  if (!identity) return null;
+  if (identity.kind === 'individual') {
+    return identity.aboutMe.trim() || identity.headline.trim() || null;
+  }
+  return identity.aboutCompany.trim() || identity.tagline.trim() || null;
 }
 
 @Injectable()
@@ -40,16 +50,20 @@ export class ProfilesService {
       throw new ConflictException('A surveyor profile already exists for this account');
     }
 
+    const details = normalizePortfolioDetails(input.details ?? {});
+    const bio = input.bio ?? identityBio(details);
+
     const row = await this.prisma.surveyorProfile.create({
       data: {
         userId: user.id,
-        bio: input.bio ?? null,
+        bio,
         services: input.services as Prisma.InputJsonValue,
         equipment: input.equipment as Prisma.InputJsonValue,
         baseCity: input.baseCity ?? null,
         radiusKm: input.radiusKm,
         dayRateCents: input.dayRateCents != null ? BigInt(input.dayRateCents) : null,
         portfolio: input.portfolio as Prisma.InputJsonValue,
+        details: details as unknown as Prisma.InputJsonValue,
         isMatchable: input.isMatchable,
       },
     });
@@ -90,6 +104,13 @@ export class ProfilesService {
     }
     if (input.portfolio !== undefined) data.portfolio = input.portfolio as Prisma.InputJsonValue;
     if (input.isMatchable !== undefined) data.isMatchable = input.isMatchable;
+    if (input.details !== undefined) {
+      const details = normalizePortfolioDetails(input.details);
+      data.details = details as unknown as Prisma.InputJsonValue;
+      if (input.bio === undefined) {
+        data.bio = identityBio(details);
+      }
+    }
 
     await this.prisma.surveyorProfile.update({ where: { id: existing.id }, data });
 
@@ -127,6 +148,9 @@ export class ProfilesService {
       point && point.lng != null && point.lat != null
         ? { lng: Number(point.lng), lat: Number(point.lat) }
         : null;
+    const details = normalizePortfolioDetails(
+      (profile as { details?: unknown }).details ?? {},
+    );
     const completion = surveyorProfileCompletion({
       services: (profile.services as unknown as SurveyService[]) ?? [],
       equipment: (profile.equipment as unknown as string[]) ?? [],
@@ -134,6 +158,7 @@ export class ProfilesService {
       baseCity: profile.baseCity,
       location,
       dayRateCents: profile.dayRateCents != null ? Number(profile.dayRateCents) : null,
+      details,
     });
 
     const matches = await this.prisma.match.findMany({
@@ -210,6 +235,7 @@ export class ProfilesService {
       radiusKm: row.radiusKm,
       dayRateCents: row.dayRateCents != null ? Number(row.dayRateCents) : null,
       portfolio: (row.portfolio as unknown as PortfolioItem[]) ?? [],
+      details: normalizePortfolioDetails((row as { details?: unknown }).details ?? {}),
       isMatchable: row.isMatchable,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

@@ -19,6 +19,10 @@ function makeUser(overrides: Partial<User> = {}): User {
     avatarKey: null,
     onboardingStep: 'verify_contact',
     roleHint: 'client',
+    accountType: 'individual',
+    accountTypeSelectedAt: null,
+    termsAcceptedAt: null,
+    ndaAcceptedAt: null,
     status: 'active',
     authProvider: 'auth0',
     authSubject: 'auth0|123',
@@ -112,7 +116,7 @@ describe('AuthService', () => {
     it('creates the identity + local user, starts OTPs, and returns a session', async () => {
       prisma.user.findFirst.mockResolvedValue(null);
       identity.createIdentity.mockResolvedValue({ subject: 'auth0|123', emailVerified: false });
-      prisma.user.create.mockResolvedValue(makeUser());
+      prisma.user.create.mockResolvedValue(makeUser({ onboardingStep: 'select_account_type' }));
 
       const result = await service.signup(signupInput);
 
@@ -128,18 +132,18 @@ describe('AuthService', () => {
             authProvider: 'auth0',
             authSubject: 'auth0|123',
             emailVerified: false,
-            onboardingStep: 'verify_contact',
+            onboardingStep: 'select_account_type',
           }),
         }),
       );
       expect(emailOtp.start).toHaveBeenCalledWith('user-uuid', signupInput.email);
-      expect(phone.startVerification).toHaveBeenCalledWith(signupInput.phone);
+      expect(phone.startVerification).toHaveBeenCalledWith('user-uuid', signupInput.phone);
       expect(identity.login).toHaveBeenCalledWith(signupInput.email, signupInput.password);
       expect(result.session.accessToken).toBe('tok');
       expect(result.user).toMatchObject({
         emailVerified: false,
         phoneVerified: false,
-        onboardingStep: 'verify_contact',
+        onboardingStep: 'select_account_type',
       });
     });
 
@@ -162,7 +166,7 @@ describe('AuthService', () => {
 
       const result = await service.verifyPhone(principal, '123456');
 
-      expect(phone.checkVerification).toHaveBeenCalledWith('+14155552671', '123456');
+      expect(phone.checkVerification).toHaveBeenCalledWith('user-uuid', '+14155552671', '123456');
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-uuid' },
         data: { phoneVerified: true, onboardingStep: 'complete_profile' },

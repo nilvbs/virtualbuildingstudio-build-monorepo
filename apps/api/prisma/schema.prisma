@@ -31,9 +31,17 @@ model User {
   avatarKey      String?  @map("avatar_key")
   /**
    * Post-signup gate for marketplace users (client + surveyor):
-   * verify_contact → complete_profile → portfolio (surveyor) → done
+   * select_account_type → accept_terms → verify_contact → complete_profile → portfolio (surveyor) → done
    */
-  onboardingStep String   @default("verify_contact") @map("onboarding_step")
+  onboardingStep String   @default("select_account_type") @map("onboarding_step")
+  /** Company vs individual — chosen on the first onboarding screen; drives later fields. */
+  accountType    String   @default("individual") @map("account_type")
+  /** Set when the user confirms individual vs company on onboarding (required gate). */
+  accountTypeSelectedAt DateTime? @map("account_type_selected_at") @db.Timestamptz(6)
+  /** Set once the user accepts the Terms & Conditions (required before onboarding). */
+  termsAcceptedAt DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  /** Set once the user accepts the NDA (required before onboarding). */
+  ndaAcceptedAt   DateTime? @map("nda_accepted_at") @db.Timestamptz(6)
   /** @deprecated Prefer UserRole memberships; kept for back-compat / display. */
   roleHint       String   @default("client") @map("role_hint")
   status         String   @default("active")
@@ -46,6 +54,7 @@ model User {
   clientProfile   ClientProfile?
   surveyorProfile SurveyorProfile?
   adminProfile    AdminProfile?
+  accountProfile  AccountProfile?
   contactOtps     ContactOtp[]
   projects        Project[]
   matchesMade     Match[]          @relation("MatchedBy")
@@ -55,7 +64,7 @@ model User {
   @@map("users")
 }
 
-/** Short-lived email OTP codes (phone OTP stays on Twilio Verify). */
+/** Short-lived contact OTP codes (email, work_email, phone) delivered via SES/SNS. */
 model ContactOtp {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId      String    @map("user_id") @db.Uuid
@@ -99,6 +108,32 @@ model ClientProfile {
   @@map("client_profiles")
 }
 
+/**
+ * Onboarding-collected account details shared by both roles.
+ * Individuals fill in a base address; companies add work email (with its own OTP),
+ * a company address, registration number, and an optional website.
+ */
+model AccountProfile {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  addressLine1       String?  @map("address_line1")
+  addressLine2       String?  @map("address_line2")
+  city               String?
+  state              String?
+  postalCode         String?  @map("postal_code")
+  country            String?
+  workEmail          String?  @map("work_email")
+  workEmailVerified  Boolean  @default(false) @map("work_email_verified")
+  registrationNumber String?  @map("registration_number")
+  website            String?
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account_profiles")
+}
+
 model AdminProfile {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId           String   @unique @map("user_id") @db.Uuid
@@ -128,6 +163,8 @@ model SurveyorProfile {
   radiusKm     Int                                    @default(25) @map("radius_km")
   dayRateCents BigInt?                                @map("day_rate_cents")
   portfolio    Json                                   @default("[]")
+  /** Core + Identity portfolio payload (services coverage, pricing, identity, etc.). */
+  details      Json                                   @default("{}")
   isMatchable  Boolean                                @default(true) @map("is_matchable")
   createdAt    DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime                               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

@@ -21,8 +21,17 @@ export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
 export const USER_STATUSES = ['active', 'suspended'] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
-/** Marketplace post-signup onboarding gate (client + surveyor). */
+/** How the account signed up: as a company or as an individual. */
+export const ACCOUNT_TYPES = ['individual', 'company'] as const;
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
+
+/**
+ * Marketplace post-signup onboarding gate (client + surveyor).
+ * select_account_type → accept_terms (T&C + NDA) → verify_contact → complete_profile → portfolio (surveyor) → done
+ */
 export const ONBOARDING_STEPS = [
+  'select_account_type',
+  'accept_terms',
   'verify_contact',
   'complete_profile',
   'portfolio',
@@ -30,11 +39,33 @@ export const ONBOARDING_STEPS = [
 ] as const;
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
 
+/** Structured postal address (company address or individual base address). */
+export interface PostalAddress {
+  line1: string | null;
+  line2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
+}
+
 /** Snapshot of where the user is in post-signup onboarding. */
 export interface OnboardingStatus {
   step: OnboardingStep;
+  /** Company accounts collect work email + company details; individuals collect a base address. */
+  accountType: AccountType;
+  /** False until the user picks individual vs company on the first onboarding screen. */
+  accountTypeSelected: boolean;
   emailVerified: boolean;
   phoneVerified: boolean;
+  /** Current phone on the account (E.164). */
+  phone: string;
+  /** True when the user should enter or confirm their number before SMS OTP. */
+  phoneNeedsEntry: boolean;
+  /** Terms & Conditions accepted — required before onboarding may proceed. */
+  termsAccepted: boolean;
+  /** NDA accepted — required before onboarding may proceed. */
+  ndaAccepted: boolean;
   /** At least one contact channel is verified — unlocks personal profile. */
   canCompleteProfile: boolean;
   /** Remaining contact channel still needs OTP (if any). */
@@ -44,6 +75,13 @@ export interface OnboardingStatus {
   avatarKey: string | null;
   fullName: string;
   companyName: string | null;
+  /** Company address (company) or base address (individual). */
+  address: PostalAddress;
+  /** Company-only: corporate email that requires its own OTP verification. */
+  workEmail: string | null;
+  workEmailVerified: boolean;
+  registrationNumber: string | null;
+  website: string | null;
 }
 
 // --- Projects ---
@@ -203,6 +241,8 @@ export interface AuthenticatedUser {
   phoneVerified: boolean;
   avatarKey: string | null;
   onboardingStep: OnboardingStep;
+  /** Company vs individual — chosen at signup. */
+  accountType: AccountType;
   /** @deprecated Derived from memberships for older clients. */
   roleHint: RoleHint;
   /** Segregated role memberships (client / surveyor / admin). */
@@ -365,24 +405,14 @@ export function isValidTransition<T extends string>(
 
 // --- Surveyor domain ---
 
-export const SURVEY_SERVICES = [
-  'laser_scanning',
-  'drone',
-  'topographic',
-  'measured_building',
-  'land',
-  'scan_to_bim',
-] as const;
-export type SurveyService = (typeof SURVEY_SERVICES)[number];
+export * from './surveyor-portfolio';
 
-export const SURVEY_SERVICE_LABELS: Record<SurveyService, string> = {
-  laser_scanning: 'Laser scanning',
-  drone: 'Drone',
-  topographic: 'Topographic',
-  measured_building: 'Measured building',
-  land: 'Land',
-  scan_to_bim: 'Scan-to-BIM',
-};
+import type {
+  EquipmentId,
+  SurveyorPortfolioDetails,
+  SurveyService,
+} from './surveyor-portfolio';
+import { emptyPortfolioDetails } from './surveyor-portfolio';
 
 /** A portfolio image; DB stores only the object-storage key (S3), not a URL. */
 export interface PortfolioItem {
@@ -395,6 +425,7 @@ export interface SurveyorProfile {
   userId: string;
   bio: string | null;
   services: SurveyService[];
+  /** Selected equipment catalog IDs (and any legacy free-text entries). */
   equipment: string[];
   /** Base location in WGS84, or null if not set. */
   location: GeoPoint | null;
@@ -403,6 +434,8 @@ export interface SurveyorProfile {
   /** Day rate in integer cents (never float). */
   dayRateCents: number | null;
   portfolio: PortfolioItem[];
+  /** Extended Core + Identity portfolio payload. */
+  details: SurveyorPortfolioDetails;
   isMatchable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -411,11 +444,14 @@ export interface SurveyorProfile {
 /** Fields that count toward surveyor profile completion (%). */
 export const SURVEYOR_PROFILE_COMPLETION_CHECKS = [
   { key: 'services', label: 'Services offered' },
-  { key: 'baseCity', label: 'Base city' },
+  { key: 'baseCity', label: 'Base location' },
   { key: 'location', label: 'Map location' },
   { key: 'equipment', label: 'Equipment' },
-  { key: 'bio', label: 'Bio' },
-  { key: 'dayRate', label: 'Day rate' },
+  { key: 'availability', label: 'Availability' },
+  { key: 'pricing', label: 'Pricing' },
+  { key: 'languages', label: 'Languages' },
+  { key: 'industries', label: 'Industries' },
+  { key: 'identity', label: 'Identity profile' },
 ] as const;
 
 export type SurveyorProfileCompletionKey =
@@ -435,7 +471,23 @@ type ProfileCompletionSource = {
   baseCity?: string | null;
   location?: GeoPoint | null;
   dayRateCents?: number | null;
+  details?: SurveyorPortfolioDetails | null;
 };
+
+function identityComplete(details: SurveyorPortfolioDetails | null | undefined): boolean {
+  const identity = details?.identity;
+  if (!identity) return false;
+  if (identity.kind === 'individual') {
+    return Boolean(
+      identity.professionalTitle.trim() &&
+        identity.headline.trim() &&
+        identity.aboutMe.trim(),
+    );
+  }
+  return Boolean(
+    identity.companyName.trim() && identity.tagline.trim() && identity.aboutCompany.trim(),
+  );
+}
 
 export function surveyorProfileCompletion(
   profile: ProfileCompletionSource | null | undefined,
@@ -449,13 +501,21 @@ export function surveyorProfileCompletion(
     };
   }
 
+  const details = profile.details ?? emptyPortfolioDetails();
+  const hasPricing =
+    (profile.dayRateCents != null && profile.dayRateCents > 0) ||
+    (details.hourlyRateCents != null && details.hourlyRateCents > 0);
+
   const checks: Record<SurveyorProfileCompletionKey, boolean> = {
     services: (profile.services?.length ?? 0) > 0,
     baseCity: Boolean(profile.baseCity?.trim()),
     location: Boolean(profile.location),
     equipment: (profile.equipment?.length ?? 0) > 0,
-    bio: Boolean(profile.bio?.trim()),
-    dayRate: profile.dayRateCents != null && profile.dayRateCents > 0,
+    availability: Boolean(details.availability),
+    pricing: hasPricing,
+    languages: details.languages.length > 0,
+    industries: details.industries.length > 0,
+    identity: identityComplete(details),
   };
 
   const done = SURVEYOR_PROFILE_COMPLETION_CHECKS.filter((c) => checks[c.key]).map((c) => c.key);
@@ -464,6 +524,9 @@ export function surveyorProfileCompletion(
 
   return { percent, complete: missing.length === 0, done, missing };
 }
+
+/** @deprecated Prefer EquipmentId catalog; kept for typing helpers. */
+export type LegacyEquipment = EquipmentId | string;
 
 export interface SurveyorStatusMatch {
   matchId: string;

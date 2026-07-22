@@ -15,6 +15,7 @@ function profileRow(overrides: Record<string, unknown> = {}) {
     radiusKm: 50,
     dayRateCents: BigInt(120000),
     portfolio: [],
+    details: {},
     isMatchable: true,
     createdAt: now,
     updatedAt: now,

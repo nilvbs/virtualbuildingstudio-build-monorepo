@@ -11,8 +11,11 @@ export function homePathForRoleHint(role: RoleHint | WorkspaceRole): string {
 
 /** Prefer login-selected workspace; fall back to memberships / legacy hint. */
 export function homePathForUser(
-  user: Pick<AuthenticatedUser, 'roles' | 'roleHint' | 'memberships'>,
+  user: Pick<AuthenticatedUser, 'roles' | 'roleHint' | 'memberships' | 'onboardingStep'>,
 ): string {
+  if (user.onboardingStep && user.onboardingStep !== 'done') {
+    return '/onboarding';
+  }
   if (user.roles.includes('admin') && !(user.memberships ?? []).some((m) => m === 'client' || m === 'surveyor')) {
     return '/build/admin/queue';
   }

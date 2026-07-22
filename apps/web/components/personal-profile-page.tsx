@@ -3,16 +3,24 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   AtSign,
+  BadgeCheck,
   CheckCircle2,
   LoaderCircle,
   Pencil,
   Phone,
-  ShieldCheck,
-  UserRound,
   XCircle,
 } from 'lucide-react';
-import type { AuthenticatedUser, WorkspaceRole } from '@surveylink/types';
+import type { AccountType, AuthenticatedUser, OnboardingStatus, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
+
+const EMPTY_ADDRESS = {
+  line1: '',
+  line2: '',
+  city: '',
+  state: '',
+  postalCode: '',
+  country: '',
+};
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -30,8 +38,12 @@ function VerificationBadge({ verified }: { verified: boolean }) {
 
 export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  const [accountType, setAccountType] = useState<AccountType>('individual');
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [website, setWebsite] = useState('');
+  const [address, setAddress] = useState(EMPTY_ADDRESS);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -39,12 +51,27 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   const [error, setError] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  function applyOnboarding(onboarding: OnboardingStatus) {
+    setAccountType(onboarding.accountType);
+    setCompanyName(onboarding.companyName ?? '');
+    setRegistrationNumber(onboarding.registrationNumber ?? '');
+    setWebsite(onboarding.website ?? '');
+    setAddress({
+      line1: onboarding.address.line1 ?? '',
+      line2: onboarding.address.line2 ?? '',
+      city: onboarding.address.city ?? '',
+      state: onboarding.address.state ?? '',
+      postalCode: onboarding.address.postalCode ?? '',
+      country: onboarding.address.country ?? '',
+    });
+  }
+
   useEffect(() => {
     Promise.all([api.me(), api.getOnboarding()])
       .then(([nextUser, onboarding]) => {
         setUser(nextUser);
         setFullName(nextUser.fullName);
-        setCompanyName(onboarding.companyName ?? '');
+        applyOnboarding(onboarding);
       })
       .catch((err) => setError(errorMessage(err)));
   }, []);
@@ -55,11 +82,28 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
     setSavedMessage(null);
     setError(null);
     try {
-      const next = await api.updateMe({
-        fullName: fullName.trim(),
-        ...(role === 'client' ? { companyName: companyName.trim() || null } : {}),
+      const isCompany = accountType === 'company';
+      await api.updateMe({
+        ...(role === 'client' || isCompany
+          ? { companyName: companyName.trim() ? companyName.trim() : null }
+          : {}),
+        address: {
+          line1: address.line1.trim(),
+          line2: address.line2.trim() ? address.line2.trim() : null,
+          city: address.city.trim(),
+          state: address.state.trim(),
+          postalCode: address.postalCode.trim(),
+          country: address.country.trim(),
+        },
+        ...(isCompany
+          ? {
+              registrationNumber: registrationNumber.trim() || null,
+              website: website.trim() || null,
+            }
+          : {}),
       });
-      setUser(next);
+      const onboarding = await api.getOnboarding();
+      applyOnboarding(onboarding);
       setEditing(false);
       setSavedMessage('Personal details saved.');
       window.dispatchEvent(new Event('bld:user-updated'));
@@ -71,18 +115,21 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   }
 
   function startEditing() {
-    if (!user) return;
-    setFullName(user.fullName);
     setSavedMessage(null);
     setError(null);
     setEditing(true);
   }
 
-  function cancelEditing() {
-    if (!user) return;
-    setFullName(user.fullName);
+  async function cancelEditing() {
     setEditing(false);
     setError(null);
+    try {
+      const onboarding = await api.getOnboarding();
+      if (user) setFullName(user.fullName);
+      applyOnboarding(onboarding);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   }
 
   async function uploadPhoto(event: ChangeEvent<HTMLInputElement>) {
@@ -114,10 +161,13 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   }
 
   if (!user) {
-    return <div className="personal-profile-card skeleton" style={{ minHeight: 420 }} />;
+    return <div className="personal-profile-card skeleton" style={{ minHeight: 280 }} />;
   }
 
   const avatarIsUrl = /^(https?:\/\/|\/)/.test(user.avatarKey ?? '');
+  const isCompany = accountType === 'company';
+  const showCompanyName = role === 'client' || isCompany;
+  const fullyVerified = user.emailVerified && user.phoneVerified;
 
   return (
     <div className="personal-profile">
@@ -126,13 +176,6 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
           <p className="kicker">Account</p>
           <h1>Personal profile</h1>
           <p>Your identity, contact details, and verification status.</p>
-        </div>
-        <div className="personal-profile-trust">
-          <ShieldCheck size={20} />
-          <span>
-            <strong>{user.emailVerified && user.phoneVerified ? 'Fully verified' : 'Verification pending'}</strong>
-            <small>Your contact status is visible here at any time.</small>
-          </span>
         </div>
       </header>
 
@@ -166,15 +209,23 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
               disabled={uploadingPhoto}
               onClick={() => photoInputRef.current?.click()}
             >
-              {uploadingPhoto ? <LoaderCircle size={16} className="spin" /> : <Pencil size={15} />}
+              {uploadingPhoto ? (
+                <LoaderCircle size={14} className="spin" strokeWidth={2.5} />
+              ) : (
+                <Pencil size={14} strokeWidth={2.5} aria-hidden />
+              )}
             </button>
           </div>
-          <h2>{user.fullName}</h2>
-          <p>{role === 'surveyor' ? 'Expert (surveyor)' : 'Client'}</p>
-          <div className="personal-identity-role">
-            <UserRound size={16} />
-            {role === 'surveyor' ? 'Surveyor workspace' : 'Client workspace'}
-          </div>
+          <h2 className="personal-identity-name">
+            <span>{user.fullName}</span>
+            {fullyVerified ? (
+              <BadgeCheck
+                className="personal-identity-verified"
+                size={22}
+                aria-label="Email and mobile verified"
+              />
+            ) : null}
+          </h2>
         </section>
 
         <section className="personal-profile-card">
@@ -217,15 +268,11 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
           <form onSubmit={save}>
             <div className="field">
               <label htmlFor="personal-full-name">Full name</label>
-              <input
-                id="personal-full-name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                disabled={!editing}
-                required
-              />
+              <input id="personal-full-name" value={fullName} disabled readOnly />
+              <span className="hint">From your account · not editable here</span>
             </div>
-            {role === 'client' && (
+
+            {showCompanyName && (
               <div className="field">
                 <label htmlFor="personal-company">Company name</label>
                 <input
@@ -237,12 +284,103 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
                 />
               </div>
             )}
+
+            {isCompany && (
+              <>
+                <div className="field">
+                  <label htmlFor="personal-registration">Registration number</label>
+                  <input
+                    id="personal-registration"
+                    value={registrationNumber}
+                    onChange={(e) => setRegistrationNumber(e.target.value)}
+                    disabled={!editing}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="personal-website">Website</label>
+                  <input
+                    id="personal-website"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    disabled={!editing}
+                    placeholder="https://"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="field">
+              <label htmlFor="personal-line1">{isCompany ? 'Company address' : 'Base address'}</label>
+              <input
+                id="personal-line1"
+                value={address.line1}
+                onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))}
+                disabled={!editing}
+                required={editing}
+                placeholder={editing ? 'Address line 1' : '—'}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="personal-line2">Address line 2 (optional)</label>
+              <input
+                id="personal-line2"
+                value={address.line2}
+                onChange={(e) => setAddress((a) => ({ ...a, line2: e.target.value }))}
+                disabled={!editing}
+                placeholder={editing ? 'Optional' : '—'}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="personal-city">City</label>
+              <input
+                id="personal-city"
+                value={address.city}
+                onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))}
+                disabled={!editing}
+                required={editing}
+                placeholder={editing ? 'City' : '—'}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="personal-state">State / region</label>
+              <input
+                id="personal-state"
+                value={address.state}
+                onChange={(e) => setAddress((a) => ({ ...a, state: e.target.value }))}
+                disabled={!editing}
+                required={editing}
+                placeholder={editing ? 'State / region' : '—'}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="personal-postal">Postal code</label>
+              <input
+                id="personal-postal"
+                value={address.postalCode}
+                onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value }))}
+                disabled={!editing}
+                required={editing}
+                placeholder={editing ? 'Postal code' : '—'}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="personal-country">Country</label>
+              <input
+                id="personal-country"
+                value={address.country}
+                onChange={(e) => setAddress((a) => ({ ...a, country: e.target.value }))}
+                disabled={!editing}
+                required={editing}
+                placeholder={editing ? 'Country' : '—'}
+              />
+            </div>
+
             {editing && (
               <div className="personal-details-actions">
                 <button type="submit" className="btn" disabled={busy}>
                   {busy ? 'Saving…' : 'Save changes'}
                 </button>
-                <button type="button" className="btn secondary" disabled={busy} onClick={cancelEditing}>
+                <button type="button" className="btn secondary" disabled={busy} onClick={() => void cancelEditing()}>
                   Cancel
                 </button>
               </div>

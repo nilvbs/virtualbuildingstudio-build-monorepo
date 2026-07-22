@@ -22,6 +22,7 @@ import type {
   SignupResult,
 } from '@surveylink/types';
 import {
+  acceptTermsSchema,
   completeProfileSchema,
   completeRegistrationSchema,
   forgotPasswordSchema,
@@ -29,10 +30,14 @@ import {
   loginSchema,
   logoutSchema,
   addMembershipSchema,
+  selectAccountTypeSchema,
   signupSchema,
+  startPhoneVerificationSchema,
+  startWorkEmailSchema,
   updateMeSchema,
   verifyEmailSchema,
   verifyPhoneSchema,
+  verifyWorkEmailSchema,
   type AddMembershipInput,
   type CompleteProfileInput,
   type CompleteRegistrationInput,
@@ -40,10 +45,14 @@ import {
   type GoogleExchangeInput,
   type LoginInput,
   type LogoutInput,
+  type SelectAccountTypeInput,
   type SignupInput,
+  type StartPhoneVerificationInput,
+  type StartWorkEmailInput,
   type UpdateMeInput,
   type VerifyEmailInput,
   type VerifyPhoneInput,
+  type VerifyWorkEmailInput,
 } from '@surveylink/validation';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
@@ -157,6 +166,43 @@ export class AuthController {
     return this.auth.getOnboarding(principal);
   }
 
+  @Post('onboarding/account-type')
+  @HttpCode(HttpStatus.OK)
+  selectAccountType(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(selectAccountTypeSchema)) body: SelectAccountTypeInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.selectAccountType(principal, body.accountType);
+  }
+
+  @Post('onboarding/accept-terms')
+  @HttpCode(HttpStatus.OK)
+  acceptTerms(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(acceptTermsSchema)) _body: unknown,
+  ): Promise<AuthenticatedUser> {
+    void _body;
+    return this.auth.acceptTerms(principal);
+  }
+
+  @Post('onboarding/work-email/start')
+  @HttpCode(HttpStatus.OK)
+  startWorkEmail(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(startWorkEmailSchema)) body: StartWorkEmailInput,
+  ): Promise<{ ok: true }> {
+    return this.auth.startWorkEmailVerification(principal, body.workEmail);
+  }
+
+  @Post('onboarding/work-email/verify')
+  @HttpCode(HttpStatus.OK)
+  verifyWorkEmail(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(verifyWorkEmailSchema)) body: VerifyWorkEmailInput,
+  ): Promise<AuthenticatedUser> {
+    return this.auth.verifyWorkEmail(principal, body.code);
+  }
+
   @Post('onboarding/complete-profile')
   @HttpCode(HttpStatus.OK)
   completeProfile(
@@ -189,8 +235,11 @@ export class AuthController {
 
   @Post('verify-phone/start')
   @HttpCode(HttpStatus.OK)
-  startPhoneVerification(@CurrentUser() principal: AuthPrincipal): Promise<{ ok: true }> {
-    return this.auth.startPhoneVerification(principal);
+  startPhoneVerification(
+    @CurrentUser() principal: AuthPrincipal,
+    @Body(new ZodValidationPipe(startPhoneVerificationSchema)) body: StartPhoneVerificationInput,
+  ): Promise<{ ok: true }> {
+    return this.auth.startPhoneVerification(principal, body.phone);
   }
 
   @Post('verify-phone')
