@@ -7,12 +7,10 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Request } from 'express';
 import type {
   AuthenticatedUser,
   AuthPrincipal,
@@ -149,15 +147,8 @@ export class AuthController {
   async uploadAvatar(
     @CurrentUser() principal: AuthPrincipal,
     @UploadedFile() file: Express.Multer.File,
-    @Req() request: Request,
   ): Promise<AuthenticatedUser> {
-    const configuredBaseUrl = process.env.API_PUBLIC_URL?.trim();
-    const requestBaseUrl = `${request.protocol}://${request.get('host')}`;
-    const avatarKey = await this.avatarStorage.save(
-      principal.sub,
-      file,
-      configuredBaseUrl || requestBaseUrl,
-    );
+    const avatarKey = await this.avatarStorage.save(principal.sub, file);
     return this.auth.updateMe(principal, { avatarKey });
   }
 

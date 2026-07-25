@@ -55,6 +55,7 @@ import {
 } from '@surveylink/types';
 import type { SurveyorProfileBody } from '@surveylink/api-client';
 import { api, ApiError, errorMessage } from '../../../lib/api';
+import { S3MediaField } from '../../../components/s3-media-field';
 
 function CompletionRing({ percent }: { percent: number }) {
   const clamped = Math.max(0, Math.min(100, percent));
@@ -707,6 +708,23 @@ export default function SurveyorProfilePage() {
                         />
                       </div>
                     </div>
+                    <S3MediaField
+                      kind="certificate"
+                      label="Certificate file (S3)"
+                      variant="doc"
+                      url={cert.fileKey}
+                      fileName={cert.fileKey ? 'Certificate' : null}
+                      onUploaded={({ url }) => {
+                        const next = [...details.certifications];
+                        next[index] = { ...cert, fileKey: url };
+                        patchDetails({ certifications: next });
+                      }}
+                      onCleared={() => {
+                        const next = [...details.certifications];
+                        next[index] = { ...cert, fileKey: null };
+                        patchDetails({ certifications: next });
+                      }}
+                    />
                     <button
                       type="button"
                       className="btn secondary sm"
@@ -902,6 +920,46 @@ export default function SurveyorProfilePage() {
                         }}
                       />
                     </div>
+                    <div className="svy-project-images">
+                      <span className="label">Project images (S3)</span>
+                      <div className="svy-image-grid">
+                        {project.images.map((img, imgIndex) => (
+                          <div key={`${img.key}-${imgIndex}`} className="svy-image-tile">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={img.key} alt={img.caption || project.title || 'Project'} />
+                            <button
+                              type="button"
+                              className="svy-image-remove"
+                              onClick={() => {
+                                const next = [...details.projects];
+                                next[index] = {
+                                  ...project,
+                                  images: project.images.filter((_, i) => i !== imgIndex),
+                                };
+                                patchDetails({ projects: next });
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <S3MediaField
+                        kind="portfolio"
+                        label="Add project image"
+                        hint="Uploaded to S3 — preview uses the public URL"
+                        url={null}
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onUploaded={({ url }) => {
+                          const next = [...details.projects];
+                          next[index] = {
+                            ...project,
+                            images: [...project.images, { key: url }],
+                          };
+                          patchDetails({ projects: next });
+                        }}
+                      />
+                    </div>
                     <button
                       type="button"
                       className="btn secondary sm"
@@ -928,19 +986,25 @@ export default function SurveyorProfilePage() {
                 </span>
                 <div>
                   <h2>10. Documents</h2>
-                  <p>Mark which documents you can provide (upload links can follow)</p>
+                  <p>Each file uploads to S3 — we store the public URL</p>
                 </div>
               </div>
-              <div className="svy-service-grid">
+              <div className="svy-doc-grid">
                 {DOCUMENT_TYPES.map((type) => {
-                  const doc = details.documents.find((d) => d.type === type);
-                  const selected = Boolean(doc?.fileName || doc?.fileKey);
+                  const doc = details.documents.find((d) => d.type === type) ?? {
+                    type,
+                    fileKey: null,
+                    fileName: null,
+                  };
                   return (
-                    <button
+                    <S3MediaField
                       key={type}
-                      type="button"
-                      className={`svy-service${selected ? ' is-selected' : ''}`}
-                      onClick={() => {
+                      kind="document"
+                      label={DOCUMENT_TYPE_LABELS[type]}
+                      variant="doc"
+                      url={doc.fileKey}
+                      fileName={doc.fileName}
+                      onUploaded={({ url, fileName }) => {
                         const next = DOCUMENT_TYPES.map((t) => {
                           const existing = details.documents.find((d) => d.type === t) ?? {
                             type: t,
@@ -948,18 +1012,23 @@ export default function SurveyorProfilePage() {
                             fileName: null,
                           };
                           if (t !== type) return existing;
-                          return selected
-                            ? { type: t, fileKey: null, fileName: null }
-                            : { type: t, fileKey: null, fileName: `${t}.pdf` };
+                          return { type: t, fileKey: url, fileName };
                         });
                         patchDetails({ documents: next });
                       }}
-                    >
-                      <span className="svy-service-check">
-                        {selected ? <Check size={14} strokeWidth={2.6} /> : null}
-                      </span>
-                      <span>{DOCUMENT_TYPE_LABELS[type]}</span>
-                    </button>
+                      onCleared={() => {
+                        const next = DOCUMENT_TYPES.map((t) => {
+                          const existing = details.documents.find((d) => d.type === t) ?? {
+                            type: t,
+                            fileKey: null,
+                            fileName: null,
+                          };
+                          if (t !== type) return existing;
+                          return { type: t, fileKey: null, fileName: null };
+                        });
+                        patchDetails({ documents: next });
+                      }}
+                    />
                   );
                 })}
               </div>
@@ -1260,6 +1329,27 @@ export default function SurveyorProfilePage() {
                       <h2>Company profile</h2>
                       <p>Company information</p>
                     </div>
+                  </div>
+                  <div className="svy-brand-media">
+                    <S3MediaField
+                      kind="logo"
+                      label="Company logo"
+                      hint="Square logo — stored as S3 URL"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      url={company.logoKey}
+                      onUploaded={({ url }) => patchCompany({ logoKey: url })}
+                      onCleared={() => patchCompany({ logoKey: null })}
+                    />
+                    <S3MediaField
+                      kind="cover"
+                      label="Cover image"
+                      hint="Wide banner — stored as S3 URL"
+                      variant="wide"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      url={company.coverImageKey}
+                      onUploaded={({ url }) => patchCompany({ coverImageKey: url })}
+                      onCleared={() => patchCompany({ coverImageKey: null })}
+                    />
                   </div>
                   <div className="svy-fields">
                     <div className="field">

@@ -267,6 +267,36 @@ export class SurveyLinkClient {
     return this.request<AuthenticatedUser>('POST', '/auth/me/avatar', form);
   }
 
+  /**
+   * Upload any media to S3. Returns the public HTTPS URL to store in the profile.
+   * kind: avatar | portfolio | document | logo | cover | certificate
+   */
+  async uploadMedia(
+    file: Blob | { uri: string; name?: string; type?: string },
+    kind:
+      | 'avatar'
+      | 'portfolio'
+      | 'document'
+      | 'logo'
+      | 'cover'
+      | 'certificate' = 'portfolio',
+    filename = 'upload',
+  ): Promise<{ url: string; key: string; contentType: string; fileName: string }> {
+    const form = new FormData();
+    form.append('kind', kind);
+    if (typeof Blob !== 'undefined' && file instanceof Blob) {
+      form.append('file', file, filename);
+    } else {
+      const asset = file as { uri: string; name?: string; type?: string };
+      form.append('file', {
+        uri: asset.uri,
+        name: asset.name ?? filename,
+        type: asset.type ?? 'image/jpeg',
+      } as unknown as Blob);
+    }
+    return this.request('POST', '/media/upload', form);
+  }
+
   async getOnboarding(): Promise<OnboardingStatus> {
     return this.request<OnboardingStatus>('GET', '/auth/onboarding');
   }

@@ -29,7 +29,7 @@ tasks doesn't exhaust Postgres connections.
 4. **RDS Proxy** in front of Aurora. Use its endpoint for `DATABASE_URL`
    (pooled) and the cluster writer endpoint for `DIRECT_DATABASE_URL` (migrations).
 5. **ElastiCache** (Redis) cluster — for distributed rate-limiting/caching.
-6. **S3** bucket for uploads, e.g. `bld-uploads-prod` (block public access; serve via CloudFront/signed URLs).
+6. **S3** bucket `bld-build` for media (folders: `avatar/`, `portfolio/`, `document/`, `logo/`, `cover/`, `certificate/`; serve via CloudFront or public prefix policy).
 7. **ACM** certificates for `api.bld.app` and `app.bld.app` (+ staging variants).
 8. **ALB** (HTTPS:443) → target group (HTTP:4000), health check path **`/health`**,
    healthy threshold 2, interval 15s.
@@ -110,9 +110,17 @@ SES_FROM_NAME=BLD
 
 # Optional alphanumeric Sender ID (supported countries only):
 # SNS_SMS_SENDER_ID=
+
+# Media uploads — S3 only; DB stores public HTTPS URLs
+# Bucket layout: bld-build/{avatar|portfolio|document|logo|cover|certificate}/…
+S3_BUCKET=bld-build
+# S3_REGION=                    # defaults to AWS_REGION
+# S3_PUBLIC_BASE_URL=https://cdn.example.com   # CloudFront recommended
+# S3_OBJECT_ACL=public-read     # only if bucket ACLs are enabled
 ```
 
 If `AWS_REGION` / `SES_FROM_EMAIL` are missing, senders log `[stub email]` / `[stub sms]` and do not call AWS (local/CI safe).
+Media uploads default to bucket `bld-build` with segregated folders per kind.
 
 ### IAM (task role / local IAM user)
 

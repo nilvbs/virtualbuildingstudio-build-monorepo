@@ -19,6 +19,7 @@ import { SesEmailSender } from '../notifications/delivery/ses.email-sender';
 import { SMS_SENDER } from '../notifications/delivery/sms-sender';
 import { SnsSmsSender } from '../notifications/delivery/sns.sms-sender';
 import { AvatarStorageService } from './avatar-storage.service';
+import { MediaModule } from '../media/media.module';
 
 /**
  * Auth module — signup, email/phone OTP, onboarding, sessions via Auth0 +
@@ -26,7 +27,7 @@ import { AvatarStorageService } from './avatar-storage.service';
  * permissions guards.
  */
 @Module({
-  imports: [PassportModule],
+  imports: [PassportModule, MediaModule],
   controllers: [AuthController],
   providers: [
     AuthService,

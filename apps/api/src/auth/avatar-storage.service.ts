@@ -1,40 +1,16 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { Injectable } from '@nestjs/common';
+import { S3MediaStorageService } from '../media/s3-media.storage';
 
-const IMAGE_EXTENSIONS: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-};
-
-export function avatarUploadRoot(): string {
-  return resolve(process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads'));
-}
-
+/**
+ * Profile photo uploads — S3 only. Persists the public object URL on the user.
+ */
 @Injectable()
 export class AvatarStorageService {
-  async save(userIdentity: string, file: Express.Multer.File, publicBaseUrl: string): Promise<string> {
-    if (!file) {
-      throw new BadRequestException('Choose a profile photo to upload.');
-    }
+  constructor(private readonly media: S3MediaStorageService) {}
 
-    const extension = IMAGE_EXTENSIONS[file.mimetype];
-    if (!extension) {
-      throw new BadRequestException('Profile photo must be a JPG, PNG, or WebP image.');
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      throw new BadRequestException('Profile photo must be 5 MB or smaller.');
-    }
-
-    const directory = join(avatarUploadRoot(), 'avatars');
-    await mkdir(directory, { recursive: true });
-
-    const owner = createHash('sha256').update(userIdentity).digest('hex').slice(0, 16);
-    const filename = `${owner}-${Date.now()}-${randomUUID()}.${extension}`;
-    await writeFile(join(directory, filename), file.buffer);
-
-    return `${publicBaseUrl.replace(/\/$/, '')}/uploads/avatars/${filename}`;
+  async save(userIdentity: string, file: Express.Multer.File, _publicBaseUrl?: string): Promise<string> {
+    void _publicBaseUrl;
+    const stored = await this.media.upload(userIdentity, file, 'avatar');
+    return stored.url;
   }
 }

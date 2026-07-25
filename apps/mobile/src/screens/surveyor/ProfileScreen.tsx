@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import {
   AVAILABILITY_LABELS,
   AVAILABILITY_OPTIONS,
@@ -96,6 +98,7 @@ export function ProfileScreen() {
   const [lng, setLng] = useState('');
   const [isMatchable, setIsMatchable] = useState(false);
   const [details, setDetails] = useState<SurveyorPortfolioDetails>(emptyPortfolioDetails());
+  const [mediaBusy, setMediaBusy] = useState<string | null>(null);
 
   const hydrate = useCallback((p: SurveyorProfile | null, type: AccountType) => {
     if (!p) {
@@ -263,6 +266,42 @@ export function ProfileScreen() {
       setError(errorMessage(err));
     } finally {
       setToggling(false);
+    }
+  }
+
+  async function uploadImage(
+    kind: 'logo' | 'cover' | 'portfolio' | 'document',
+    onUrl: (url: string) => void,
+  ) {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Photo library permission is required to upload images to S3.');
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.85,
+    });
+    if (picked.canceled || !picked.assets[0]) return;
+    const asset = picked.assets[0];
+    setMediaBusy(kind);
+    setError(null);
+    try {
+      const stored = await api.uploadMedia(
+        {
+          uri: asset.uri,
+          name: asset.fileName ?? `${kind}.jpg`,
+          type: asset.mimeType ?? 'image/jpeg',
+        },
+        kind,
+        asset.fileName ?? `${kind}.jpg`,
+      );
+      onUrl(stored.url);
+      setInfo('Uploaded to S3.');
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setMediaBusy(null);
     }
   }
 
@@ -528,6 +567,30 @@ export function ProfileScreen() {
               {accountType === 'company' && company ? (
                 <>
                   <Text style={styles.section}>Company profile</Text>
+                  <View style={styles.mediaBlock}>
+                    {company.logoKey ? (
+                      <Image source={{ uri: company.logoKey }} style={styles.logoPreview} />
+                    ) : null}
+                    <Button
+                      label={mediaBusy === 'logo' ? 'Uploading to S3…' : 'Upload logo to S3'}
+                      variant="outline"
+                      busy={mediaBusy === 'logo'}
+                      onPress={() =>
+                        void uploadImage('logo', (url) => patchCompany({ logoKey: url }))
+                      }
+                    />
+                    {company.coverImageKey ? (
+                      <Image source={{ uri: company.coverImageKey }} style={styles.coverPreview} />
+                    ) : null}
+                    <Button
+                      label={mediaBusy === 'cover' ? 'Uploading to S3…' : 'Upload cover to S3'}
+                      variant="outline"
+                      busy={mediaBusy === 'cover'}
+                      onPress={() =>
+                        void uploadImage('cover', (url) => patchCompany({ coverImageKey: url }))
+                      }
+                    />
+                  </View>
                   <Field
                     label="Company name"
                     value={company.companyName}
@@ -662,4 +725,21 @@ const styles = StyleSheet.create({
   checkItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   checkLabel: { color: colors.text, fontWeight: '600', fontSize: 14 },
   bio: { minHeight: 96, textAlignVertical: 'top', paddingTop: 12 },
+  mediaBlock: { gap: 10, marginBottom: 8 },
+  logoPreview: {
+    width: 96,
+    height: 96,
+    borderRadius: 16,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  coverPreview: {
+    width: '100%',
+    height: 140,
+    borderRadius: 16,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
 });

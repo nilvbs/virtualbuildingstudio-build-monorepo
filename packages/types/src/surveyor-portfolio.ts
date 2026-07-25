@@ -332,6 +332,7 @@ export interface PortfolioCertification {
 
 export interface PortfolioDocument {
   type: DocumentType;
+  /** Public S3 HTTPS URL */
   fileKey: string | null;
   fileName: string | null;
 }

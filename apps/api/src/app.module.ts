@@ -11,6 +11,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { MatchingModule } from './matching/matching.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AdminModule } from './admin/admin.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AdminModule } from './admin/admin.module';
     ]),
     PrismaModule,
     HealthModule,
+    MediaModule,
     // Phase 1 domain module boundaries (behavior lands in later build steps).
     AuthModule,
     ProfilesModule,

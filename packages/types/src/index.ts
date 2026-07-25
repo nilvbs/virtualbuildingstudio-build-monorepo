@@ -414,7 +414,7 @@ import type {
 } from './surveyor-portfolio';
 import { emptyPortfolioDetails } from './surveyor-portfolio';
 
-/** A portfolio image; DB stores only the object-storage key (S3), not a URL. */
+/** A portfolio image; DB stores the public S3 HTTPS URL in `key`. */
 export interface PortfolioItem {
   key: string;
   caption?: string;
