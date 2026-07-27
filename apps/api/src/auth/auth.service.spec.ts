@@ -108,8 +108,23 @@ describe('AuthService', () => {
       check: jest.fn(),
     };
     const config = { get: () => undefined } as unknown as import('@nestjs/config').ConfigService;
+    const media = {
+      resolveSignedUrl: jest.fn((v: string | null) => v),
+      deleteStoredObject: jest.fn().mockResolvedValue(undefined),
+    };
+    const avatarStorage = {
+      save: jest.fn().mockResolvedValue('https://example.com/avatar.png'),
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new AuthService(prisma as any, identity, phone, emailOtp as any, config);
+    service = new AuthService(
+      prisma as any,
+      identity,
+      phone,
+      emailOtp as any,
+      config,
+      media as any,
+      avatarStorage as any,
+    );
   });
 
   describe('signup', () => {

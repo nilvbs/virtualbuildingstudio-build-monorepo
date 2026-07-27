@@ -56,14 +56,10 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { AvatarStorageService } from './avatar-storage.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly auth: AuthService,
-    private readonly avatarStorage: AvatarStorageService,
-  ) {}
+  constructor(private readonly auth: AuthService) {}
 
   @Public()
   @Post('signup')
@@ -144,12 +140,11 @@ export class AuthController {
 
   @Post('me/avatar')
   @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: 5 * 1024 * 1024 } }))
-  async uploadAvatar(
+  uploadAvatar(
     @CurrentUser() principal: AuthPrincipal,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<AuthenticatedUser> {
-    const avatarKey = await this.avatarStorage.save(principal.sub, file);
-    return this.auth.updateMe(principal, { avatarKey });
+    return this.auth.replaceAvatar(principal, file);
   }
 
   @Get('onboarding')

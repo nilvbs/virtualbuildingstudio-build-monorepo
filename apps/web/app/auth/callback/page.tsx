@@ -92,7 +92,7 @@ function CallbackInner() {
             <>
               <h1 style={{ fontSize: 20, marginBottom: 6 }}>Couldn&apos;t finish sign-in</h1>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 20 }}>{error}</p>
-              <Link href="/login" className="btn block">
+              <Link href="/?auth=login" className="btn block">
                 Back to sign in
               </Link>
             </>

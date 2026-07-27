@@ -7,6 +7,8 @@ services:
       POSTGRES_USER: surveylink
       POSTGRES_PASSWORD: surveylink
       POSTGRES_DB: surveylink
+    # Optional: only if you use Docker instead of local Windows/macOS Postgres.
+    # Default host port 5432 — local install often uses 5433; don't run both.
     ports:
       - "5432:5432"
     volumes:

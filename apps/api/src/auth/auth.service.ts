@@ -44,6 +44,8 @@ import { IDENTITY_PROVIDER, type IdentityProvider } from './identity/identity-pr
 import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.identity-provider';
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import { EmailOtpService } from './email/email-otp.service';
+import { S3MediaStorageService } from '../media/s3-media.storage';
+import { AvatarStorageService } from './avatar-storage.service';
 import {
   DEV_ACCESS_TOKEN,
   DEV_EMAIL,
@@ -93,6 +95,8 @@ export class AuthService {
     @Inject(PHONE_VERIFIER) private readonly phone: PhoneVerifier,
     private readonly emailOtp: EmailOtpService,
     private readonly config: ConfigService,
+    private readonly media: S3MediaStorageService,
+    private readonly avatarStorage: AvatarStorageService,
   ) {}
 
   /**
@@ -216,8 +220,7 @@ export class AuthService {
       rememberDevSignup(normalizeEmail(input.email), input.password, existing.authSubject);
     }
 
-    await ensureMembership(this.prisma, existing.id, membershipRole);
-    const refreshed = await this.prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
+    const refreshed = await this.attachMarketplaceRole(existing.id, membershipRole);
     const next = await listMemberships(this.prisma, existing.id);
     return this.hydrateUser(refreshed, next.includes('admin') ? ['admin'] : []);
   }
@@ -492,14 +495,21 @@ export class AuthService {
       return this.googleResultForExistingUser(existing, session, workspaceRole);
     }
 
-    // Account linking (same email, different provider) is out of scope for
-    // Phase 1 — steer the user to their existing password login instead.
+    // Same Gmail already has a local row (password / older Auth0 subject): link
+    // Google to that account so marketplace sign-in can continue with Google only.
     if (identity.email) {
       const emailOwner = await this.findUserByEmail(identity.email);
       if (emailOwner) {
-        throw new ConflictException(
-          'An account with this email already exists. Please sign in with your email and password.',
-        );
+        const linked = await this.prisma.user.update({
+          where: { id: emailOwner.id },
+          data: {
+            authProvider: GOOGLE_PROVIDER_NAME,
+            authSubject: identity.subject,
+            emailVerified: emailOwner.emailVerified || Boolean(identity.email),
+            fullName: emailOwner.fullName || identity.fullName || emailOwner.fullName,
+          },
+        });
+        return this.googleResultForExistingUser(linked, session, workspaceRole);
       }
     }
 
@@ -517,16 +527,18 @@ export class AuthService {
   /**
    * Returning Google user: honor the workspace chosen on the landing auth step
    * (add membership if missing) so "Sign up as surveyor" does not land on /client.
+   * Adding a *new* client/surveyor role restarts full onboarding like a new user.
    */
   private async googleResultForExistingUser(
     existing: User,
     session: AuthSession,
     workspaceRole: WorkspaceRole | undefined,
   ): Promise<GoogleAuthResult> {
+    let user = existing;
     if (workspaceRole) {
-      await ensureMembership(this.prisma, existing.id, workspaceRole);
+      user = await this.attachMarketplaceRole(existing.id, workspaceRole);
     }
-    const memberships = await listMemberships(this.prisma, existing.id);
+    const memberships = await listMemberships(this.prisma, user.id);
     const activeRole =
       workspaceRole ??
       (memberships.includes('surveyor') && !memberships.includes('client')
@@ -539,8 +551,57 @@ export class AuthService {
       session: { ...session, activeRole },
       registered: true,
       roleHint: hintFromMemberships(memberships),
-      profile: { email: existing.email, fullName: existing.fullName },
+      profile: { email: user.email, fullName: user.fullName },
     };
+  }
+
+  /**
+   * Ensure marketplace membership exists. When the role is newly attached,
+   * restart the full new-user onboarding for that workspace (account type →
+   * terms/NDA → phone → profile → portfolio when needed).
+   */
+  private async attachMarketplaceRole(userId: string, role: MembershipRole): Promise<User> {
+    const before = await listMemberships(this.prisma, userId);
+    const isNew = !before.includes(role);
+    await ensureMembership(this.prisma, userId, role);
+
+    if (!isNew || (role !== 'client' && role !== 'surveyor')) {
+      return this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        accountType: 'individual',
+        accountTypeSelectedAt: null,
+        termsAcceptedAt: null,
+        ndaAcceptedAt: null,
+        phoneVerified: false,
+        // Unique placeholder so contact step requires a fresh number entry.
+        phone: `pending:${userId.replace(/-/g, '')}`,
+        onboardingStep: 'select_account_type',
+      },
+    });
+  }
+
+  /**
+   * Portfolio is required for first-time surveyors. If surveyor already existed
+   * and the user is only adding client, skip portfolio after re-verify.
+   */
+  private async surveyorNeedsPortfolioStep(
+    userId: string,
+    memberships: MembershipRole[],
+  ): Promise<boolean> {
+    if (!memberships.includes('surveyor')) return false;
+    if (!memberships.includes('client')) return true;
+
+    const roles = await this.prisma.userRole.findMany({
+      where: { userId, role: { in: ['client', 'surveyor'] } },
+      orderBy: { createdAt: 'asc' },
+      select: { role: true },
+    });
+    // Surveyor-first + later client → portfolio already done. Client-first + surveyor → need it.
+    return roles[0]?.role !== 'surveyor';
   }
 
   /**
@@ -599,8 +660,7 @@ export class AuthService {
 
   async addMembership(principal: AuthPrincipal, input: AddMembershipInput): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
-    await ensureMembership(this.prisma, user.id, input.role);
-    const updated = await this.requireUser(principal.sub);
+    const updated = await this.attachMarketplaceRole(user.id, input.role);
     return this.hydrateUser(updated, principal.roles);
   }
 
@@ -651,14 +711,15 @@ export class AuthService {
     return { ok: true };
   }
 
-  /** Confirm email OTP and advance onboarding when at least one contact is verified. */
+  /** Confirm email OTP. Profile unlock still requires phone verification. */
   async verifyEmail(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
     const approved = await this.emailOtp.check(user.id, user.email, code);
     if (!approved) {
       throw new UnauthorizedException('Invalid or expired verification code');
     }
-    const nextStep = this.stepAfterContactVerified(user);
+    const withEmail = { ...user, emailVerified: true };
+    const nextStep = this.stepAfterContactVerified(withEmail as User);
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { emailVerified: true, onboardingStep: nextStep },
@@ -666,14 +727,15 @@ export class AuthService {
     return this.hydrateUser(updated, principal.roles);
   }
 
-  /** Confirm the SMS OTP for the authenticated user's phone number. */
+  /** Confirm the SMS OTP — required before profile completion. */
   async verifyPhone(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
     const approved = await this.phone.checkVerification(user.id, user.phone, code);
     if (!approved) {
       throw new UnauthorizedException('Invalid or expired verification code');
     }
-    const nextStep = this.stepAfterContactVerified(user);
+    const withPhone = { ...user, phoneVerified: true };
+    const nextStep = this.stepAfterContactVerified(withPhone as User);
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { phoneVerified: true, onboardingStep: nextStep },
@@ -690,7 +752,8 @@ export class AuthService {
     const accountProfile = await this.prisma.accountProfile.findUnique({
       where: { userId: user.id },
     });
-    return this.toOnboardingStatus(user, memberships, clientProfile, accountProfile);
+    const requiresPortfolio = await this.surveyorNeedsPortfolioStep(user.id, memberships);
+    return this.toOnboardingStatus(user, memberships, clientProfile, accountProfile, requiresPortfolio);
   }
 
   /**
@@ -834,6 +897,24 @@ export class AuthService {
   }
 
   /**
+   * Upload a new profile photo, persist its S3 URL, then delete the previous
+   * object from S3 (best-effort) so only the latest avatar remains.
+   */
+  async replaceAvatar(
+    principal: AuthPrincipal,
+    file: Express.Multer.File,
+  ): Promise<AuthenticatedUser> {
+    const user = await this.requireUser(principal.sub);
+    const previous = user.avatarKey;
+    const avatarKey = await this.avatarStorage.save(principal.sub, file);
+    const updated = await this.updateMe(principal, { avatarKey });
+    if (previous && previous !== avatarKey) {
+      await this.media.deleteStoredObject(previous);
+    }
+    return updated;
+  }
+
+  /**
    * Finish personal profile. Surveyors advance to portfolio builder; clients to done.
    * Remaining contact OTP can still be completed from this step (does not block).
    */
@@ -845,8 +926,8 @@ export class AuthService {
     if (!user.termsAcceptedAt || !user.ndaAcceptedAt) {
       throw new BadRequestException('Accept the Terms & Conditions and NDA before continuing');
     }
-    if (!user.emailVerified && !user.phoneVerified) {
-      throw new BadRequestException('Verify your email or phone before completing your profile');
+    if (!user.phoneVerified) {
+      throw new BadRequestException('Verify your mobile number before completing your profile');
     }
     if (!input.address) {
       throw new BadRequestException('Add your address to continue');
@@ -864,7 +945,7 @@ export class AuthService {
     }
 
     const memberships = await listMemberships(this.prisma, user.id);
-    const requiresPortfolio = memberships.includes('surveyor');
+    const requiresPortfolio = await this.surveyorNeedsPortfolioStep(user.id, memberships);
     const nextStep: OnboardingStep = requiresPortfolio ? 'portfolio' : 'done';
 
     const website = input.website?.trim() ? input.website.trim() : null;
@@ -922,15 +1003,20 @@ export class AuthService {
     return this.hydrateUser(updated, principal.roles);
   }
 
+  /** After Terms & NDA: phone verification is always required before profile. */
+  private stepAfterTermsAccepted(_user: User): OnboardingStep {
+    return 'verify_contact';
+  }
+
   private stepAfterContactVerified(user: User): OnboardingStep {
+    // Only advance once mobile is verified (email alone is not enough).
+    if (!user.phoneVerified) {
+      const current = user.onboardingStep as OnboardingStep;
+      return current === 'verify_contact' ? 'verify_contact' : current;
+    }
     const current = user.onboardingStep as OnboardingStep;
     if (current === 'verify_contact') return 'complete_profile';
     return current;
-  }
-
-  /** After Terms & NDA: skip contact verification when a channel is already verified. */
-  private stepAfterTermsAccepted(user: User): OnboardingStep {
-    return user.emailVerified || user.phoneVerified ? 'complete_profile' : 'verify_contact';
   }
 
   private toOnboardingStatus(
@@ -938,15 +1024,13 @@ export class AuthService {
     memberships: MembershipRole[],
     clientProfile: ClientProfile | null,
     accountProfile: AccountProfile | null,
+    requiresPortfolio = memberships.includes('surveyor'),
   ): OnboardingStatus {
-    const pendingContact =
-      !user.emailVerified && !user.phoneVerified
-        ? 'both'
-        : !user.emailVerified
-          ? 'email'
-          : !user.phoneVerified
-            ? 'phone'
-            : 'none';
+    const pendingContact = !user.phoneVerified
+      ? user.emailVerified
+        ? 'phone'
+        : 'both'
+      : 'none';
 
     const address: PostalAddress = {
       line1: accountProfile?.addressLine1 ?? null,
@@ -959,7 +1043,12 @@ export class AuthService {
 
     const phoneNeedsEntry =
       !user.phoneVerified &&
-      (!user.phone || user.phone === '+10000000001' || user.phone === '+1' || user.phone.length < 10);
+      (!user.phone ||
+        user.phone === '+10000000001' ||
+        user.phone === '+1' ||
+        user.phone.startsWith('clerk:') ||
+        user.phone.startsWith('pending:') ||
+        user.phone.length < 10);
 
     const effectiveStep: OnboardingStep = !user.accountTypeSelectedAt
       ? 'select_account_type'
@@ -975,10 +1064,10 @@ export class AuthService {
       phoneNeedsEntry,
       termsAccepted: user.termsAcceptedAt != null,
       ndaAccepted: user.ndaAcceptedAt != null,
-      canCompleteProfile: user.emailVerified || user.phoneVerified,
+      canCompleteProfile: user.phoneVerified,
       pendingContact,
-      requiresPortfolio: memberships.includes('surveyor'),
-      avatarKey: user.avatarKey,
+      requiresPortfolio,
+      avatarKey: this.media.resolveSignedUrl(user.avatarKey),
       fullName: user.fullName,
       companyName: clientProfile?.companyName ?? null,
       address,
@@ -1048,7 +1137,7 @@ export class AuthService {
       phone: user.phone,
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
-      avatarKey: user.avatarKey,
+      avatarKey: this.media.resolveSignedUrl(user.avatarKey),
       onboardingStep: user.onboardingStep as OnboardingStep,
       accountType: user.accountType as AccountType,
       roleHint: hintFromMemberships(merged),

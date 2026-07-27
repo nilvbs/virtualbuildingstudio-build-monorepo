@@ -25,7 +25,7 @@ export default function ClientDashboardPage() {
       .getProjects()
       .then(setProjects)
       .catch((err) => {
-        if (err instanceof ApiError && err.status === 401) router.replace('/login');
+        if (err instanceof ApiError && err.status === 401) router.replace('/sign-in');
         else setError(errorMessage(err));
       })
       .finally(() => setLoading(false));

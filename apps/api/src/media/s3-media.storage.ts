@@ -61,37 +61,48 @@ function sha256Hex(data: Buffer | string): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-/**
- * Minimal S3 PutObject via SigV4 (no @aws-sdk/client-s3 dependency).
- * Verified against bucket `bld-build`.
- */
-async function s3PutObject(input: {
-  bucket: string;
-  key: string;
-  body: Buffer;
-  contentType: string;
+function encodeS3Key(key: string): string {
+  return key
+    .split('/')
+    .map((part) =>
+      encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`),
+    )
+    .join('/');
+}
+
+function awsSignV4(input: {
+  method: string;
+  host: string;
+  encodedKey: string;
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
-}): Promise<void> {
-  const { bucket, key, body, contentType, region, accessKeyId, secretAccessKey } = input;
-  const host = `${bucket}.s3.${region}.amazonaws.com`;
-  const encodedKey = key
-    .split('/')
-    .map((part) => encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`))
-    .join('/');
+  payloadHash: string;
+  extraCanonicalHeaders?: string;
+  signedHeadersExtra?: string;
+}): { amzDate: string; authorization: string; signedHeaders: string } {
+  const {
+    method,
+    host,
+    encodedKey,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    payloadHash,
+    extraCanonicalHeaders = '',
+    signedHeadersExtra = '',
+  } = input;
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = sha256Hex(body);
   const canonicalHeaders =
-    `content-type:${contentType}\n` +
+    extraCanonicalHeaders +
     `host:${host}\n` +
     `x-amz-content-sha256:${payloadHash}\n` +
     `x-amz-date:${amzDate}\n`;
-  const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date';
+  const signedHeaders = `${signedHeadersExtra}host;x-amz-content-sha256;x-amz-date`;
   const canonicalRequest = [
-    'PUT',
+    method,
     `/${encodedKey}`,
     '',
     canonicalHeaders,
@@ -113,6 +124,37 @@ async function s3PutObject(input: {
   const authorization =
     `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return { amzDate, authorization, signedHeaders };
+}
+
+/**
+ * Minimal S3 PutObject via SigV4 (no @aws-sdk/client-s3 dependency).
+ * Verified against bucket `bld-build`.
+ */
+async function s3PutObject(input: {
+  bucket: string;
+  key: string;
+  body: Buffer;
+  contentType: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+}): Promise<void> {
+  const { bucket, key, body, contentType, region, accessKeyId, secretAccessKey } = input;
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const encodedKey = encodeS3Key(key);
+  const payloadHash = sha256Hex(body);
+  const { amzDate, authorization } = awsSignV4({
+    method: 'PUT',
+    host,
+    encodedKey,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    payloadHash,
+    extraCanonicalHeaders: `content-type:${contentType}\n`,
+    signedHeadersExtra: 'content-type;',
+  });
 
   const response = await fetch(`https://${host}/${encodedKey}`, {
     method: 'PUT',
@@ -132,6 +174,47 @@ async function s3PutObject(input: {
     const text = await response.text().catch(() => '');
     throw new ServiceUnavailableException(
       `S3 upload failed (${response.status}): ${text.slice(0, 300) || response.statusText}`,
+    );
+  }
+}
+
+/** Minimal S3 DeleteObject via SigV4. */
+async function s3DeleteObject(input: {
+  bucket: string;
+  key: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+}): Promise<void> {
+  const { bucket, key, region, accessKeyId, secretAccessKey } = input;
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const encodedKey = encodeS3Key(key);
+  const payloadHash = sha256Hex('');
+  const { amzDate, authorization } = awsSignV4({
+    method: 'DELETE',
+    host,
+    encodedKey,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    payloadHash,
+  });
+
+  const response = await fetch(`https://${host}/${encodedKey}`, {
+    method: 'DELETE',
+    headers: {
+      Host: host,
+      'X-Amz-Content-Sha256': payloadHash,
+      'X-Amz-Date': amzDate,
+      Authorization: authorization,
+    },
+  });
+
+  // 204 No Content and 200 OK are success; 404 means already gone.
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text().catch(() => '');
+    throw new ServiceUnavailableException(
+      `S3 delete failed (${response.status}): ${text.slice(0, 300) || response.statusText}`,
     );
   }
 }
@@ -229,5 +312,147 @@ export class S3MediaStorageService {
       return `${this.publicBaseUrl}/${key}`;
     }
     return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+  }
+
+  private encodeRfc3986(input: string): string {
+    return encodeURIComponent(input).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  }
+
+  /**
+   * Extract S3 object key from either a full public S3 URL we generated
+   * (or a configured publicBaseUrl URL), or from a raw key.
+   */
+  private keyFromUrl(input: string): string | null {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+
+    // If it's already a key-like value, use it directly.
+    if (!/^https?:\/\//.test(trimmed) && !trimmed.startsWith('/')) {
+      return trimmed;
+    }
+
+    try {
+      const url = new URL(trimmed.startsWith('/') ? `http://local${trimmed}` : trimmed);
+      const host = url.host;
+      const key = url.pathname.replace(/^\/+/, '');
+
+      // Only sign objects that are inside our known URL surfaces.
+      const allowedS3Host = `${this.bucket}.s3.${this.region}.amazonaws.com`;
+      const publicHost = this.publicBaseUrl ? new URL(this.publicBaseUrl).host : null;
+      if (host === allowedS3Host || (publicHost && host === publicHost)) {
+        return key;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Create a presigned GET URL for private buckets.
+   *
+   * Uses SigV4 query signing (minimal implementation, no AWS SDK dependency).
+   */
+  signGetObjectUrl(objectKey: string, expiresInSeconds = 3600): string {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      throw new ServiceUnavailableException('Object storage is not configured for signing.');
+    }
+    if (!objectKey) {
+      throw new BadRequestException('Missing S3 object key.');
+    }
+
+    const host = `${this.bucket}.s3.${this.region}.amazonaws.com`;
+    const encodedKey = objectKey
+      .split('/')
+      .map((part) =>
+        encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`),
+      )
+      .join('/');
+
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`;
+
+    const queryParams: Record<string, string> = {
+      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+      'X-Amz-Credential': `${this.accessKeyId}/${credentialScope}`,
+      'X-Amz-Date': amzDate,
+      'X-Amz-Expires': String(expiresInSeconds),
+      'X-Amz-SignedHeaders': 'host',
+    };
+
+    const canonicalQueryString = Object.keys(queryParams)
+      .sort()
+      .map((k) => `${this.encodeRfc3986(k)}=${this.encodeRfc3986(queryParams[k])}`)
+      .join('&');
+
+    const canonicalHeaders = `host:${host}\n`;
+    const signedHeaders = 'host';
+    const payloadHash = 'UNSIGNED-PAYLOAD';
+    const canonicalRequest = [
+      'GET',
+      `/${encodedKey}`,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
+
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      sha256Hex(canonicalRequest),
+    ].join('\n');
+
+    const kDate = hmac(`AWS4${this.secretAccessKey}`, dateStamp);
+    const kRegion = hmac(kDate, this.region);
+    const kService = hmac(kRegion, 's3');
+    const kSigning = hmac(kService, 'aws4_request');
+    const signature = createHmac('sha256', kSigning).update(stringToSign, 'utf8').digest('hex');
+
+    return `https://${host}/${encodedKey}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+  }
+
+  /**
+   * If the provided avatarKey is a URL we generated from S3, return a signed
+   * URL so <img> works even when the bucket is private.
+   */
+  resolveSignedUrl(input: string | null | undefined): string | null {
+    if (!input) return null;
+    try {
+      const key = this.keyFromUrl(input);
+      if (!key) return input;
+      return this.signGetObjectUrl(key, 3600);
+    } catch {
+      // If signing fails, fall back to the stored URL.
+      return input;
+    }
+  }
+
+  /**
+   * Best-effort delete of a previously stored media object (URL or raw key).
+   * Used when replacing an avatar so only the latest object remains in S3.
+   */
+  async deleteStoredObject(input: string | null | undefined): Promise<void> {
+    if (!input || !this.accessKeyId || !this.secretAccessKey) return;
+    const key = this.keyFromUrl(input);
+    if (!key) return;
+
+    try {
+      await s3DeleteObject({
+        bucket: this.bucket,
+        key,
+        region: this.region,
+        accessKeyId: this.accessKeyId,
+        secretAccessKey: this.secretAccessKey,
+      });
+      this.logger.log(`Deleted s3://${this.bucket}/${key}`);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete s3://${this.bucket}/${key}: ${(err as Error).message}`,
+      );
+    }
   }
 }

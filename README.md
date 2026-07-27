@@ -39,9 +39,12 @@ packages/
 
 - Node.js >= 20 (tested on 22)
 - pnpm 9 (`corepack enable pnpm`)
-- Docker (for local Postgres + PostGIS)
+- PostgreSQL **with PostGIS** for local data (pgAdmin)
+  - This repo’s local `.env` expects `localhost:5433`, user/db `surveylink` / `surveylink`
+  - On Windows: install PostGIS via **Application Stack Builder** for your Postgres version
+  - Optional: Docker (`pnpm db:up`) if you prefer a container DB on port **5432** instead
 
-## Getting started
+## Getting started (local Postgres / pgAdmin)
 
 ```bash
 # 1. Install dependencies
@@ -50,8 +53,11 @@ pnpm install
 # 2. Create your local env file
 cp .env.example .env            # (PowerShell: Copy-Item .env.example .env)
 
-# 3. Start Postgres + PostGIS
-pnpm db:up
+# 3. Start Windows/macOS Postgres (e.g. service postgresql-x64-18).
+#    Do NOT run Docker surveylink-db at the same time if both use 5433.
+#    In pgAdmin (as postgres): create role + database surveylink (password surveylink),
+#    then on DB surveylink: CREATE EXTENSION postgis; CREATE EXTENSION pgcrypto;
+#    See scripts/setup-local-postgres.sql
 
 # 4. Apply migrations (creates the Phase 1 schema)
 pnpm db:migrate
@@ -60,6 +66,8 @@ pnpm db:migrate
 pnpm --filter @surveylink/api dev
 # Health check: http://localhost:4000/health
 ```
+
+Optional Docker DB instead of local install: set `DATABASE_URL` ports to `5432`, then `pnpm db:up` before migrate.
 
 Run everything in parallel with `pnpm dev` (Turborepo).
 

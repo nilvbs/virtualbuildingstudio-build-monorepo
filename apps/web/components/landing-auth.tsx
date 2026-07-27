@@ -70,7 +70,7 @@ export function LandingAuthOverlay({
     email: '',
     password: '',
   });
-  const [signupPhone, setSignupPhone] = useState(defaultPhoneInput);
+  const [signupPhone, setSignupPhone] = useState(() => defaultPhoneInput());
   const [signupError, setSignupError] = useState<string | null>(null);
   const [signupBusy, setSignupBusy] = useState(false);
 

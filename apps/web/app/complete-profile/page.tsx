@@ -27,7 +27,7 @@ function CompleteProfileForm() {
   const roleLocked = params.get('role') === 'client' || params.get('role') === 'surveyor';
 
   useEffect(() => {
-    if (!isAuthenticated()) router.replace('/login');
+    if (!isAuthenticated()) router.replace('/sign-in');
   }, [router]);
 
   async function onSubmit(e: FormEvent) {

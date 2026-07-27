@@ -3941,6 +3941,32 @@ textarea {
   border-color: #c2cad6;
 }
 
+.mkt-auth-google {
+  min-height: 48px;
+  font-weight: 600;
+  font-size: 15px;
+  gap: 10px;
+}
+
+.mkt-auth-email-toggle {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.mkt-auth-email-toggle:hover {
+  color: var(--text);
+}
+
 .auth-or {
   display: flex;
   align-items: center;
@@ -6215,6 +6241,54 @@ a.plain:hover {
   margin: 0 0 16px;
   color: #5c6573;
   font-size: 14.5px;
+}
+
+.mkt-auth-notice {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 36, 107, 0.12);
+  background: rgba(0, 36, 107, 0.04);
+}
+
+.mkt-auth-notice strong {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mkt-ink, #00246b);
+}
+
+.mkt-auth-notice span {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #5c6573;
+}
+
+.mkt-auth-footnote {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #7a8494;
+}
+
+.mkt-auth-inline-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent, #00246b);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.mkt-auth-inline-link:hover {
+  color: var(--mkt-ink, #001a4d);
 }
 
 .mkt-auth-label-row {

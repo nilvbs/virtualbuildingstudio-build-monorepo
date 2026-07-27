@@ -45,16 +45,21 @@ export function GoogleButton({
       const { url } = await api.googleStartUrl(role);
       window.location.href = url;
     } catch (err) {
-      setError(errorMessage(err));
+      const msg = errorMessage(err);
+      setError(
+        msg === 'Failed to fetch' || msg.toLowerCase().includes('fetch')
+          ? 'Cannot reach the API (http://localhost:4000). Start it with: pnpm --filter @surveylink/api dev'
+          : msg,
+      );
       setBusy(false);
     }
   }
 
   return (
     <>
-      <button type="button" className="btn social" onClick={onClick} disabled={busy}>
+      <button type="button" className="btn social mkt-auth-google" onClick={onClick} disabled={busy}>
         {busy ? <span className="spin dark" /> : <GoogleGlyph />}
-        {busy ? 'Redirecting…' : label}
+        {busy ? 'Redirecting to Google…' : label}
       </button>
       {error && (
         <p className="hint" style={{ color: 'var(--danger, #d64545)', marginTop: 8 }}>

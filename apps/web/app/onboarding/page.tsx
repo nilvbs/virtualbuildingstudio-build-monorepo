@@ -108,8 +108,8 @@ export default function OnboardingPage() {
       postalCode: current.postalCode || next.address.postalCode || '',
       country: current.country || next.address.country || '',
     }));
-    if (next.termsAccepted) setAcceptTerms(true);
-    if (next.ndaAccepted) setAcceptNda(true);
+    setAcceptTerms(next.termsAccepted);
+    setAcceptNda(next.ndaAccepted);
     if (next.step === 'done') router.replace(nextHome(role));
   }
 
@@ -322,13 +322,13 @@ export default function OnboardingPage() {
     : needsTerms
       ? 'Before onboarding, you must accept the Terms & Conditions and NDA. There is no skip.'
       : needsContact
-        ? 'Verify either your email or phone to continue. You can finish the other later.'
+        ? 'Verify your mobile number to continue. This step is required before your profile.'
         : needsProfile
           ? isCompany
             ? 'Verify your work email and add company address, registration number, and optional website.'
-            : status.emailVerified && status.phoneVerified
-              ? 'Your email and mobile are verified. Add your base address to finish setup.'
-              : 'Verify any remaining contact and add your base address to finish setup.'
+            : status.phoneVerified
+              ? 'Your mobile is verified. Add your base address to finish setup.'
+              : 'Verify your mobile and add your base address to finish setup.'
           : 'Add project examples next so clients can understand your work.';
 
   return (
