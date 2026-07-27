@@ -12,9 +12,11 @@ import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { ProjectsScreen } from '../screens/client/ProjectsScreen';
 import { PersonalProfileScreen } from '../screens/PersonalProfileScreen';
 import { ProjectDetailScreen } from '../screens/client/ProjectDetailScreen';
+import { ProjectSurveyorsScreen } from '../screens/client/ProjectSurveyorsScreen';
 import { DashboardScreen } from '../screens/surveyor/DashboardScreen';
 import { ProfileScreen as PortfolioScreen } from '../screens/surveyor/ProfileScreen';
 import { MatchesScreen } from '../screens/surveyor/MatchesScreen';
+import { RequestsScreen } from '../screens/surveyor/RequestsScreen';
 import type { ClientTabParamList, RootStackParamList, SurveyorTabParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -28,6 +30,7 @@ const CLIENT_TAB_ICONS: Record<keyof ClientTabParamList, keyof typeof Feather.gl
 
 const SURVEYOR_TAB_ICONS: Record<keyof SurveyorTabParamList, keyof typeof Feather.glyphMap> = {
   Dashboard: 'grid',
+  Requests: 'inbox',
   Matches: 'zap',
   Portfolio: 'briefcase',
 };
@@ -93,6 +96,7 @@ function SurveyorHome() {
       })}
     >
       <SurveyorTab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard' }} />
+      <SurveyorTab.Screen name="Requests" component={RequestsScreen} options={{ title: 'Requests' }} />
       <SurveyorTab.Screen name="Matches" component={MatchesScreen} options={{ title: 'Matches' }} />
       <SurveyorTab.Screen name="Portfolio" component={PortfolioScreen} options={{ title: 'Portfolio' }} />
     </SurveyorTab.Navigator>
@@ -136,6 +140,7 @@ export function RootNavigator() {
         <Stack.Screen name="ClientHome" component={ClientHome} />
         <Stack.Screen name="SurveyorHome" component={SurveyorHome} />
         <Stack.Screen name="ProjectDetail" component={ProjectDetailScreen} />
+        <Stack.Screen name="ProjectSurveyors" component={ProjectSurveyorsScreen} />
         <Stack.Screen name="PersonalProfile" component={StackPersonalProfile} />
       </Stack.Navigator>
     </NavigationContainer>

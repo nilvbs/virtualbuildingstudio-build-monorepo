@@ -17,15 +17,29 @@ function pickParam(value: string | (string | null)[] | undefined): string | unde
 }
 
 /**
+ * Stable deep-link used as Auth0 `redirect_uri` for mobile.
+ * Prefer the app scheme so Auth0 allow-list can stay fixed (`surveylink://auth-callback`).
+ * Expo Go may still rewrite to `exp://…` — that URL must also be allow-listed.
+ */
+export function mobileGoogleRedirectUri(): string {
+  return Linking.createURL('auth-callback', { scheme: 'surveylink' });
+}
+
+/**
  * "Continue with Google" for mobile.
  *
- * In local dev (AUTH_DEV_MODE) the backend returns a start URL that already
- * carries the code + state, so we can exchange it directly without a browser
- * round-trip. Otherwise we open the provider in a secure auth session and read
- * the code/state back from the redirect.
+ * In local AUTH_DEV_MODE the API returns a start URL that already carries
+ * code + state (no browser). Otherwise we open Auth0 and read code/state
+ * from the mobile redirect deep link.
  */
 export async function signInWithGoogle(role: WorkspaceRole): Promise<GoogleOutcome> {
-  const { url } = await api.googleStartUrl(role);
+  const redirectUri = mobileGoogleRedirectUri();
+  if (__DEV__) {
+    // Helpful when wiring Auth0 Allowed Callback URLs for Expo Go / device.
+    console.log('[auth] Google redirectUri →', redirectUri);
+  }
+
+  const { url } = await api.googleStartUrl(role, redirectUri);
 
   let code: string | undefined;
   let state: string | undefined;
@@ -35,8 +49,7 @@ export async function signInWithGoogle(role: WorkspaceRole): Promise<GoogleOutco
   state = pickParam(initial.queryParams?.state);
 
   if (!code || !state) {
-    const redirectUrl = Linking.createURL('auth-callback');
-    const result = await WebBrowser.openAuthSessionAsync(url, redirectUrl);
+    const result = await WebBrowser.openAuthSessionAsync(url, redirectUri);
     if (result.type !== 'success' || !result.url) return { kind: 'cancelled' };
     const back = Linking.parse(result.url);
     code = pickParam(back.queryParams?.code);
@@ -45,7 +58,7 @@ export async function signInWithGoogle(role: WorkspaceRole): Promise<GoogleOutco
 
   if (!code || !state) return { kind: 'cancelled' };
 
-  const res = await api.exchangeGoogle({ code, state });
+  const res = await api.exchangeGoogle({ code, state, redirectUri });
   await setSession({
     accessToken: res.session.accessToken,
     refreshToken: res.session.refreshToken,

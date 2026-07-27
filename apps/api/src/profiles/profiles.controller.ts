@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
-import type { AuthPrincipal, SurveyorProfile, SurveyorStatus } from '@surveylink/types';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import type { AuthPrincipal, SurveyorProfile, SurveyorRequest, SurveyorStatus } from '@surveylink/types';
 import {
   createSurveyorProfileSchema,
   updateSurveyorProfileSchema,
@@ -38,5 +38,26 @@ export class ProfilesController {
   @Get('status')
   getStatus(@CurrentUser() principal: AuthPrincipal): Promise<SurveyorStatus> {
     return this.profiles.getStatus(principal.sub);
+  }
+
+  @Get('requests')
+  getRequests(@CurrentUser() principal: AuthPrincipal): Promise<SurveyorRequest[]> {
+    return this.profiles.getRequests(principal.sub);
+  }
+
+  @Post('requests/:matchId/accept')
+  acceptMatch(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('matchId') matchId: string,
+  ): Promise<{ matchId: string; status: string }> {
+    return this.profiles.acceptMatch(principal.sub, matchId);
+  }
+
+  @Post('requests/:matchId/decline')
+  declineMatch(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('matchId') matchId: string,
+  ): Promise<{ matchId: string; status: string }> {
+    return this.profiles.declineMatch(principal.sub, matchId);
   }
 }

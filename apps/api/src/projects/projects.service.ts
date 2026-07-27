@@ -2,14 +2,19 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Project as ProjectRow, type User } from '@prisma/client';
 import type {
   AppRole,
+  ClientSurveyorPage,
+  ClientSurveyorSort,
+  ClientSurveyorSummary,
   Project,
   ProjectDetail,
   ProjectMatchInfo,
   ProjectStatus,
   SurveyService,
 } from '@surveylink/types';
-import type { CreateProjectInput } from '@surveylink/validation';
+import type { ClientSurveyorBrowseInput, CreateProjectInput } from '@surveylink/validation';
 import { PrismaService } from '../prisma/prisma.service';
+import { S3MediaStorageService } from '../media/s3-media.storage';
+import { haversineKm } from '../common/geo';
 
 interface GeoRow {
   id: string;
@@ -19,7 +24,10 @@ interface GeoRow {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly media: S3MediaStorageService,
+  ) {}
 
   async create(subject: string, input: CreateProjectInput): Promise<Project> {
     const user = await this.requireUser(subject);
@@ -66,7 +74,6 @@ export class ProjectsService {
   async getById(subject: string, roles: AppRole[], projectId: string): Promise<ProjectDetail> {
     const user = await this.requireUser(subject);
     const row = await this.prisma.project.findUnique({ where: { id: projectId } });
-    // Hide existence from non-owners (admins may view any).
     if (!row || (row.clientId !== user.id && !roles.includes('admin'))) {
       throw new NotFoundException('Project not found');
     }
@@ -89,6 +96,166 @@ export class ProjectsService {
     }));
 
     return { ...this.toDto(row, this.pointOf(geo[0])), matches: matchInfo };
+  }
+
+  /**
+   * Browse matchable surveyors for a client project with default relevance
+   * (service overlap + proximity) and advanced filters + cursor pagination.
+   */
+  async browseSurveyors(
+    subject: string,
+    projectId: string,
+    query: ClientSurveyorBrowseInput,
+  ): Promise<ClientSurveyorPage> {
+    const user = await this.requireUser(subject);
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project || project.clientId !== user.id) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const projectServices = (project.services as unknown as SurveyService[]) ?? [];
+    const filterServices = query.services?.length ? query.services : projectServices;
+
+    const projectGeo = await this.prisma.$queryRaw<GeoRow[]>`
+      SELECT id::text AS id, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
+      FROM projects WHERE id = ${projectId}::uuid`;
+    const projectPoint = this.pointOf(projectGeo[0]);
+
+    const rows = await this.prisma.surveyorProfile.findMany({
+      where: {
+        isMatchable: true,
+        ...(query.bldVerified === true ? { bldVerified: true } : {}),
+        ...(query.minRating != null ? { ratingAvg: { gte: query.minRating } } : {}),
+        ...(query.minDayRateCents != null || query.maxDayRateCents != null
+          ? {
+              dayRateCents: {
+                ...(query.minDayRateCents != null ? { gte: BigInt(query.minDayRateCents) } : {}),
+                ...(query.maxDayRateCents != null ? { lte: BigInt(query.maxDayRateCents) } : {}),
+              },
+            }
+          : {}),
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            avatarKey: true,
+            emailVerified: true,
+            phoneVerified: true,
+          },
+        },
+      },
+    });
+
+    const surveyorIds = rows.map((r) => r.id);
+    const geo =
+      surveyorIds.length === 0
+        ? []
+        : await this.prisma.$queryRawUnsafe<GeoRow[]>(
+            `SELECT id::text AS id, ST_X(base_location::geometry) AS lng, ST_Y(base_location::geometry) AS lat
+             FROM surveyor_profiles
+             WHERE id = ANY($1::uuid[])`,
+            surveyorIds,
+          );
+    const geoById = new Map(geo.map((g) => [g.id, g]));
+
+    const radiusKm = query.radiusKm ?? (projectPoint ? 100 : undefined);
+    const qNorm = query.q?.trim().toLowerCase();
+
+    let items: ClientSurveyorSummary[] = rows.map((s) => {
+      const services = (s.services as unknown as SurveyService[]) ?? [];
+      const g = geoById.get(s.id);
+      const location =
+        g && g.lng != null && g.lat != null ? { lng: Number(g.lng), lat: Number(g.lat) } : null;
+      const distanceKm =
+        projectPoint && location ? Math.round(haversineKm(projectPoint, location) * 10) / 10 : null;
+
+      const overlap = filterServices.length
+        ? filterServices.filter((svc) => services.includes(svc)).length
+        : 0;
+      const overlapRatio = filterServices.length ? overlap / filterServices.length : 0;
+
+      const bldVerified = s.bldVerified || (s.user.emailVerified && s.user.phoneVerified);
+      const ratingAvg = s.ratingAvg != null ? Number(s.ratingAvg) : null;
+
+      let relevanceScore = Math.round(overlapRatio * 45);
+      if (distanceKm != null && radiusKm) {
+        const proximity = Math.max(0, 1 - distanceKm / radiusKm);
+        relevanceScore += Math.round(proximity * 35);
+      } else if (distanceKm == null) {
+        relevanceScore += 5;
+      }
+      if (bldVerified) relevanceScore += 12;
+      if (ratingAvg != null) relevanceScore += Math.round((ratingAvg / 5) * 8);
+
+      return {
+        profileId: s.id,
+        fullName: s.user.fullName,
+        avatarUrl: this.media.resolveSignedUrl(s.user.avatarKey),
+        bio: s.bio,
+        baseCity: s.baseCity,
+        services,
+        equipment: (s.equipment as unknown as string[]) ?? [],
+        radiusKm: s.radiusKm,
+        dayRateCents: s.dayRateCents != null ? Number(s.dayRateCents) : null,
+        ratingAvg,
+        ratingCount: s.ratingCount,
+        bldVerified,
+        distanceKm,
+        relevanceScore,
+      };
+    });
+
+    if (filterServices.length > 0) {
+      items = items.filter((s) => s.services.some((svc) => filterServices.includes(svc)));
+    }
+
+    if (radiusKm != null && projectPoint) {
+      items = items.filter((s) => s.distanceKm == null || s.distanceKm <= radiusKm);
+    }
+
+    if (qNorm) {
+      items = items.filter(
+        (s) =>
+          s.fullName.toLowerCase().includes(qNorm) ||
+          (s.baseCity?.toLowerCase().includes(qNorm) ?? false) ||
+          (s.bio?.toLowerCase().includes(qNorm) ?? false),
+      );
+    }
+
+    if (query.bldVerified === true) {
+      items = items.filter((s) => s.bldVerified);
+    }
+
+    items = this.sortSurveyors(items, query.sort ?? 'relevance');
+
+    const total = items.length;
+    const cursor = query.cursor ?? 0;
+    const limit = query.limit ?? 12;
+    const page = items.slice(cursor, cursor + limit);
+    const nextCursor = cursor + limit < total ? String(cursor + limit) : null;
+
+    return { items: page, nextCursor, total };
+  }
+
+  private sortSurveyors(
+    items: ClientSurveyorSummary[],
+    sort: ClientSurveyorSort,
+  ): ClientSurveyorSummary[] {
+    const copy = [...items];
+    switch (sort) {
+      case 'distance':
+        return copy.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+      case 'rating':
+        return copy.sort((a, b) => (b.ratingAvg ?? -1) - (a.ratingAvg ?? -1));
+      case 'price_asc':
+        return copy.sort((a, b) => (a.dayRateCents ?? Infinity) - (b.dayRateCents ?? Infinity));
+      case 'price_desc':
+        return copy.sort((a, b) => (b.dayRateCents ?? -1) - (a.dayRateCents ?? -1));
+      case 'relevance':
+      default:
+        return copy.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    }
   }
 
   private async getOwned(userId: string, projectId: string): Promise<Project> {

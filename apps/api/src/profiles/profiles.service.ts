@@ -5,13 +5,20 @@ import {
 } from '@nestjs/common';
 import { Prisma, type SurveyorProfile as SurveyorProfileRow, type User } from '@prisma/client';
 import type {
+  MatchStatus,
   PortfolioItem,
   SurveyService,
   SurveyorPortfolioDetails,
   SurveyorProfile,
+  SurveyorRequest,
   SurveyorStatus,
 } from '@surveylink/types';
-import { normalizePortfolioDetails, surveyorProfileCompletion } from '@surveylink/types';
+import {
+  isValidTransition,
+  MATCH_STATUS_TRANSITIONS,
+  normalizePortfolioDetails,
+  surveyorProfileCompletion,
+} from '@surveylink/types';
 import type {
   CreateSurveyorProfileInput,
   UpdateSurveyorProfileInput,
@@ -240,6 +247,102 @@ export class ProfilesService {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+  }
+
+  /**
+   * Return all proposed matches for this surveyor with full project + client info.
+   */
+  async getRequests(subject: string): Promise<SurveyorRequest[]> {
+    const user = await this.requireUser(subject);
+    const profile = await this.prisma.surveyorProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!profile) return [];
+
+    const matches = await this.prisma.match.findMany({
+      where: { surveyorId: profile.id, status: 'proposed' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        project: {
+          include: {
+            client: {
+              select: {
+                fullName: true,
+                clientProfile: { select: { companyName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return matches.map((m) => ({
+      matchId: m.id,
+      status: m.status as MatchStatus,
+      createdAt: m.createdAt.toISOString(),
+      project: {
+        id: m.project.id,
+        title: m.project.title,
+        services: (m.project.services as unknown as SurveyService[]) ?? [],
+        locationText: m.project.locationText,
+        buildingType: m.project.buildingType,
+        buildingAge: m.project.buildingAge,
+        floors: m.project.floors,
+        areaSqft: m.project.areaSqft,
+        neededWithin: m.project.neededWithin,
+        notes: m.project.notes,
+        status: m.project.status as SurveyorRequest['project']['status'],
+        createdAt: m.project.createdAt.toISOString(),
+      },
+      client: {
+        fullName: m.project.client.fullName,
+        companyName: m.project.client.clientProfile?.companyName ?? null,
+      },
+    }));
+  }
+
+  /**
+   * Surveyor accepts a proposed match.
+   */
+  async acceptMatch(subject: string, matchId: string): Promise<{ matchId: string; status: string }> {
+    return this.transitionMatch(subject, matchId, 'accepted');
+  }
+
+  /**
+   * Surveyor declines a proposed match.
+   */
+  async declineMatch(subject: string, matchId: string): Promise<{ matchId: string; status: string }> {
+    return this.transitionMatch(subject, matchId, 'declined');
+  }
+
+  private async transitionMatch(
+    subject: string,
+    matchId: string,
+    target: MatchStatus,
+  ): Promise<{ matchId: string; status: string }> {
+    const user = await this.requireUser(subject);
+    const profile = await this.prisma.surveyorProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!profile) throw new NotFoundException('No surveyor profile');
+
+    const match = await this.prisma.match.findUnique({ where: { id: matchId } });
+    if (!match || match.surveyorId !== profile.id) {
+      throw new NotFoundException('Match not found');
+    }
+
+    if (!isValidTransition(MATCH_STATUS_TRANSITIONS, match.status as MatchStatus, target)) {
+      throw new ConflictException(`Cannot move match from ${match.status} to ${target}`);
+    }
+
+    const updated = await this.prisma.match.update({
+      where: { id: matchId },
+      data: { status: target },
+    });
+
+    return { matchId: updated.id, status: updated.status };
   }
 
   private async requireUser(subject: string): Promise<User> {

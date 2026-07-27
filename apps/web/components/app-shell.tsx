@@ -8,6 +8,7 @@ import {
   Building2,
   ChevronDown,
   Handshake,
+  Inbox,
   LayoutDashboard,
   LogOut,
   CircleUserRound,
@@ -53,6 +54,7 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
     items: [
       { href: '/surveyor', label: 'Dashboard', icon: LayoutDashboard, exact: true, requiresCompleteProfile: true },
       { href: '/surveyor/profile', label: 'Portfolio', icon: UserRound },
+      { href: '/surveyor/requests', label: 'My Requests', icon: Inbox },
       { href: '/surveyor/matches', label: 'My Matches', icon: Handshake },
     ],
   },

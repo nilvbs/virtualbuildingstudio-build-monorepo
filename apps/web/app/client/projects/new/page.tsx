@@ -142,7 +142,7 @@ export default function NewProjectPage() {
 
     try {
       const project = await api.createProject(body);
-      router.push(`/client/projects/${project.id}`);
+      router.push(`/client/projects/${project.id}/surveyors`);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

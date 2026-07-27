@@ -215,6 +215,8 @@ export type CompleteProfileInput = z.infer<typeof completeProfileSchema>;
 export const googleExchangeSchema = z.object({
   code: z.string().min(1),
   state: z.string().min(1),
+  /** Mobile deep-link / Expo redirect; must match the start authorize call. */
+  redirectUri: z.string().min(1).max(500).optional(),
 });
 export type GoogleExchangeInput = z.infer<typeof googleExchangeSchema>;
 
@@ -324,6 +326,36 @@ export const adminSurveyorQuerySchema = z.object({
   minRating: z.coerce.number().optional(),
 });
 export type AdminSurveyorQuery = z.infer<typeof adminSurveyorQuerySchema>;
+
+/** Client discovery of matchable surveyors for a posted project. */
+export const clientSurveyorBrowseSchema = z.object({
+  cursor: z.coerce.number().int().min(0).optional().default(0),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(12),
+  /** Override / narrow services; defaults to the project's services. */
+  services: z
+    .union([z.array(surveyServiceSchema), surveyServiceSchema])
+    .optional()
+    .transform((v) => (v == null ? undefined : Array.isArray(v) ? v : [v])),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  bldVerified: z
+    .union([z.boolean(), z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === 'boolean') return v;
+      return v === 'true' || v === '1';
+    }),
+  /** Search radius from the project site (km). */
+  radiusKm: z.coerce.number().positive().max(20000).optional(),
+  minDayRateCents: z.coerce.number().int().min(0).optional(),
+  maxDayRateCents: z.coerce.number().int().min(0).optional(),
+  q: z.string().trim().max(100).optional(),
+  sort: z
+    .enum(['relevance', 'distance', 'rating', 'price_asc', 'price_desc'])
+    .optional()
+    .default('relevance'),
+});
+export type ClientSurveyorBrowseInput = z.infer<typeof clientSurveyorBrowseSchema>;
 
 export const createStaffAdminSchema = z.object({
   fullName: z.string().min(1).max(200),

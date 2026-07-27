@@ -27,15 +27,21 @@ FROM base AS installer
 # 1) Install against the pruned lockfile (better layer caching).
 COPY --from=pruner /app/out/json/ .
 RUN pnpm install --frozen-lockfile
-# 2) Bring in the pruned source and build.
+# 2) Bring in the pruned source + shared root configs that prune omits.
+#    packages/types & validation extend ../../tsconfig.base.json.
 COPY --from=pruner /app/out/full/ .
+COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
+# Re-link after full copy (pnpm node-linker=hoisted; keeps root node_modules intact).
+RUN pnpm install --frozen-lockfile
 # Prisma client must be generated before the TypeScript build (it imports it).
 RUN pnpm --filter @surveylink/api run prisma:generate
-RUN pnpm exec turbo run build --filter=@surveylink/api
+# Build API and its workspace deps (types, validation).
+RUN pnpm exec turbo run build --filter=@surveylink/api...
 
 # ---- runner: slim runtime --------------------------------------------------
 FROM base AS runner
 ENV NODE_ENV=production
+RUN apk add --no-cache wget
 # Copy the whole built workspace in one layer so pnpm's symlinked node_modules
 # (and the generated Prisma client) stay intact.
 COPY --from=installer /app .
@@ -43,6 +49,6 @@ COPY --from=installer /app .
 USER node
 EXPOSE 4000
 # Container-level health check (ECS/ALB also probe GET /health).
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${API_PORT:-4000}/health" >/dev/null 2>&1 || exit 1
 CMD ["node", "apps/api/dist/main.js"]

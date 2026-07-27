@@ -11,7 +11,7 @@ import {
 } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
 import { colors, radius, shadows, spacing } from '../../lib/theme';
-import { AlertBox, BackButton, Badge } from '../../components/ui';
+import { AlertBox, BackButton, Badge, Button } from '../../components/ui';
 import { AppHeader } from '../../components/AppHeader';
 import { FadeInUp } from '../../components/motion';
 import type { RootStackParamList } from '../../navigation/types';
@@ -68,6 +68,14 @@ export function ProjectDetailScreen({ route, navigation }: Props) {
               <Badge label={project.status} tone={statusTone(project.status)} />
               <Text style={styles.title}>{project.title}</Text>
               <Text style={styles.headline}>{clientProjectHeadline(project.status).headline}</Text>
+              {(project.status === 'submitted' || project.status === 'matching') ? (
+                <Button
+                  label="Browse matching surveyors"
+                  icon="search"
+                  onPress={() => navigation.navigate('ProjectSurveyors', { id: project.id })}
+                  style={{ marginTop: spacing.md, alignSelf: 'stretch' }}
+                />
+              ) : null}
             </View>
           </FadeInUp>
 

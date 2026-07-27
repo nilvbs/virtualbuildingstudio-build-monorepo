@@ -433,19 +433,52 @@ export class AuthService {
     return `${this.webAppUrl}/auth/callback`;
   }
 
+  /**
+   * Web uses `{WEB_APP_URL}/auth/callback`. Mobile passes its deep link
+   * (`surveylink://…` or Expo `exp://…`). Both must be listed in Auth0
+   * Allowed Callback URLs.
+   */
+  private resolveOAuthRedirectUri(redirectUri?: string): string {
+    const fallback = this.googleRedirectUri;
+    const candidate = redirectUri?.trim();
+    if (!candidate || candidate === fallback) return fallback;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      throw new BadRequestException('Invalid OAuth redirectUri');
+    }
+
+    const scheme = parsed.protocol.replace(/:$/, '').toLowerCase();
+    const allowedSchemes = new Set(['surveylink', 'exp', 'http', 'https']);
+    if (!allowedSchemes.has(scheme)) {
+      throw new BadRequestException('OAuth redirectUri scheme is not allowed');
+    }
+
+    // http(s) only allowed for the configured web callback (or same-origin path).
+    if (scheme === 'http' || scheme === 'https') {
+      if (candidate === fallback) return fallback;
+      throw new BadRequestException('OAuth redirectUri is not allow-listed');
+    }
+
+    return candidate;
+  }
+
   /** Build the URL the browser should navigate to for "Continue with Google". */
-  startGoogleLogin(roleRaw: string | undefined): { url: string } {
+  startGoogleLogin(roleRaw: string | undefined, redirectUri?: string): { url: string } {
     const state = encodeState({ role: normalizeRole(roleRaw), nonce: randomBytes(12).toString('hex') });
+    const resolvedRedirect = this.resolveOAuthRedirectUri(redirectUri);
 
     // Dev bypass: skip Auth0 entirely and bounce straight to the callback.
     if (devAuthEnabled(this.config)) {
       const params = new URLSearchParams({ code: DEV_GOOGLE_CODE, state });
-      return { url: `${this.googleRedirectUri}?${params.toString()}` };
+      return { url: `${resolvedRedirect}?${params.toString()}` };
     }
 
     const connection = this.config.get<string>('AUTH0_GOOGLE_CONNECTION') ?? GOOGLE_CONNECTION;
     const url = this.identity.buildSocialAuthorizeUrl({
-      redirectUri: this.googleRedirectUri,
+      redirectUri: resolvedRedirect,
       state,
       connection,
     });
@@ -457,10 +490,15 @@ export class AuthService {
    * already linked to the identity the caller is fully signed in; otherwise the
    * session is valid but registration must be completed (phone + role).
    */
-  async exchangeGoogle(code: string, state: string): Promise<GoogleAuthResult> {
+  async exchangeGoogle(
+    code: string,
+    state: string,
+    redirectUri?: string,
+  ): Promise<GoogleAuthResult> {
     const { role } = decodeState(state);
     const workspaceRole: WorkspaceRole | undefined =
       role === 'client' || role === 'surveyor' ? role : undefined;
+    const resolvedRedirect = this.resolveOAuthRedirectUri(redirectUri);
 
     // Dev bypass: fabricate a session for the fixed Google dev identity.
     if (devAuthEnabled(this.config) && code === DEV_GOOGLE_CODE) {
@@ -485,7 +523,7 @@ export class AuthService {
 
     const { session, identity } = await this.identity.exchangeAuthorizationCode({
       code,
-      redirectUri: this.googleRedirectUri,
+      redirectUri: resolvedRedirect,
     });
 
     const existing = await this.prisma.user.findUnique({

@@ -33,7 +33,7 @@ export function MatchesScreen() {
     setError(null);
     try {
       const status = await api.getSurveyorStatus();
-      setMatches(status.matches ?? []);
+      setMatches((status.matches ?? []).filter((m) => m.status === 'accepted' || m.status === 'completed'));
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -68,7 +68,7 @@ export function MatchesScreen() {
           <FadeInUp delay={30}>
             <View style={styles.intro}>
               <Text style={styles.title}>Matches</Text>
-              <Text style={styles.sub}>Projects our team has matched to you.</Text>
+              <Text style={styles.sub}>Accepted projects matched to you.</Text>
             </View>
             {error ? (
               <View style={{ marginTop: spacing.md }}>
@@ -88,7 +88,7 @@ export function MatchesScreen() {
                 </View>
                 <Text style={styles.emptyTitle}>No matches yet</Text>
                 <Text style={styles.emptyCopy}>
-                  When the ops team matches you to a project, it will show up here.
+                  Accepted requests will appear here.
                 </Text>
               </View>
             </FadeInUp>

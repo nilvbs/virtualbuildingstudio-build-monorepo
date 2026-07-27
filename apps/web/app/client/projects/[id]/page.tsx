@@ -121,6 +121,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         </div>
         <h2 className="project-status-hero-title">{headline}</h2>
         <p className="project-status-hero-sub">{subtext}</p>
+        {searching ? (
+          <Link href={`/client/projects/${project.id}/surveyors`} className="btn" style={{ marginTop: 16 }}>
+            Browse matching surveyors
+          </Link>
+        ) : null}
       </section>
 
       {!cancelled && (

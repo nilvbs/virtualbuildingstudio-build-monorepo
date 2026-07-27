@@ -219,7 +219,7 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
           ) : null}
 
           {user ? (
-            <FadeInUp delay={60}>
+            <FadeInUp delay={60} style={styles.sections}>
               <View style={styles.hero}>
                 <View style={styles.avatarWrap}>
                   <View style={styles.avatar}>
@@ -252,19 +252,21 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
 
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Contact details</Text>
-                <InfoRow
-                  icon="mail"
-                  label="Email address"
-                  value={user.email}
-                  verified={user.emailVerified}
-                />
-                <View style={styles.divider} />
-                <InfoRow
-                  icon="phone"
-                  label="Phone number"
-                  value={user.phone || 'Not set'}
-                  verified={user.phoneVerified}
-                />
+                <View style={styles.cardBody}>
+                  <InfoRow
+                    icon="mail"
+                    label="Email address"
+                    value={user.email}
+                    verified={user.emailVerified}
+                  />
+                  <View style={styles.divider} />
+                  <InfoRow
+                    icon="phone"
+                    label="Phone number"
+                    value={user.phone || 'Not set'}
+                    verified={user.phoneVerified}
+                  />
+                </View>
               </View>
 
               <View style={styles.card}>
@@ -277,99 +279,101 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
                     </Pressable>
                   ) : null}
                 </View>
-                <Field
-                  label="Full name"
-                  icon="user"
-                  value={fullName}
-                  editable={false}
-                  autoCapitalize="words"
-                />
-                <Text style={styles.hint}>From your account · not editable here</Text>
-                {showCompanyName ? (
+                <View style={styles.cardBody}>
                   <Field
-                    label="Company name"
-                    icon="briefcase"
-                    value={companyName}
-                    onChangeText={setCompanyName}
-                    editable={editing}
+                    label="Full name"
+                    icon="user"
+                    value={fullName}
+                    editable={false}
                     autoCapitalize="words"
-                    placeholder="Optional"
                   />
-                ) : null}
-                {isCompany ? (
-                  <>
+                  <Text style={styles.hint}>From your account · not editable here</Text>
+                  {showCompanyName ? (
                     <Field
-                      label="Registration number"
-                      value={registrationNumber}
-                      onChangeText={setRegistrationNumber}
+                      label="Company name"
+                      icon="briefcase"
+                      value={companyName}
+                      onChangeText={setCompanyName}
                       editable={editing}
+                      autoCapitalize="words"
+                      placeholder="Optional"
                     />
-                    <Field
-                      label="Website"
-                      icon="globe"
-                      value={website}
-                      onChangeText={setWebsite}
-                      editable={editing}
-                      autoCapitalize="none"
-                      placeholder="https://"
-                    />
-                  </>
-                ) : null}
-                <Field
-                  label={isCompany ? 'Company address' : 'Base address'}
-                  icon="map-pin"
-                  value={address.line1}
-                  onChangeText={(line1) => setAddress((a) => ({ ...a, line1 }))}
-                  editable={editing}
-                  placeholder="Address line 1"
-                />
-                <Field
-                  label="Address line 2 (optional)"
-                  value={address.line2}
-                  onChangeText={(line2) => setAddress((a) => ({ ...a, line2 }))}
-                  editable={editing}
-                />
-                <Field
-                  label="City"
-                  value={address.city}
-                  onChangeText={(city) => setAddress((a) => ({ ...a, city }))}
-                  editable={editing}
-                />
-                <Field
-                  label="State / region"
-                  value={address.state}
-                  onChangeText={(state) => setAddress((a) => ({ ...a, state }))}
-                  editable={editing}
-                />
-                <Field
-                  label="Postal code"
-                  value={address.postalCode}
-                  onChangeText={(postalCode) => setAddress((a) => ({ ...a, postalCode }))}
-                  editable={editing}
-                />
-                <Field
-                  label="Country"
-                  value={address.country}
-                  onChangeText={(country) => setAddress((a) => ({ ...a, country }))}
-                  editable={editing}
-                />
-                {editing ? (
-                  <View style={styles.actions}>
-                    <Button
-                      label={busy ? 'Saving…' : 'Save changes'}
-                      busy={busy}
-                      onPress={() => void save()}
-                      style={{ flex: 1 }}
-                    />
-                    <Button
-                      label="Cancel"
-                      variant="outline"
-                      disabled={busy}
-                      onPress={() => void cancelEditing()}
-                      style={{ flex: 1 }}
-                    />
-                  </View>
-                ) : null}
+                  ) : null}
+                  {isCompany ? (
+                    <>
+                      <Field
+                        label="Registration number"
+                        value={registrationNumber}
+                        onChangeText={setRegistrationNumber}
+                        editable={editing}
+                      />
+                      <Field
+                        label="Website"
+                        icon="globe"
+                        value={website}
+                        onChangeText={setWebsite}
+                        editable={editing}
+                        autoCapitalize="none"
+                        placeholder="https://"
+                      />
+                    </>
+                  ) : null}
+                  <Field
+                    label={isCompany ? 'Company address' : 'Base address'}
+                    icon="map-pin"
+                    value={address.line1}
+                    onChangeText={(line1) => setAddress((a) => ({ ...a, line1 }))}
+                    editable={editing}
+                    placeholder="Address line 1"
+                  />
+                  <Field
+                    label="Address line 2 (optional)"
+                    value={address.line2}
+                    onChangeText={(line2) => setAddress((a) => ({ ...a, line2 }))}
+                    editable={editing}
+                  />
+                  <Field
+                    label="City"
+                    value={address.city}
+                    onChangeText={(city) => setAddress((a) => ({ ...a, city }))}
+                    editable={editing}
+                  />
+                  <Field
+                    label="State / region"
+                    value={address.state}
+                    onChangeText={(state) => setAddress((a) => ({ ...a, state }))}
+                    editable={editing}
+                  />
+                  <Field
+                    label="Postal code"
+                    value={address.postalCode}
+                    onChangeText={(postalCode) => setAddress((a) => ({ ...a, postalCode }))}
+                    editable={editing}
+                  />
+                  <Field
+                    label="Country"
+                    value={address.country}
+                    onChangeText={(country) => setAddress((a) => ({ ...a, country }))}
+                    editable={editing}
+                  />
+                  {editing ? (
+                    <View style={styles.actions}>
+                      <Button
+                        label={busy ? 'Saving…' : 'Save changes'}
+                        busy={busy}
+                        onPress={() => void save()}
+                        style={{ flex: 1 }}
+                      />
+                      <Button
+                        label="Cancel"
+                        variant="outline"
+                        disabled={busy}
+                        onPress={() => void cancelEditing()}
+                        style={{ flex: 1 }}
+                      />
+                    </View>
+                  ) : null}
+                </View>
               </View>
             </FadeInUp>
           ) : null}
@@ -414,14 +418,27 @@ function InfoRow({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: 48, gap: 14 },
+  safe: { flex: 1, backgroundColor: colors.page },
+  content: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    paddingBottom: 100,
+    gap: spacing.lg,
+  },
+  sections: { gap: spacing.xl },
   title: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },
-  lede: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 4, marginBottom: 6 },
-  hint: { color: colors.muted, fontSize: 12, marginTop: -6, marginBottom: 4 },
+  lede: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  hint: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: -4,
+    marginBottom: spacing.sm,
+    lineHeight: 17,
+  },
   hero: {
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
     backgroundColor: colors.panel,
@@ -429,18 +446,18 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadows.sm,
   },
-  avatarWrap: { position: 'relative', marginBottom: 10 },
+  avatarWrap: { position: 'relative', marginBottom: spacing.md },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.navy,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   avatarImage: { width: '100%', height: '100%' },
-  avatarText: { color: colors.ice, fontSize: 22, fontWeight: '800' },
+  avatarText: { color: colors.ice, fontSize: 24, fontWeight: '800' },
   avatarEdit: {
     position: 'absolute',
     right: -4,
@@ -463,14 +480,14 @@ const styles = StyleSheet.create({
   },
   name: { fontSize: 18, fontWeight: '800', color: colors.text },
   card: {
-    gap: 10,
-    padding: spacing.lg,
+    padding: spacing.xl,
     borderRadius: radius.lg,
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.sm,
   },
+  cardBody: { marginTop: spacing.md, gap: spacing.sm },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -490,18 +507,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   editBtnText: { color: colors.navy, fontWeight: '700', fontSize: 13 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: spacing.sm,
+  },
   infoIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 11,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoLabel: { color: colors.muted, fontSize: 11, fontWeight: '600' },
+  infoLabel: { color: colors.muted, fontSize: 11, fontWeight: '600', marginBottom: 2 },
   infoValue: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  divider: { height: 1, backgroundColor: colors.border },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: 2 },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -515,5 +537,5 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '700' },
   badgeTextOk: { color: colors.ok },
   badgeTextWarn: { color: colors.danger },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: spacing.md },
 });

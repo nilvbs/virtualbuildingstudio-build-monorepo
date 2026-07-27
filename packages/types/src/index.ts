@@ -536,6 +536,34 @@ export interface SurveyorStatusMatch {
 }
 
 /**
+ * A proposed match as seen by the surveyor, with full project details so they
+ * can make an informed accept/decline decision.
+ */
+export interface SurveyorRequest {
+  matchId: string;
+  status: MatchStatus;
+  createdAt: string;
+  project: {
+    id: string;
+    title: string;
+    services: SurveyService[];
+    locationText: string | null;
+    buildingType: string | null;
+    buildingAge: string | null;
+    floors: number | null;
+    areaSqft: number | null;
+    neededWithin: string | null;
+    notes: string | null;
+    status: ProjectStatus;
+    createdAt: string;
+  };
+  client: {
+    fullName: string;
+    companyName: string | null;
+  };
+}
+
+/**
  * Drives the surveyor dashboard. `headline` is the polished status message;
  * `completionPercent` gates Dashboard access until the profile is finished.
  */
@@ -586,6 +614,39 @@ export interface ProjectMatchInfo {
 
 export interface ProjectDetail extends Project {
   matches: ProjectMatchInfo[];
+}
+
+/** Client-facing surveyor card when browsing talent for a project. */
+export interface ClientSurveyorSummary {
+  profileId: string;
+  fullName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  baseCity: string | null;
+  services: SurveyService[];
+  equipment: string[];
+  radiusKm: number;
+  dayRateCents: number | null;
+  ratingAvg: number | null;
+  ratingCount: number;
+  bldVerified: boolean;
+  /** Distance from the project site in km, when both points exist. */
+  distanceKm: number | null;
+  /** 0–100 relevance score used for default ranking. */
+  relevanceScore: number;
+}
+
+export type ClientSurveyorSort =
+  | 'relevance'
+  | 'distance'
+  | 'rating'
+  | 'price_asc'
+  | 'price_desc';
+
+export interface ClientSurveyorPage {
+  items: ClientSurveyorSummary[];
+  nextCursor: string | null;
+  total: number;
 }
 
 /**

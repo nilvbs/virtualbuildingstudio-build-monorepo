@@ -10,6 +10,7 @@ export type ClientTabParamList = {
 
 export type SurveyorTabParamList = {
   Dashboard: undefined;
+  Requests: undefined;
   Matches: undefined;
   Portfolio: undefined;
 };
@@ -22,6 +23,7 @@ export type RootStackParamList = {
   ClientHome: NavigatorScreenParams<ClientTabParamList> | undefined;
   SurveyorHome: NavigatorScreenParams<SurveyorTabParamList> | undefined;
   ProjectDetail: { id: string };
+  ProjectSurveyors: { id: string };
   PersonalProfile: { role: WorkspaceRole };
 };
 

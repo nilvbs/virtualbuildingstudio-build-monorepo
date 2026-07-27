@@ -53,7 +53,7 @@ export default function SurveyorMatchesPage() {
             Finish portfolio · {status.completionPercent}%
           </Link>
         </div>
-      ) : status.matches.length === 0 ? (
+      ) : status.matches.filter((m) => m.status === 'accepted' || m.status === 'completed').length === 0 ? (
         <div className="empty">
           <div className="empty-ico">
             <Handshake size={24} />
@@ -66,10 +66,10 @@ export default function SurveyorMatchesPage() {
       ) : (
         <section>
           <div className="section-title">
-            Your matches <span className="count">{status.matches.length}</span>
+            Your matches <span className="count">{status.matches.filter((m) => m.status === 'accepted' || m.status === 'completed').length}</span>
           </div>
           <div className="list">
-            {status.matches.map((m) => (
+            {status.matches.filter((m) => m.status === 'accepted' || m.status === 'completed').map((m) => (
               <div className="row-item" key={m.matchId}>
                 <div>
                   <strong>{m.projectTitle}</strong>

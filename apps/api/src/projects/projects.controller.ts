@@ -1,6 +1,11 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import type { AuthPrincipal, Project, ProjectDetail } from '@surveylink/types';
-import { createProjectSchema, type CreateProjectInput } from '@surveylink/validation';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import type { AuthPrincipal, ClientSurveyorPage, Project, ProjectDetail } from '@surveylink/types';
+import {
+  clientSurveyorBrowseSchema,
+  createProjectSchema,
+  type ClientSurveyorBrowseInput,
+  type CreateProjectInput,
+} from '@surveylink/validation';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ProjectsService } from './projects.service';
@@ -20,6 +25,15 @@ export class ProjectsController {
   @Get()
   list(@CurrentUser() principal: AuthPrincipal): Promise<Project[]> {
     return this.projects.listForClient(principal.sub);
+  }
+
+  @Get(':id/surveyors')
+  browseSurveyors(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(clientSurveyorBrowseSchema)) query: ClientSurveyorBrowseInput,
+  ): Promise<ClientSurveyorPage> {
+    return this.projects.browseSurveyors(principal.sub, id, query);
   }
 
   @Get(':id')

@@ -1,23 +1,89 @@
+# Local / Docker Desktop — Postgres + API together.
+# From repo root:
+#   docker compose up -d --build
+#   curl http://localhost:4000/health
+#
+# DB from host tools (pgAdmin): localhost:5435
+# API ↔ DB inside Docker still uses db:5432
+#
+# Stop:
+#   docker compose down
+# Wipe DB volume too:
+#   docker compose down -v
+
 services:
   db:
     image: postgis/postgis:16-3.4
-    container_name: surveylink-db
+    container_name: bld-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: surveylink
       POSTGRES_PASSWORD: surveylink
       POSTGRES_DB: surveylink
-    # Optional: only if you use Docker instead of local Windows/macOS Postgres.
-    # Default host port 5432 — local install often uses 5433; don't run both.
     ports:
-      - "5432:5432"
+      # Host 5435 so local Windows Postgres (5432/5433) is untouched.
+      - "5435:5432"
     volumes:
-      - surveylink_pgdata:/var/lib/postgresql/data
+      - bld_pgdata:/var/lib/postgresql/data
+      - ./deploy/ec2/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U surveylink -d surveylink"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 15s
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: bld-migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
+      DIRECT_DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@surveylink/api",
+        "exec",
+        "prisma",
+        "migrate",
+        "deploy",
+      ]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: bld-api:local
+    container_name: bld-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      API_PORT: "4000"
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
+      DIRECT_DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
+      WEB_APP_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000
+      # Optional — leave blank for stub SMS/email in container smoke tests
+      AWS_REGION: ${AWS_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-bld-build}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID:-}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET:-}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
-  surveylink_pgdata:
+  bld_pgdata:
+    name: bld_pgdata

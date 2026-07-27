@@ -8,12 +8,15 @@ import type {
   SignupResult,
   SurveyorProfile,
   SurveyorPortfolioDetails,
+  SurveyorRequest,
   SurveyorStatus,
   SurveyService,
   GeoPoint,
   PortfolioItem,
   Project,
   ProjectDetail,
+  ClientSurveyorPage,
+  ClientSurveyorSort,
   AdminQueues,
   AdminSurveyor,
   Match,
@@ -102,6 +105,8 @@ export interface AddMembershipBody {
 export interface GoogleExchangeBody {
   code: string;
   state: string;
+  /** Must match the redirect used in googleStartUrl (mobile deep link). */
+  redirectUri?: string;
 }
 
 export interface CompleteRegistrationBody {
@@ -202,8 +207,11 @@ export class SurveyLinkClient {
   }
 
   /** Resolve the "Continue with Google" URL to navigate the browser to. */
-  async googleStartUrl(role?: RoleHint): Promise<{ url: string }> {
-    const suffix = role ? `?role=${encodeURIComponent(role)}` : '';
+  async googleStartUrl(role?: RoleHint, redirectUri?: string): Promise<{ url: string }> {
+    const params = new URLSearchParams();
+    if (role) params.set('role', role);
+    if (redirectUri) params.set('redirectUri', redirectUri);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
     return this.request<{ url: string }>('GET', `/auth/oauth/google/start${suffix}`);
   }
 
@@ -366,6 +374,18 @@ export class SurveyLinkClient {
     return this.request<SurveyorStatus>('GET', '/surveyor/status');
   }
 
+  async getSurveyorRequests(): Promise<SurveyorRequest[]> {
+    return this.request<SurveyorRequest[]>('GET', '/surveyor/requests');
+  }
+
+  async acceptMatch(matchId: string): Promise<{ matchId: string; status: string }> {
+    return this.request<{ matchId: string; status: string }>('POST', `/surveyor/requests/${matchId}/accept`);
+  }
+
+  async declineMatch(matchId: string): Promise<{ matchId: string; status: string }> {
+    return this.request<{ matchId: string; status: string }>('POST', `/surveyor/requests/${matchId}/decline`);
+  }
+
   // --- Client projects ---
 
   async createProject(body: CreateProjectBody): Promise<Project> {
@@ -378,6 +398,36 @@ export class SurveyLinkClient {
 
   async getProject(id: string): Promise<ProjectDetail> {
     return this.request<ProjectDetail>('GET', `/projects/${id}`);
+  }
+
+  async browseProjectSurveyors(
+    projectId: string,
+    query: {
+      cursor?: number | string;
+      limit?: number;
+      services?: SurveyService[];
+      minRating?: number;
+      bldVerified?: boolean;
+      radiusKm?: number;
+      minDayRateCents?: number;
+      maxDayRateCents?: number;
+      q?: string;
+      sort?: ClientSurveyorSort;
+    } = {},
+  ): Promise<ClientSurveyorPage> {
+    const params = new URLSearchParams();
+    if (query.cursor != null) params.set('cursor', String(query.cursor));
+    if (query.limit != null) params.set('limit', String(query.limit));
+    if (query.minRating != null) params.set('minRating', String(query.minRating));
+    if (query.bldVerified != null) params.set('bldVerified', String(query.bldVerified));
+    if (query.radiusKm != null) params.set('radiusKm', String(query.radiusKm));
+    if (query.minDayRateCents != null) params.set('minDayRateCents', String(query.minDayRateCents));
+    if (query.maxDayRateCents != null) params.set('maxDayRateCents', String(query.maxDayRateCents));
+    if (query.q) params.set('q', query.q);
+    if (query.sort) params.set('sort', query.sort);
+    for (const s of query.services ?? []) params.append('services', s);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    return this.request<ClientSurveyorPage>('GET', `/projects/${projectId}/surveyors${suffix}`);
   }
 
   // --- Notifications ---

@@ -162,6 +162,11 @@ model SurveyorProfile {
   baseCity     String?                                @map("base_city")
   radiusKm     Int                                    @default(25) @map("radius_km")
   dayRateCents BigInt?                                @map("day_rate_cents")
+  /** Average star rating (1–5). Null until reviews exist. */
+  ratingAvg    Float?                                 @map("rating_avg")
+  ratingCount  Int                                    @default(0) @map("rating_count")
+  /** Platform-verified badge (identity / docs). Contact OTP is separate. */
+  bldVerified  Boolean                                @default(false) @map("bld_verified")
   portfolio    Json                                   @default("[]")
   /** Core + Identity portfolio payload (services coverage, pricing, identity, etc.). */
   details      Json                                   @default("{}")

@@ -16,8 +16,15 @@ import { api, errorMessage } from '../lib/api';
 import { setSession } from '../lib/session';
 import { destinationAfterAuth } from '../lib/auth-flow';
 import { signInWithGoogle } from '../lib/google';
+import {
+  defaultPhoneInput,
+  phoneInputIsValid,
+  phoneInputToE164,
+  type PhoneInputValue,
+} from '../lib/country-codes';
 import { colors, radius, shadows, spacing } from '../lib/theme';
 import { AlertBox, BackButton, Button, Divider, Field, GoogleButton } from '../components/ui';
+import { PhoneNumberField } from '../components/PhoneNumberField';
 import { PressCard } from '../components/motion';
 import { BottomSheet } from '../components/BottomSheet';
 import type { RootStackParamList } from '../navigation/types';
@@ -35,7 +42,7 @@ export function AuthScreen({ navigation, route }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('+1');
+  const [phoneInput, setPhoneInput] = useState<PhoneInputValue>(defaultPhoneInput());
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,13 +94,17 @@ export function AuthScreen({ navigation, route }: Props) {
 
   async function onSignup() {
     if (!role) return;
+    if (!phoneInputIsValid(phoneInput)) {
+      setError('Enter a valid mobile number for the selected country.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const { session } = await api.signup({
         fullName,
         email,
-        phone,
+        phone: phoneInputToE164(phoneInput),
         password,
         roleHint: role,
       });
@@ -149,10 +160,18 @@ export function AuthScreen({ navigation, route }: Props) {
 
   async function onCompleteRegistration() {
     if (!role) return;
+    if (!phoneInputIsValid(phoneInput)) {
+      setError('Enter a valid mobile number for the selected country.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await api.completeRegistration({ fullName, phone, roleHint: role });
+      await api.completeRegistration({
+        fullName,
+        phone: phoneInputToE164(phoneInput),
+        roleHint: role,
+      });
       await enterApp(role);
     } catch (err) {
       setError(errorMessage(err));
@@ -228,14 +247,7 @@ export function AuthScreen({ navigation, route }: Props) {
                     onChangeText={setFullName}
                     autoCapitalize="words"
                   />
-                  <Field
-                    label="Phone (E.164)"
-                    icon="phone"
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
-                    placeholder="+14155552671"
-                  />
+                  <PhoneNumberField value={phoneInput} onChange={setPhoneInput} />
                   <Button
                     label={busy ? 'Finishing…' : 'Finish sign up'}
                     icon="check"
@@ -287,14 +299,7 @@ export function AuthScreen({ navigation, route }: Props) {
                     autoComplete="email"
                   />
                   {mode === 'signup' ? (
-                    <Field
-                      label="Phone (E.164)"
-                      icon="phone"
-                      value={phone}
-                      onChangeText={setPhone}
-                      keyboardType="phone-pad"
-                      placeholder="+14155552671"
-                    />
+                    <PhoneNumberField value={phoneInput} onChange={setPhoneInput} />
                   ) : null}
                   {mode !== 'forgot' ? (
                     <Field

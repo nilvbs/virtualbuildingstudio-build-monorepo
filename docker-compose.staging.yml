@@ -1,0 +1,40 @@
+# Staging / EC2 — Postgres + PostGIS only (no RDS).
+# Runs 24×7 with Docker restart policy + named volume.
+#
+# On the EC2 host:
+#   docker compose -f docker-compose.staging.yml up -d
+#   docker compose -f docker-compose.staging.yml ps
+#
+# App DATABASE_URL on the same machine:
+#   postgresql://surveylink:CHANGE_ME@127.0.0.1:5432/surveylink?schema=public
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: bld-staging-db
+    restart: always
+    environment:
+      POSTGRES_USER: surveylink
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-surveylink}
+      POSTGRES_DB: surveylink
+    # Bind to localhost only — never expose 5432 to the public internet.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - bld_staging_pgdata:/var/lib/postgresql/data
+      - ./deploy/ec2/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U surveylink -d surveylink"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  bld_staging_pgdata:
+    name: bld_staging_pgdata

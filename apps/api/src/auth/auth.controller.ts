@@ -86,8 +86,11 @@ export class AuthController {
 
   @Public()
   @Get('oauth/google/start')
-  googleStart(@Query('role') role?: string): { url: string } {
-    return this.auth.startGoogleLogin(role);
+  googleStart(
+    @Query('role') role?: string,
+    @Query('redirectUri') redirectUri?: string,
+  ): { url: string } {
+    return this.auth.startGoogleLogin(role, redirectUri);
   }
 
   @Public()
@@ -96,7 +99,7 @@ export class AuthController {
   googleExchange(
     @Body(new ZodValidationPipe(googleExchangeSchema)) body: GoogleExchangeInput,
   ): Promise<GoogleAuthResult> {
-    return this.auth.exchangeGoogle(body.code, body.state);
+    return this.auth.exchangeGoogle(body.code, body.state, body.redirectUri);
   }
 
   @Post('complete-registration')
