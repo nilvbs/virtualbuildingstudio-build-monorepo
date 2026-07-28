@@ -1,0 +1,32 @@
+# EC2 staging — API only.
+# Image and .env sit in the SAME folder on the host. Nothing from .env is
+# baked into the image — Compose injects the file at container start.
+#
+# Folder layout on EC2 (example /opt/bld):
+#   /opt/bld/
+#     docker-compose.api.staging.yml
+#     .env                         ← secrets (chmod 600)
+#     (image lives in Docker: bld-api:local after docker load)
+#
+#   cd /opt/bld
+#   docker compose -f docker-compose.api.staging.yml up -d
+#   curl http://127.0.0.1:4000/health
+
+services:
+  api:
+    image: bld-api:local
+    container_name: bld-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    # Read ./.env from this compose file's directory (host side only).
+    env_file:
+      - .env
+    # Native Postgres on the EC2 host (e.g. port 5435).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

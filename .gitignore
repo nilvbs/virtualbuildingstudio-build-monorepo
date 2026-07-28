@@ -16,6 +16,8 @@ apps/api/uploads/
 .env
 .env.local
 .env.*.local
+.env.api
+.env.staging
 !.env.example
 
 # Prisma

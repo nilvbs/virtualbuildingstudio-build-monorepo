@@ -1,0 +1,20 @@
+# BLD staging — keep API container running after reboot
+#   sudo cp deploy/ec2/bld-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bld-api.service
+[Unit]
+Description=BLD staging API (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/bld
+ExecStart=/usr/bin/docker compose -f docker-compose.api.staging.yml up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.api.staging.yml stop
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
