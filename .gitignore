@@ -16,9 +16,8 @@ apps/api/uploads/
 .env
 .env.local
 .env.*.local
-.env.api
-.env.staging
 !.env.example
+!deploy/ec2/.env.example
 
 # Prisma
 apps/api/prisma/*.db

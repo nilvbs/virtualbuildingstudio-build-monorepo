@@ -1,0 +1,24 @@
+# EC2 staging — API container only.
+# Place this file NEXT TO `.env` on the server (e.g. ~/BLD/stage).
+# Image is loaded separately (`docker load`); secrets are never baked in.
+#
+#   cd ~/BLD/stage
+#   docker compose up -d
+#   curl http://127.0.0.1:4000/health
+
+services:
+  api:
+    image: bld-api:local
+    container_name: bld-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
