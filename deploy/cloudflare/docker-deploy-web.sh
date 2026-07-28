@@ -67,4 +67,7 @@ assert.strictEqual(path.dirname(rootReact), path.dirname(viaNext), 'Next must re
 assert.strictEqual(path.dirname(rootReact), path.dirname(viaDom), 'react-dom must resolve the same react as root');
 NODE
 
+# packages export dist/ — build web deps before OpenNext/Next resolve them
+pnpm exec turbo run build --filter=@surveylink/web^...
+
 pnpm --filter @surveylink/web run deploy

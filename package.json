@@ -18,8 +18,8 @@
     "db:migrate": "pnpm --filter @surveylink/api prisma:migrate:deploy",
     "db:migrate:dev": "pnpm --filter @surveylink/api prisma:migrate:dev",
     "db:generate": "pnpm --filter @surveylink/api prisma:generate",
-    "deploy:web": "pnpm --filter @surveylink/web run deploy",
-    "preview:web": "pnpm --filter @surveylink/web run preview"
+    "deploy:web": "pnpm exec turbo run build --filter=@surveylink/web^... && pnpm --filter @surveylink/web run deploy",
+    "preview:web": "pnpm exec turbo run build --filter=@surveylink/web^... && pnpm --filter @surveylink/web run preview"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
