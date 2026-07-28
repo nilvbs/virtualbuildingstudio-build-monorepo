@@ -28,8 +28,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@surveylink/web>react": "19.2.7",
-      "@surveylink/web>react-dom": "19.2.7",
+      "react": "19.2.7",
+      "react-dom": "19.2.7",
       "@surveylink/web>@types/react": "19.2.17",
       "@surveylink/web>@types/react-dom": "19.2.2",
       "@surveylink/mobile>react": "19.1.0",

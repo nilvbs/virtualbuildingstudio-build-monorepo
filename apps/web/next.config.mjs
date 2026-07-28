@@ -17,9 +17,13 @@ const nextConfig = {
     '@surveylink/api-client',
   ],
   webpack: (config) => {
+    // Monorepo can hoist Expo's react@19.1.0 to the root while web uses 19.2.7.
+    // Force every webpack graph (including Next) onto one physical copy.
     config.resolve.alias = {
       ...config.resolve.alias,
+      react$: reactPath,
       react: reactPath,
+      'react-dom$': reactDomPath,
       'react-dom': reactDomPath,
       'react/jsx-runtime': path.join(reactPath, 'jsx-runtime.js'),
       'react/jsx-dev-runtime': path.join(reactPath, 'jsx-dev-runtime.js'),
