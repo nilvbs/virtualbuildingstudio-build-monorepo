@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 .next/
+.open-next/
 out/
 .expo/
 .turbo/
@@ -16,8 +17,11 @@ apps/api/uploads/
 .env
 .env.local
 .env.*.local
+.env.production
+.dev.vars
 !.env.example
 !deploy/ec2/.env.example
+!apps/web/.env.example
 
 # Prisma
 apps/api/prisma/*.db

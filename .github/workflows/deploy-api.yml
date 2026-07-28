@@ -1,16 +1,24 @@
 name: Deploy API
 
-# Promotion model:
-#   push to `main`  -> deploy to the "staging" GitHub Environment
-#   push tag `v*`   -> deploy to the "production" GitHub Environment
+# main  → staging EC2 (GHCR image + SSH compose)
+# tag v* → production ECS (existing AWS path)
 #
-# Per-environment config lives in GitHub Environments (Settings → Environments):
-#   Variables : AWS_REGION, ECR_REPOSITORY, ECS_CLUSTER, ECS_SERVICE, ECS_CONTAINER_NAME
-#   Secrets   : AWS_DEPLOY_ROLE_ARN (for OIDC), DATABASE_URL, DIRECT_DATABASE_URL
+# Staging secrets: EC2_HOST, EC2_SSH_KEY ; var EC2_USER (ubuntu)
+# Production env:  AWS_DEPLOY_ROLE_ARN, DATABASE_URL, DIRECT_DATABASE_URL
+#                  vars AWS_REGION, ECR_REPOSITORY, ECS_CLUSTER, ECS_SERVICE, ECS_CONTAINER_NAME
+
 on:
   push:
     branches: [main]
     tags: ['v*']
+    paths:
+      - 'apps/api/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'apps/api/Dockerfile'
+      - 'deploy/ec2/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
 
 concurrency:
   group: deploy-api-${{ github.ref }}
@@ -18,27 +26,76 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write # OIDC federation to AWS (no long-lived keys)
+  id-token: write
+  packages: write
 
 jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      environment: ${{ steps.pick.outputs.environment }}
+      target: ${{ steps.pick.outputs.target }}
     steps:
       - id: pick
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "target=production" >> "$GITHUB_OUTPUT"
           else
-            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "target=staging" >> "$GITHUB_OUTPUT"
           fi
 
-  deploy:
+  staging-ec2:
     needs: setup
+    if: needs.setup.outputs.target == 'staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        id: meta
+        run: |
+          echo "image=ghcr.io/${{ github.repository }}/bld-api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=ghcr.io/${{ github.repository }}/bld-api:staging" >> "$GITHUB_OUTPUT"
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        run: |
+          docker build -f apps/api/Dockerfile -t "${{ steps.meta.outputs.image }}" -t "${{ steps.meta.outputs.image_latest }}" .
+          docker push "${{ steps.meta.outputs.image }}"
+          docker push "${{ steps.meta.outputs.image_latest }}"
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            USERNAME="${{ vars.EC2_USER }}"
+            APP_DIR="${{ vars.EC2_APP_DIR }}"
+            USERNAME="${USERNAME:-ubuntu}"
+            APP_DIR="${APP_DIR:-/home/ubuntu/BLD/stage}"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            docker pull "${{ steps.meta.outputs.image }}"
+            docker tag "${{ steps.meta.outputs.image }}" bld-api:local
+            cd "$APP_DIR"
+            docker compose up -d --force-recreate api
+            curl -sfS http://127.0.0.1:4000/health
+
+  production-ecs:
+    needs: setup
+    if: needs.setup.outputs.target == 'production'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ${{ needs.setup.outputs.environment }}
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
@@ -64,20 +121,14 @@ jobs:
           docker push "$IMAGE"
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
-      # Run DB migrations BEFORE rolling out the new tasks. Write migrations
-      # backward-compatible (expand → migrate → contract) so the currently
-      # running version keeps working during the rollout = zero downtime.
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Apply database migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -92,7 +143,7 @@ jobs:
           container-name: ${{ vars.ECS_CONTAINER_NAME }}
           image: ${{ steps.image.outputs.image }}
 
-      - name: Deploy to ECS (rolling, health-gated)
+      - name: Deploy to ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.taskdef.outputs.task-definition }}

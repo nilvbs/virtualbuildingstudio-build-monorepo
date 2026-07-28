@@ -1,34 +1,14 @@
-name: CI
+# Deprecated monolithic CI — replaced by path-filtered workflows:
+#   ci-packages.yml · ci-api.yml · ci-web.yml · ci-mobile.yml
+# Kept disabled so PRs only run the pipelines that match changed paths.
+
+name: CI (legacy — disabled)
 
 on:
-  pull_request:
-  push:
-    branches: [main]
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_dispatch:
 
 jobs:
-  verify:
+  noop:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint / typecheck / test / build
-        run: pnpm exec turbo run lint typecheck test build
+      - run: echo "Use ci-packages / ci-api / ci-web / ci-mobile instead."

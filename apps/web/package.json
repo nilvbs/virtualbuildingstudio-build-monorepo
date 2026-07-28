@@ -6,16 +6,21 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
-    "dependencies": {
+  "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.2",
     "@surveylink/api-client": "workspace:*",
     "@surveylink/types": "workspace:*",
     "@surveylink/validation": "workspace:*",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.24.0",
     "motion": "^12.42.2",
-    "next": "^15.1.3",
+    "next": "^15.5.21",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-leaflet": "^5.0.0"
@@ -25,6 +30,7 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "wrangler": "^4.28.0"
   }
 }

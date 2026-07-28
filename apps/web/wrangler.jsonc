@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bld-web-staging",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-28",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // Required for OpenNext routing / cache revalidation helpers.
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "bld-web-staging"
+    }
+  ],
+  // next/image optimization on Workers
+  "images": {
+    "binding": "IMAGES"
+  },
+  "observability": {
+    "enabled": true
+  }
+  // Public site is https://staging.bld.online (Nginx on EC2 proxies / to this Worker).
+  // Do not attach a second custom domain unless you drop the Nginx web proxy.
+}

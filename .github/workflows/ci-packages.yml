@@ -1,0 +1,45 @@
+name: CI — packages
+
+on:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - 'turbo.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/ci-packages.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - 'turbo.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/ci-packages.yml'
+
+concurrency:
+  group: ci-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build & typecheck shared packages
+        run: pnpm exec turbo run build typecheck --filter=./packages/*

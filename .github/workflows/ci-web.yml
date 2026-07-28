@@ -1,0 +1,46 @@
+name: CI — Web
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig.base.json'
+      - '.github/workflows/ci-web.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig.base.json'
+      - '.github/workflows/ci-web.yml'
+
+concurrency:
+  group: ci-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck / build web (+ workspace deps)
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+          NEXT_PUBLIC_AUTH_DEV_MODE: 'false'
+        run: pnpm exec turbo run typecheck build --filter=@surveylink/web...

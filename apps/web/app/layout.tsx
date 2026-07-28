@@ -22,6 +22,9 @@ export const metadata: Metadata = {
     'BLD is a managed marketplace connecting clients with independent site surveyors.',
 };
 
+// Client-heavy app (auth/session); skip SSG prerender that breaks under monorepo React.
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${dmSans.variable} ${fraunces.variable}`}>

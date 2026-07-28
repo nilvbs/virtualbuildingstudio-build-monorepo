@@ -1,37 +1,13 @@
-# EC2 staging (API)
+# EC2 staging — https://staging.bld.online
 
-## Layout on the server
-
-```text
-~/BLD/stage/
-  docker-compose.yml    ← from deploy/ec2/docker-compose.yml
-  .env                  ← from deploy/ec2/.env.example (chmod 600)
-  bld-api-local.tar     ← optional; docker load once
-```
-
-Image = code. `.env` = secrets on the host. They are not merged into the image.
-
-## Commands
+- `/api/*` → Docker API `:4000`
+- `/` → Cloudflare Worker (set hostname in `nginx-staging.conf`)
 
 ```bash
 cd ~/BLD/stage
-docker load -i bld-api-local.tar    # first time / new build
 docker compose up -d
-curl -sS http://127.0.0.1:4000/health
+# edit nginx REPLACE_ME → your *.workers.dev host, then:
+sudo nginx -t && sudo systemctl reload nginx
+curl -sS https://staging.bld.online/api/health
+curl -sSI https://staging.bld.online/
 ```
-
-Update config: edit `.env` → `docker compose up -d --force-recreate`  
-Update code: new tar → `docker load` → `docker compose up -d --force-recreate`
-
-Migrate:
-
-```bash
-cd ~/BLD/stage
-docker run --rm --env-file ./.env --add-host=host.docker.internal:host-gateway \
-  bld-api:local \
-  pnpm --filter @surveylink/api exec prisma migrate deploy
-```
-
-## Local Docker Desktop
-
-Use root `docker-compose.yml` (Postgres + API + migrate). Not used on EC2 when Postgres is native on the host.

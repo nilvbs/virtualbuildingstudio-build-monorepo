@@ -1,0 +1,78 @@
+name: Deploy Mobile
+
+# Verify on main when mobile/packages change.
+# EAS build: Actions → Deploy Mobile → Run workflow (requires EXPO_TOKEN + apps/mobile/eas.json).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - '.github/workflows/deploy-mobile.yml'
+  workflow_dispatch:
+    inputs:
+      eas_profile:
+        description: 'EAS profile (preview | production)'
+        required: false
+        default: 'preview'
+
+concurrency:
+  group: deploy-mobile-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run typecheck --filter=@surveylink/mobile...
+
+  eas:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Require EXPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "Set secret EXPO_TOKEN to run EAS builds."
+            exit 1
+          fi
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: EAS build
+        working-directory: apps/mobile
+        run: |
+          if [ ! -f eas.json ]; then
+            echo "Add apps/mobile/eas.json before enabling EAS deploys."
+            exit 1
+          fi
+          npx eas-cli build --platform all --profile "${{ inputs.eas_profile }}" --non-interactive --no-wait

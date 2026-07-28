@@ -1,0 +1,43 @@
+name: CI — Mobile
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig.base.json'
+      - '.github/workflows/ci-mobile.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'tsconfig.base.json'
+      - '.github/workflows/ci-mobile.yml'
+
+concurrency:
+  group: ci-mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck mobile (+ workspace deps)
+        run: pnpm exec turbo run typecheck --filter=@surveylink/mobile...
