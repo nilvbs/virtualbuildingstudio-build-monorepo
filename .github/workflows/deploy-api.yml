@@ -88,7 +88,20 @@ jobs:
             docker tag "${{ steps.meta.outputs.image }}" bld-api:local
             cd "$APP_DIR"
             docker compose up -d --force-recreate api
-            curl -sfS http://127.0.0.1:4000/health
+            echo "Waiting for Docker health..."
+            timeout=90
+            elapsed=0
+            while [ "$(docker inspect -f '{{.State.Health.Status}}' bld-api)" != "healthy" ]; do
+              if [ "$elapsed" -ge "$timeout" ]; then
+                echo "Container never became healthy"
+                docker logs bld-api --tail=100
+                exit 1
+              fi
+              sleep 2
+              elapsed=$((elapsed + 2))
+              echo "Waiting... (${elapsed}/${timeout}s)"
+            done
+            echo "Container is healthy!"
 
   production-ecs:
     needs: setup

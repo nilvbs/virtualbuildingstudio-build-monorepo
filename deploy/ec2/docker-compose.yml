@@ -17,6 +17,12 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     logging:
       driver: json-file
       options:
