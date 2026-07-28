@@ -23,11 +23,19 @@ Auth0: callbacks/origins = `https://staging.bld.online`
 
 ## GitHub secrets (staging)
 
+`deploy-web` and `deploy-api` use **`environment: staging`**. Add secrets/vars on that environment
+(Settings → Environments → **staging**), not only as repo-wide secrets — otherwise wrangler
+sees an empty `CLOUDFLARE_API_TOKEN`.
+
 | Name | Pipeline |
 |------|----------|
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | deploy-web |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | deploy-web (secrets) |
 | `NEXT_PUBLIC_API_URL` = `https://staging.bld.online/api` | deploy-web (variable) |
-| `EC2_HOST`, `EC2_SSH_KEY` | deploy-api |
+| `EC2_HOST`, `EC2_SSH_KEY` | deploy-api (secrets) |
 | `EC2_USER`, `EC2_APP_DIR` | deploy-api (variables) |
+
+Cloudflare token: [Create Token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+with **Edit Cloudflare Workers** (or Workers Scripts Edit + Account Read).  
+Account ID: `7a66fc4a13891644ca38d505601864b1` (Workers dashboard).
 
 See `deploy/ec2/` for host files.
