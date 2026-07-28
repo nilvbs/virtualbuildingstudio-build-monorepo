@@ -1,12 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { ArrowRight, Building2, ClipboardCheck, MapPin, UserRoundSearch } from 'lucide-react';
 import { HeroBrand } from './hero-brand';
 import { HeroJourney } from './hero-journey';
 import { LandingAuthOverlay, useLandingAuth } from './landing-auth';
 
 export function LandingPage() {
-  const { open, mode, role, created, openAuth, closeAuth, setMode, setRole, clearRole } =
+  const { open, mode, role, created, closeAuth, setMode, setRole, clearRole } =
     useLandingAuth();
 
   return (
@@ -14,16 +15,13 @@ export function LandingPage() {
       <section className="mkt-hero" aria-label="BLD">
         <nav className="mkt-nav">
           <div className="mkt-nav-actions">
-            <button type="button" className="mkt-nav-btn mkt-nav-btn-ghost" onClick={() => openAuth('login')}>
+            {/* Real hrefs: work with soft nav when hydrated, full reload if client JS fails. */}
+            <Link href="/?auth=login" className="mkt-nav-btn mkt-nav-btn-ghost" scroll={false}>
               Sign in
-            </button>
-            <button
-              type="button"
-              className="mkt-nav-btn mkt-nav-btn-solid"
-              onClick={() => openAuth('signup')}
-            >
+            </Link>
+            <Link href="/?auth=signup" className="mkt-nav-btn mkt-nav-btn-solid" scroll={false}>
               Create account
-            </button>
+            </Link>
           </div>
         </nav>
 
@@ -47,10 +45,10 @@ export function LandingPage() {
           </div>
 
           <div className="mkt-paths">
-            <button
-              type="button"
+            <Link
+              href="/?auth=signup&role=client"
               className="mkt-path mkt-path-client"
-              onClick={() => openAuth('signup', 'client')}
+              scroll={false}
             >
               <span className="mkt-path-icon" aria-hidden>
                 <Building2 size={22} strokeWidth={1.8} />
@@ -67,12 +65,12 @@ export function LandingPage() {
                   <ArrowRight size={16} />
                 </span>
               </span>
-            </button>
+            </Link>
 
-            <button
-              type="button"
+            <Link
+              href="/?auth=signup&role=surveyor"
               className="mkt-path mkt-path-surveyor"
-              onClick={() => openAuth('signup', 'surveyor')}
+              scroll={false}
             >
               <span className="mkt-path-icon" aria-hidden>
                 <MapPin size={22} strokeWidth={1.8} />
@@ -89,7 +87,7 @@ export function LandingPage() {
                   <ArrowRight size={16} />
                 </span>
               </span>
-            </button>
+            </Link>
           </div>
         </div>
       </section>

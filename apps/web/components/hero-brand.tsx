@@ -1,24 +1,35 @@
 'use client';
 
 import { motion, useReducedMotion } from 'motion/react';
+import { useEffect, useState } from 'react';
 
 const easeClassic = [0.22, 0.61, 0.36, 1] as const;
 
+function BrandStatic() {
+  return (
+    <div className="mkt-hero-brand mkt-hero-brand-static">
+      <div className="mkt-hero-logo-wrap" role="img" aria-label="BLD">
+        <span className="mkt-logo-piece mkt-logo-l" aria-hidden />
+        <span className="mkt-logo-piece mkt-logo-b" aria-hidden />
+        <span className="mkt-logo-piece mkt-logo-d" aria-hidden />
+      </div>
+      <p className="mkt-hero-tagline">Site surveys, built around you.</p>
+      <span className="mkt-hero-rule" aria-hidden />
+    </div>
+  );
+}
+
 export function HeroBrand() {
   const reduce = useReducedMotion();
+  // Avoid SSR/hydration freeze at opacity:0 when client JS fails to hydrate.
+  const [animate, setAnimate] = useState(false);
 
-  if (reduce) {
-    return (
-      <div className="mkt-hero-brand">
-        <div className="mkt-hero-logo-wrap" role="img" aria-label="BLD">
-          <span className="mkt-logo-piece mkt-logo-l" aria-hidden />
-          <span className="mkt-logo-piece mkt-logo-b" aria-hidden />
-          <span className="mkt-logo-piece mkt-logo-d" aria-hidden />
-        </div>
-        <p className="mkt-hero-tagline">Site surveys, built around you.</p>
-        <span className="mkt-hero-rule" aria-hidden />
-      </div>
-    );
+  useEffect(() => {
+    setAnimate(true);
+  }, []);
+
+  if (reduce || !animate) {
+    return <BrandStatic />;
   }
 
   return (
@@ -29,7 +40,6 @@ export function HeroBrand() {
       transition={{ duration: 0.7, ease: easeClassic }}
     >
       <div className="mkt-hero-logo-wrap" role="img" aria-label="BLD">
-        {/* Building (L) rises first */}
         <motion.span
           className="mkt-logo-piece mkt-logo-l"
           aria-hidden
@@ -43,7 +53,6 @@ export function HeroBrand() {
           style={{ transformOrigin: '50% 100%' }}
         />
 
-        {/* B from left */}
         <motion.span
           className="mkt-logo-piece mkt-logo-b"
           aria-hidden
@@ -59,7 +68,6 @@ export function HeroBrand() {
           }}
         />
 
-        {/* D from right */}
         <motion.span
           className="mkt-logo-piece mkt-logo-d"
           aria-hidden
