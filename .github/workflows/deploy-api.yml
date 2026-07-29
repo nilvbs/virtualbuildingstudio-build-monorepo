@@ -87,6 +87,12 @@ jobs:
             docker pull "${{ steps.meta.outputs.image }}"
             docker tag "${{ steps.meta.outputs.image }}" bld-api:local
             cd "$APP_DIR"
+            # Staging DB is on the host; apply pending Prisma migrations before recreate.
+            docker run --rm \
+              --env-file "$APP_DIR/.env" \
+              --add-host=host.docker.internal:host-gateway \
+              bld-api:local \
+              sh -c "cd /app/apps/api && npx prisma migrate deploy"
             docker compose up -d --force-recreate api
             echo "Waiting for Docker health..."
             timeout=90

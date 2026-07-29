@@ -42,7 +42,8 @@ export function GoogleButton({
     setError(null);
     setBusy(true);
     try {
-      const { url } = await api.googleStartUrl(role);
+      const redirectUri = `${window.location.origin}/auth/callback`;
+      const { url } = await api.googleStartUrl(role, redirectUri);
       window.location.href = url;
     } catch (err) {
       const msg = errorMessage(err);

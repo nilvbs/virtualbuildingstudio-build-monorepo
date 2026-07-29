@@ -34,7 +34,8 @@ function CallbackInner() {
 
     (async () => {
       try {
-        const res = await api.exchangeGoogle({ code, state });
+        const redirectUri = `${window.location.origin}/auth/callback`;
+        const res = await api.exchangeGoogle({ code, state, redirectUri });
         // Prefer workspace from OAuth state (session.activeRole). Never force
         // "both" accounts onto /client — that ignored Expert (surveyor) signup.
         const activeRole: WorkspaceRole | undefined =

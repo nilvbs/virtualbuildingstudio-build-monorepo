@@ -221,33 +221,50 @@ export class Auth0IdentityProvider implements IdentityProvider {
       };
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
-      const bodyRaw = (err as { body?: string }).body;
-      let auth0Msg =
-        (err as { error_description?: string }).error_description ??
-        (err as { message?: string }).message ??
-        'Auth0 token exchange failed';
-      if (typeof bodyRaw === 'string' && bodyRaw.length > 0) {
-        try {
-          const parsed = JSON.parse(bodyRaw) as {
-            error_description?: string;
-            error?: string;
-            message?: string;
-          };
-          auth0Msg =
-            parsed.error_description ?? parsed.message ?? parsed.error ?? auth0Msg;
-        } catch {
-          auth0Msg = bodyRaw.slice(0, 300);
-        }
-      }
+      const auth0Msg = auth0ErrorMessage(err);
       this.logger.error(
         `Auth0 authorization-code exchange failed (status=${status ?? 'n/a'}): ${auth0Msg}`,
-        err as Error,
+        err instanceof Error ? err.stack : undefined,
       );
-      if (status === 401 || status === 403 || status === 400) {
-        throw new UnauthorizedException(auth0Msg);
-      }
-      // Surface the real Auth0/network reason instead of a blank Nest 500.
+      // Always surface Auth0's reason (redirect_uri mismatch, unauthorized
+      // client, invalid_grant, etc.) instead of Nest's blank 500.
       throw new UnauthorizedException(auth0Msg);
     }
+  }
+}
+
+/** Pull a human-readable message out of Auth0 SDK / OAuth error shapes. */
+function auth0ErrorMessage(err: unknown): string {
+  const e = err as {
+    error_description?: string;
+    error?: string;
+    message?: string;
+    body?: unknown;
+  };
+  const fromBody = messageFromAuth0Body(e.body);
+  if (fromBody) return fromBody;
+  if (typeof e.error_description === 'string' && e.error_description.trim()) {
+    return e.error_description.trim();
+  }
+  if (typeof e.message === 'string' && e.message.trim()) return e.message.trim();
+  if (typeof e.error === 'string' && e.error.trim()) return e.error.trim();
+  return 'Auth0 token exchange failed';
+}
+
+function messageFromAuth0Body(body: unknown): string | null {
+  if (body == null) return null;
+  if (typeof body === 'object') {
+    const o = body as Record<string, unknown>;
+    for (const key of ['error_description', 'message', 'error'] as const) {
+      const v = o[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return null;
+  }
+  if (typeof body !== 'string' || !body.trim()) return null;
+  try {
+    return messageFromAuth0Body(JSON.parse(body) as unknown) ?? body.slice(0, 300);
+  } catch {
+    return body.slice(0, 300);
   }
 }

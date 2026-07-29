@@ -2,9 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
@@ -89,6 +92,8 @@ function decodeState(raw: string): OAuthState {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(IDENTITY_PROVIDER) private readonly identity: IdentityProvider,
@@ -491,6 +496,32 @@ export class AuthService {
    * session is valid but registration must be completed (phone + role).
    */
   async exchangeGoogle(
+    code: string,
+    state: string,
+    redirectUri?: string,
+  ): Promise<GoogleAuthResult> {
+    try {
+      return await this.exchangeGoogleInner(code, state, redirectUri);
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      const prismaCode = (err as { code?: string }).code;
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Google exchange failed${prismaCode ? ` [${prismaCode}]` : ''}: ${message}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      if (typeof prismaCode === 'string' && prismaCode.startsWith('P')) {
+        throw new ServiceUnavailableException(
+          `Sign-in failed due to a database error (${prismaCode}). Staging may need pending Prisma migrations.`,
+        );
+      }
+      throw new ServiceUnavailableException(
+        message.slice(0, 300) || 'Google sign-in failed unexpectedly',
+      );
+    }
+  }
+
+  private async exchangeGoogleInner(
     code: string,
     state: string,
     redirectUri?: string,
