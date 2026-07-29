@@ -19,6 +19,11 @@ END $$;
 
 GRANT ALL PRIVILEGES ON DATABASE surveylink TO surveylink;
 
+-- PostgreSQL 15+: app role needs CREATE on public (run connected to surveylink).
+-- GRANT USAGE, CREATE ON SCHEMA public TO surveylink;
+-- ALTER SCHEMA public OWNER TO surveylink;
+
 -- Then open Query Tool on database "surveylink" and run:
 -- CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- CREATE EXTENSION IF NOT EXISTS postgis;
+-- Or apply deploy/ec2/grant-surveylink-schema.sql as postgres.
