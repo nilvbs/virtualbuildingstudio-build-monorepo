@@ -15,7 +15,18 @@ function profileRow(overrides: Record<string, unknown> = {}) {
     radiusKm: 50,
     dayRateCents: BigInt(120000),
     portfolio: [],
-    details: {},
+    // Must satisfy surveyorProfileCompletion (availability, languages, industries, identity).
+    details: {
+      availability: 'available_immediately',
+      languages: ['english'],
+      industries: ['commercial'],
+      identity: {
+        kind: 'individual',
+        professionalTitle: 'Surveyor',
+        headline: 'Laser scanning specialist',
+        aboutMe: 'Austin-based scanning specialist.',
+      },
+    },
     isMatchable: true,
     createdAt: now,
     updatedAt: now,
@@ -134,7 +145,14 @@ describe('ProfilesService', () => {
 
     it('gates live status messaging until the profile is complete', async () => {
       prisma.surveyorProfile.findUnique.mockResolvedValue(
-        profileRow({ services: [], equipment: [], bio: null, baseCity: null, dayRateCents: null }),
+        profileRow({
+          services: [],
+          equipment: [],
+          bio: null,
+          baseCity: null,
+          dayRateCents: null,
+          details: {},
+        }),
       );
       prisma.$queryRaw.mockResolvedValue([{ lng: null, lat: null }]);
       prisma.match.findMany.mockResolvedValue([]);
