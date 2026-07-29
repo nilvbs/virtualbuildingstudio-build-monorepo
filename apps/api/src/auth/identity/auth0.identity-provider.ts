@@ -66,7 +66,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
   }
 
   private requireConfig(key: string): string {
-    const value = this.config.get<string>(key);
+    const value = this.config.get<string>(key)?.trim();
     if (!value) {
       throw new ServiceUnavailableException(`Auth is not configured: missing ${key}`);
     }
@@ -221,11 +221,33 @@ export class Auth0IdentityProvider implements IdentityProvider {
       };
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
-      if (status === 401 || status === 403) {
-        throw new UnauthorizedException('Google sign-in was rejected');
+      const bodyRaw = (err as { body?: string }).body;
+      let auth0Msg =
+        (err as { error_description?: string }).error_description ??
+        (err as { message?: string }).message ??
+        'Auth0 token exchange failed';
+      if (typeof bodyRaw === 'string' && bodyRaw.length > 0) {
+        try {
+          const parsed = JSON.parse(bodyRaw) as {
+            error_description?: string;
+            error?: string;
+            message?: string;
+          };
+          auth0Msg =
+            parsed.error_description ?? parsed.message ?? parsed.error ?? auth0Msg;
+        } catch {
+          auth0Msg = bodyRaw.slice(0, 300);
+        }
       }
-      this.logger.error('Auth0 authorization-code exchange failed', err as Error);
-      throw err;
+      this.logger.error(
+        `Auth0 authorization-code exchange failed (status=${status ?? 'n/a'}): ${auth0Msg}`,
+        err as Error,
+      );
+      if (status === 401 || status === 403 || status === 400) {
+        throw new UnauthorizedException(auth0Msg);
+      }
+      // Surface the real Auth0/network reason instead of a blank Nest 500.
+      throw new UnauthorizedException(auth0Msg);
     }
   }
 }
