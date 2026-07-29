@@ -43,7 +43,9 @@ describe('ProjectsService', () => {
       $queryRaw: jest.fn().mockResolvedValue([{ id: 'proj-1', lng: -96.8, lat: 32.78 }]),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new ProjectsService(prisma as any);
+    const media = { createUpload: jest.fn(), getSignedGetUrl: jest.fn() } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    service = new ProjectsService(prisma as any, media);
   });
 
   describe('create', () => {

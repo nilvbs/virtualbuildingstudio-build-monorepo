@@ -44,6 +44,9 @@ describe('AdminService', () => {
     };
     notifications = { notifyMatchCreated: jest.fn().mockResolvedValue(undefined) };
     projects = { getById: jest.fn().mockResolvedValue({ id: 'proj-1', status: 'confirmed' }) };
+    const config = { get: jest.fn().mockReturnValue(undefined) };
+    const staffContext = {};
+    const identity = {};
     service = new AdminService(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       prisma as any,
@@ -51,6 +54,12 @@ describe('AdminService', () => {
       notifications as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       projects as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      staffContext as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      identity as any,
     );
   });
 
