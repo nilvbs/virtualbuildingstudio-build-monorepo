@@ -71,22 +71,43 @@ jobs:
           docker push "${{ steps.meta.outputs.image }}"
           docker push "${{ steps.meta.outputs.image_latest }}"
 
+      - name: Resolve EC2 app dir
+        id: dirs
+        run: |
+          APP_DIR="${{ vars.EC2_APP_DIR }}"
+          USERNAME="${{ vars.EC2_USER }}"
+          echo "app_dir=${APP_DIR:-/home/ubuntu/BLD/stage}" >> "$GITHUB_OUTPUT"
+          echo "user=${USERNAME:-ubuntu}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync compose files to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ steps.dirs.outputs.user }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: deploy/ec2/docker-compose.yml,deploy/ec2/postgres-init/*
+          target: ${{ steps.dirs.outputs.app_dir }}/
+          strip_components: 2
+          overwrite: true
+
       - name: Deploy on EC2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ vars.EC2_USER }}
+          username: ${{ steps.dirs.outputs.user }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -euo pipefail
-            USERNAME="${{ vars.EC2_USER }}"
-            APP_DIR="${{ vars.EC2_APP_DIR }}"
-            USERNAME="${USERNAME:-ubuntu}"
-            APP_DIR="${APP_DIR:-/home/ubuntu/BLD/stage}"
+            APP_DIR="${{ steps.dirs.outputs.app_dir }}"
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             docker pull "${{ steps.meta.outputs.image }}"
             docker tag "${{ steps.meta.outputs.image }}" bld-api:local
             cd "$APP_DIR"
+            mkdir -p postgres-init
+            if ! grep -q '^\s*db:' docker-compose.yml; then
+              echo "::error::docker-compose.yml on EC2 has no db service — compose sync failed"
+              exit 1
+            fi
             # PostGIS DB + migrate on the compose network (@db), then API.
             docker compose up -d db
             echo "Waiting for PostGIS..."
@@ -104,7 +125,7 @@ jobs:
             done
             if ! docker compose run --rm migrate; then
               echo "::error::prisma migrate deploy failed."
-              echo "Need PostGIS: use deploy/ec2/docker-compose.yml (postgis/postgis) and DATABASE_URL=@db:5432"
+              echo "Need PostGIS compose + DATABASE_URL host db:5432 (compose overrides this)."
               echo "If P3018 on a failed init migration after fixing PostGIS:"
               echo "  docker compose run --rm migrate sh -c 'cd /app/apps/api && npx prisma migrate resolve --rolled-back 20260711000000_init && npx prisma migrate deploy'"
               exit 1

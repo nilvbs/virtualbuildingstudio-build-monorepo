@@ -9,17 +9,16 @@
 The API **requires PostGIS**. Do **not** point staging at a plain host Postgres
 without the extension (that causes `extension "postgis" is not available`).
 
-1. Copy `deploy/ec2/docker-compose.yml` and `deploy/ec2/postgres-init/` to `~/BLD/stage/`.
-2. In `~/BLD/stage/.env` set (compose service DNS, not host port):
+1. Deploy syncs `docker-compose.yml` + `postgres-init/` to `~/BLD/stage` automatically.
+2. In `~/BLD/stage/.env` (compose overrides DB host to `db` for api/migrate anyway):
 
 ```env
 DATABASE_URL=postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
 DIRECT_DATABASE_URL=postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
 ```
 
-3. If something else already owns host port **5435**, stop it or change the
-   compose `db.ports` mapping.
-4. Start DB + migrate + API:
+3. PostGIS is published on host **5436** (not 5435) so an older host Postgres on 5435 does not block deploy.
+4. Start DB + migrate + API (or wait for GitHub deploy):
 
 ```bash
 cd ~/BLD/stage

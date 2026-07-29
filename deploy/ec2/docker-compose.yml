@@ -17,8 +17,9 @@ services:
       POSTGRES_PASSWORD: surveylink
       POSTGRES_DB: surveylink
     ports:
-      # Host tools (psql/pgAdmin). Stop any other Postgres bound to 5435 first.
-      - "5435:5432"
+      # Optional host access for debugging. Use 5436 to avoid clashing with an
+      # older host Postgres that may still own 5435.
+      - "5436:5432"
     volumes:
       - bld_pgdata:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
