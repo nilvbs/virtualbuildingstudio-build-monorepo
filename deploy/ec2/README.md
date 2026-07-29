@@ -2,39 +2,50 @@
 
 - `/api/*` → Docker API `:4000`
 - `/` → Cloudflare Worker (set hostname in `nginx-staging.conf`)
+- DB → PostGIS container `bld-db` (compose service `db`)
+
+### First-time / fix PostGIS
+
+The API **requires PostGIS**. Do **not** point staging at a plain host Postgres
+without the extension (that causes `extension "postgis" is not available`).
+
+1. Copy `deploy/ec2/docker-compose.yml` and `deploy/ec2/postgres-init/` to `~/BLD/stage/`.
+2. In `~/BLD/stage/.env` set (compose service DNS, not host port):
+
+```env
+DATABASE_URL=postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
+DIRECT_DATABASE_URL=postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
+```
+
+3. If something else already owns host port **5435**, stop it or change the
+   compose `db.ports` mapping.
+4. Start DB + migrate + API:
 
 ```bash
 cd ~/BLD/stage
-docker compose up -d
+docker compose up -d db
+docker compose run --rm migrate
+docker compose up -d api
 ```
 
-### Database permissions (one-time)
-
-PostgreSQL 15+ blocks `CREATE` on `public` for non-owners. If deploy fails with
-`permission denied for schema public`, grant once as the postgres superuser:
+If a previous migrate left a failed `20260711000000_init` on the **old**
+non-PostGIS database, either switch to the new `bld_pgdata` volume (default
+above — clean DB) or, on that same DB after installing PostGIS:
 
 ```bash
-# Copy the script onto the box (or clone the repo), then:
-sudo -u postgres psql -d surveylink -f ~/BLD/stage/grant-surveylink-schema.sql
-# If your Postgres listens only via Docker:
-# docker exec -i <postgres-container> psql -U postgres -d surveylink < grant-surveylink-schema.sql
+docker compose run --rm migrate sh -c \
+  "cd /app/apps/api && npx prisma migrate resolve --rolled-back 20260711000000_init && npx prisma migrate deploy"
 ```
 
-Then apply migrations (also runs automatically on GitHub `deploy-api`):
+GitHub `deploy-api` brings up `db`, runs `migrate`, then recreates `api`.
 
 ```bash
-docker run --rm --env-file .env --add-host=host.docker.internal:host-gateway bld-api:local \
-  sh -c "cd /app/apps/api && npx prisma migrate deploy"
-docker compose up -d --force-recreate api
-# edit nginx REPLACE_ME → your *.workers.dev host, then:
 sudo nginx -t && sudo systemctl reload nginx
 curl -sS https://staging.bld.online/api/health
 curl -sSI https://staging.bld.online/
 ```
 
 ### Google sign-in 500s
-
-Check Auth0 + API logs:
 
 ```bash
 docker logs bld-api --tail 100

@@ -87,16 +87,26 @@ jobs:
             docker pull "${{ steps.meta.outputs.image }}"
             docker tag "${{ steps.meta.outputs.image }}" bld-api:local
             cd "$APP_DIR"
-            # Staging DB is on the host; apply pending Prisma migrations before recreate.
-            if ! docker run --rm \
-              --env-file "$APP_DIR/.env" \
-              --add-host=host.docker.internal:host-gateway \
-              bld-api:local \
-              sh -c "cd /app/apps/api && npx prisma migrate deploy"; then
+            # PostGIS DB + migrate on the compose network (@db), then API.
+            docker compose up -d db
+            echo "Waiting for PostGIS..."
+            db_timeout=90
+            db_elapsed=0
+            while [ "$(docker inspect -f '{{.State.Health.Status}}' bld-db 2>/dev/null || echo starting)" != "healthy" ]; do
+              if [ "$db_elapsed" -ge "$db_timeout" ]; then
+                echo "PostGIS container never became healthy"
+                docker logs bld-db --tail=80 || true
+                exit 1
+              fi
+              sleep 2
+              db_elapsed=$((db_elapsed + 2))
+              echo "Waiting for db... (${db_elapsed}/${db_timeout}s)"
+            done
+            if ! docker compose run --rm migrate; then
               echo "::error::prisma migrate deploy failed."
-              echo "If you see 'permission denied for schema public', run once as postgres:"
-              echo "  sudo -u postgres psql -d surveylink -f $APP_DIR/grant-surveylink-schema.sql"
-              echo "Script is in the repo at deploy/ec2/grant-surveylink-schema.sql"
+              echo "Need PostGIS: use deploy/ec2/docker-compose.yml (postgis/postgis) and DATABASE_URL=@db:5432"
+              echo "If P3018 on a failed init migration after fixing PostGIS:"
+              echo "  docker compose run --rm migrate sh -c 'cd /app/apps/api && npx prisma migrate resolve --rolled-back 20260711000000_init && npx prisma migrate deploy'"
               exit 1
             fi
             docker compose up -d --force-recreate api
