@@ -85,7 +85,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ steps.dirs.outputs.user }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: deploy/ec2/docker-compose.yml,deploy/ec2/postgres-init/*
+          source: deploy/ec2/docker-compose.yml,deploy/ec2/postgres-init/*,deploy/ec2/nginx-snippets/*
           target: ${{ steps.dirs.outputs.app_dir }}/
           strip_components: 2
           overwrite: true
@@ -145,6 +145,26 @@ jobs:
               echo "Waiting... (${elapsed}/${timeout}s)"
             done
             echo "Container is healthy!"
+            # Proxy snippet only — never overwrite the Certbot 443 site file.
+            sudo mkdir -p /etc/nginx/snippets
+            if [ -f "$APP_DIR/nginx-snippets/bld-staging-proxy.conf" ]; then
+              sudo cp "$APP_DIR/nginx-snippets/bld-staging-proxy.conf" /etc/nginx/snippets/bld-staging-proxy.conf
+            elif [ -f "$APP_DIR/bld-staging-proxy.conf" ]; then
+              sudo cp "$APP_DIR/bld-staging-proxy.conf" /etc/nginx/snippets/bld-staging-proxy.conf
+            else
+              echo "WARN: nginx snippet not synced; skip Nginx reload"
+            fi
+            if [ -f /etc/nginx/snippets/bld-staging-proxy.conf ]; then
+              sudo nginx -t
+              sudo systemctl enable nginx
+              sudo systemctl start nginx
+              sudo systemctl reload nginx
+              sudo systemctl enable --now certbot.timer || true
+            fi
+            echo "Public smoke:"
+            curl -sSI --max-time 15 https://staging.bld.online/ | head -n 12
+            curl -sS --max-time 15 https://staging.bld.online/api/health
+            echo
 
   production-ecs:
     needs: setup

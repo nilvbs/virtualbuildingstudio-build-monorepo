@@ -74,3 +74,15 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_AUTH_DEV_MODE: 'false'
         run: pnpm run deploy
+
+      - name: Smoke staging.bld.online
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/web.html -w '%{http_code}' --max-time 20 https://staging.bld.online/)
+          echo "web HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::https://staging.bld.online/ returned $code after Worker deploy. Nginx may be down or still pointing at an old workers.dev host."
+            exit 1
+          fi
+          curl -sS --max-time 20 https://staging.bld.online/api/health | grep -q '"status":"ok"'
+          echo "staging.bld.online web + API ok"

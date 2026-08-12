@@ -1,8 +1,35 @@
 # EC2 staging — https://staging.bld.online
 
 - `/api/*` → Docker API `:4000`
-- `/` → Cloudflare Worker (set hostname in `nginx-staging.conf`)
+- `/` → Cloudflare Worker (`nginx-snippets/bld-staging-proxy.conf`)
 - DB → PostGIS container `bld-db` (compose service `db`)
+
+### Keep Nginx up (do not overwrite Certbot)
+
+Jul 2026 outage: Nginx stayed **failed for 12 days** because `nginx -t` resolved a
+`*.workers.dev` host at startup (`host not found in upstream`). Fixes:
+
+1. Proxy uses **request-time DNS** (`resolver` + `$cf_worker`) so a DNS blip cannot stop Nginx.
+2. Deploy copies **only** `nginx-snippets/bld-staging-proxy.conf` — never the 443 site file.
+3. `monitor-staging.yml` curls the public site every 30 minutes.
+
+One-time on the box (after Certbot), both the `:80` and `:443` server blocks should contain:
+
+```nginx
+location /.well-known/acme-challenge/ { root /var/www/html; }
+include /etc/nginx/snippets/bld-staging-proxy.conf;
+```
+
+Remove duplicated `location /` and `location /api/` from the site file so they live only in the snippet.
+
+```bash
+sudo mkdir -p /etc/nginx/snippets
+sudo cp ~/BLD/stage/nginx-snippets/bld-staging-proxy.conf /etc/nginx/snippets/ 2>/dev/null || true
+sudo nginx -t && sudo systemctl enable --now nginx && sudo systemctl reload nginx
+sudo systemctl enable --now certbot.timer
+```
+
+If the Worker `*.workers.dev` URL changes, update `$cf_worker` in the snippet and push — deploy reloads Nginx.
 
 ### First-time / fix PostGIS
 

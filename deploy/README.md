@@ -15,7 +15,8 @@
 | `https://staging.bld.online/api/*` | API (Nest on EC2) |
 
 DNS: `A` `staging` → EC2 Elastic IP.  
-Nginx: `deploy/ec2/nginx-staging.conf` (`/api` → :4000, `/` → `*.workers.dev`).
+Nginx: snippet `deploy/ec2/nginx-snippets/bld-staging-proxy.conf` (`/api` → :4000, `/` → Worker).  
+`monitor-staging.yml` probes HTTPS every 30 minutes. Never overwrite the Certbot 443 site file.
 
 Web env: `NEXT_PUBLIC_API_URL=https://staging.bld.online/api`  
 API env: `WEB_APP_URL` + `CORS_ORIGINS` = `https://staging.bld.online`  

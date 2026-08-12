@@ -1,0 +1,36 @@
+name: Monitor staging
+
+# Fail the workflow if https://staging.bld.online (web) or /api/health is down.
+# Catches Nginx stopped, bad Worker host, or API container dead — the Jul 31
+# outage lasted 12 days because nothing probed the public hostname.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  ping:
+    name: staging.bld.online
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: HTTPS web
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/web.html -w '%{http_code}' --max-time 20 https://staging.bld.online/)
+          echo "web HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::https://staging.bld.online/ returned $code (expected 200)"
+            head -c 400 /tmp/web.html || true
+            exit 1
+          fi
+          grep -qi 'html' /tmp/web.html
+
+      - name: API health
+        run: |
+          set -euo pipefail
+          body=$(curl -sS --max-time 20 https://staging.bld.online/api/health)
+          echo "$body"
+          echo "$body" | grep -q '"status":"ok"'
