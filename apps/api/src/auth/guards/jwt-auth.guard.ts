@@ -9,8 +9,9 @@ import {
   DEV_GOOGLE_ACCESS_TOKEN,
   DEV_GOOGLE_PRINCIPAL,
   DEV_PRINCIPAL,
-  devAuthEnabled,
+  authDevModeFlag,
   principalFromDevUserToken,
+  principalFromUnsignedJwt,
 } from '../dev-auth';
 
 /**
@@ -33,8 +34,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
     if (isPublic) return true;
 
-    // Dev-only bypass: accept the fixeddev tokens and inject their principals.
-    if (devAuthEnabled(this.config)) {
+    // Local AUTH_DEV_MODE: accept fixed tokens, signup tokens, or unsigned JWTs
+    // so onboarding works without Auth0 JWKS (empty AUTH0_DOMAIN locally).
+    if (authDevModeFlag(this.config)) {
       const request = context.switchToHttp().getRequest<Request>();
       const auth = request.headers.authorization;
       if (auth === `Bearer ${DEV_ACCESS_TOKEN}`) {
@@ -46,7 +48,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         return true;
       }
       if (auth?.startsWith('Bearer ')) {
-        const principal = principalFromDevUserToken(auth.slice('Bearer '.length));
+        const token = auth.slice('Bearer '.length);
+        const principal = principalFromDevUserToken(token) ?? principalFromUnsignedJwt(token);
         if (principal) {
           request.user = principal;
           return true;

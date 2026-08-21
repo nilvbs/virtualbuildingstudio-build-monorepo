@@ -19,8 +19,10 @@ export function errorMessage(err: unknown): string {
     const body = err.body as { message?: string | string[] } | undefined;
     const msg = body?.message;
     if (Array.isArray(msg)) return msg.join(', ');
-    if (typeof msg === 'string') return msg;
-    if (err.status === 401) return 'Please sign in to continue.';
+    if (typeof msg === 'string' && msg !== 'Unauthorized') return msg;
+    if (err.status === 401) {
+      return 'Session expired or the API could not validate your sign-in. Sign out, sign in again, then retry.';
+    }
     if (err.status === 503) return 'Auth is not configured yet on the server.';
     return `Request failed (${err.status}).`;
   }

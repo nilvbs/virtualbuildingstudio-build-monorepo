@@ -4,9 +4,8 @@ import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import type { SmsMessage, SmsSender } from './sms-sender';
 
 /**
- * Transactional SMS via Amazon SNS. Uses the default AWS credential chain
- * (ECS task role in prod; env/profile locally). If AWS_REGION is unset,
- * degrades to a log-only stub. Delivery failures are logged, never thrown.
+ * Transactional SMS via Amazon SNS using AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+ * from env (IAM user access keys). Does not use an instance/task role.
  */
 @Injectable()
 export class SnsSmsSender implements SmsSender {
@@ -16,49 +15,57 @@ export class SnsSmsSender implements SmsSender {
   private client?: SNSClient;
 
   constructor(config: ConfigService) {
-    this.senderId = config.get<string>('SNS_SMS_SENDER_ID') || undefined;
-    const region = config.get<string>('AWS_REGION') || config.get<string>('SNS_REGION');
-    this.configured = Boolean(region);
-    if (this.configured && region) {
-      this.client = new SNSClient({ region });
-      this.logger.log(`SNS SMS enabled (region=${region})`);
+    this.senderId = config.get<string>('SNS_SMS_SENDER_ID')?.trim() || undefined;
+    const region = (config.get<string>('AWS_REGION') || config.get<string>('SNS_REGION'))?.trim();
+    const accessKeyId = (
+      config.get<string>('AWS_ACCESS_KEY_ID') || process.env.AWS_ACCESS_KEY_ID
+    )?.trim();
+    const secretAccessKey = (
+      config.get<string>('AWS_SECRET_ACCESS_KEY') || process.env.AWS_SECRET_ACCESS_KEY
+    )?.trim();
+    this.configured = Boolean(region && accessKeyId && secretAccessKey);
+    if (this.configured && region && accessKeyId && secretAccessKey) {
+      this.client = new SNSClient({
+        region,
+        credentials: { accessKeyId, secretAccessKey },
+      });
+      this.logger.log(`SNS SMS enabled (region=${region}, using AWS_ACCESS_KEY_ID from .env)`);
     } else {
       this.logger.warn(
-        'SNS SMS stubbed: set AWS_REGION (and credentials / task role), then restart the API',
+        'SNS SMS disabled — set AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY in .env, then restart the API',
       );
     }
   }
 
-  async send(msg: SmsMessage): Promise<void> {
+  async send(msg: SmsMessage): Promise<{ messageId?: string }> {
     if (!this.configured || !this.client) {
-      this.logger.warn(`[stub sms] to=${msg.to} body="${msg.body}"`);
-      return;
+      throw new Error(
+        'SNS SMS is not configured. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env (IAM user keys, not a role).',
+      );
     }
 
-    try {
-      const result = await this.client.send(
-        new PublishCommand({
-          PhoneNumber: msg.to,
-          Message: msg.body,
-          MessageAttributes: {
-            'AWS.SNS.SMS.SMSType': {
-              DataType: 'String',
-              StringValue: 'Transactional',
-            },
-            ...(this.senderId
-              ? {
-                  'AWS.SNS.SMS.SenderID': {
-                    DataType: 'String',
-                    StringValue: this.senderId,
-                  },
-                }
-              : {}),
+    const result = await this.client.send(
+      new PublishCommand({
+        PhoneNumber: msg.to,
+        Message: msg.body,
+        MessageAttributes: {
+          'AWS.SNS.SMS.SMSType': {
+            DataType: 'String',
+            StringValue: 'Transactional',
           },
-        }),
-      );
-      this.logger.log(`SNS SMS to ${msg.to} MessageId=${result.MessageId ?? 'n/a'}`);
-    } catch (err) {
-      this.logger.warn(`SNS SMS to ${msg.to} failed: ${(err as Error).message}`);
-    }
+          ...(this.senderId
+            ? {
+                'AWS.SNS.SMS.SenderID': {
+                  DataType: 'String',
+                  StringValue: this.senderId,
+                },
+              }
+            : {}),
+        },
+      }),
+    );
+    const messageId = result.MessageId;
+    this.logger.log(`SNS SMS to ${msg.to} MessageId=${messageId ?? 'n/a'}`);
+    return { messageId };
   }
 }

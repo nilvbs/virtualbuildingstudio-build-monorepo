@@ -45,10 +45,23 @@ export const DEV_USER_TOKEN_PREFIX = 'dev-user:';
 /** In-memory password store for accounts created while AUTH_DEV_MODE is on. */
 const devSignupPasswords = new Map<string, { password: string; subject: string }>();
 
+function envFlagTrue(raw: unknown): boolean {
+  if (raw === true || raw === 1) return true;
+  const v = String(raw ?? '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .toLowerCase();
+  return v === 'true' || v === '1' || v === 'yes';
+}
+
+export function authDevModeFlag(config: ConfigService): boolean {
+  return envFlagTrue(config.get('AUTH_DEV_MODE') ?? process.env.AUTH_DEV_MODE);
+}
+
 export function devAuthEnabled(config: ConfigService): boolean {
-  const nodeEnv = config.get<string>('NODE_ENV') ?? process.env.NODE_ENV;
+  const nodeEnv = String(config.get('NODE_ENV') ?? process.env.NODE_ENV ?? '').trim();
   if (nodeEnv === 'production') return false;
-  return (config.get<string>('AUTH_DEV_MODE') ?? process.env.AUTH_DEV_MODE) === 'true';
+  return authDevModeFlag(config);
 }
 
 export function devSubjectForEmail(email: string): string {
@@ -78,4 +91,29 @@ export function principalFromDevUserToken(token: string): AuthPrincipal | null {
     emailVerified: true,
     roles: [],
   };
+}
+
+/** Local-only: read `sub` from a Bearer JWT without Auth0 JWKS verification. */
+export function principalFromUnsignedJwt(token: string): AuthPrincipal | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const json = Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
+      'utf8',
+    );
+    const payload = JSON.parse(json) as {
+      sub?: string;
+      email?: string;
+      email_verified?: boolean;
+    };
+    if (!payload.sub) return null;
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      emailVerified: Boolean(payload.email_verified),
+      roles: [],
+    };
+  } catch {
+    return null;
+  }
 }

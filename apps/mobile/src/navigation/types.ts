@@ -24,6 +24,7 @@ export type RootStackParamList = {
   SurveyorHome: NavigatorScreenParams<SurveyorTabParamList> | undefined;
   ProjectDetail: { id: string };
   ProjectSurveyors: { id: string };
+  NewProject: undefined;
   PersonalProfile: { role: WorkspaceRole };
 };
 

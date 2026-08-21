@@ -405,5 +405,7 @@ export const createProjectSchema = z.object({
   areaSqft: z.number().int().min(0).max(100_000_000).optional(),
   neededWithin: z.string().max(100).optional(),
   notes: z.string().max(4000).optional(),
+  /** Extended posting-wizard brief (JSON). */
+  details: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;

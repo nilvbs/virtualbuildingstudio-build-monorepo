@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { MapContainer, Marker, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { MapPin } from 'lucide-react';
@@ -29,6 +29,41 @@ function shortLabel(name: string) {
     .filter(Boolean);
   if (parts.length <= 2) return name;
   return `${parts[0]}, ${parts[1]}`;
+}
+
+function WhenMapReady({ children }: { children: ReactNode }) {
+  const map = useMap();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let frame = 0;
+
+    const check = () => {
+      if (cancelled) return;
+      try {
+        const pane = map.getPane('tilePane');
+        const el = map.getContainer();
+        if (pane && el?.parentNode) {
+          setReady(true);
+          map.invalidateSize({ animate: false });
+          return;
+        }
+      } catch {
+        // map not initialized yet
+      }
+      frame = window.requestAnimationFrame(check);
+    };
+
+    frame = window.requestAnimationFrame(check);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [map]);
+
+  if (!ready) return null;
+  return <>{children}</>;
 }
 
 function MapClick({ onPick }: { onPick: (lat: number, lng: number) => void }) {
@@ -74,6 +109,11 @@ function MapLifecycle({ position }: { position: [number, number] | null }) {
 
 export function LocationMapPicker({ lat, lng, label, onPick }: Props) {
   const [pickedLabel, setPickedLabel] = useState<string | null>(label ?? null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     setPickedLabel(label ?? null);
@@ -106,10 +146,15 @@ export function LocationMapPicker({ lat, lng, label, onPick }: Props) {
     [],
   );
 
+  if (!mounted) {
+    return <div className="location-map location-map--loading">Loading map…</div>;
+  }
+
   return (
     <div className={`location-map ${position ? 'has-pin' : ''}`}>
       <div className="location-map-body">
         <MapContainer
+          key="project-location-map"
           center={center}
           zoom={zoom}
           scrollWheelZoom
@@ -117,19 +162,21 @@ export function LocationMapPicker({ lat, lng, label, onPick }: Props) {
           attributionControl={false}
           className="location-map-canvas"
         >
-          <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            subdomains="abcd"
-          />
-          <ZoomControl position="bottomright" />
-          <MapClick
-            onPick={(nextLat, nextLng) => {
-              setPickedLabel(null);
-              onPick(nextLat, nextLng);
-            }}
-          />
-          <MapLifecycle position={position} />
-          {position ? <Marker position={position} icon={pin} /> : null}
+          <WhenMapReady>
+            <TileLayer
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+              subdomains="abcd"
+            />
+            <ZoomControl position="bottomright" />
+            <MapClick
+              onPick={(nextLat, nextLng) => {
+                setPickedLabel(null);
+                onPick(nextLat, nextLng);
+              }}
+            />
+            <MapLifecycle position={position} />
+            {position ? <Marker position={position} icon={pin} /> : null}
+          </WhenMapReady>
         </MapContainer>
       </div>
 

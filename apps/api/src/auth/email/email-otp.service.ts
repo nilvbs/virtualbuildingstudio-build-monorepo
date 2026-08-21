@@ -1,20 +1,14 @@
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EMAIL_SENDER, type EmailSender } from '../../notifications/delivery/email-sender';
-import { devAuthEnabled } from '../dev-auth';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
-const DEV_OTP = '000000';
 
 @Injectable()
 export class EmailOtpService {
-  private readonly logger = new Logger(EmailOtpService.name);
-
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
     @Inject(EMAIL_SENDER) private readonly email: EmailSender,
   ) {}
 
@@ -23,7 +17,7 @@ export class EmailOtpService {
     email: string,
     channel: 'email' | 'work_email' = 'email',
   ): Promise<void> {
-    const code = devAuthEnabled(this.config) ? DEV_OTP : String(randomInt(100_000, 1_000_000));
+    const code = String(randomInt(100_000, 1_000_000));
     const codeHash = this.hash(code);
     const expiresAt = new Date(Date.now() + OTP_TTL_MS);
 
@@ -48,10 +42,6 @@ export class EmailOtpService {
       text: `Your verification code is ${code}. It expires in 10 minutes.`,
       html: `<p>Your verification code is <strong>${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
     });
-
-    if (devAuthEnabled(this.config)) {
-      this.logger.log(`[dev] email OTP for ${email}: ${code}`);
-    }
   }
 
   async check(
@@ -60,10 +50,6 @@ export class EmailOtpService {
     code: string,
     channel: 'email' | 'work_email' = 'email',
   ): Promise<boolean> {
-    if (devAuthEnabled(this.config) && code === DEV_OTP) {
-      return true;
-    }
-
     const row = await this.prisma.contactOtp.findFirst({
       where: {
         userId,

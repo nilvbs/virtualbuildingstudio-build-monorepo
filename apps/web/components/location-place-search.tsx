@@ -1,7 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, MapPin, Search, X } from 'lucide-react';
+import Autocomplete from '@mui/material/Autocomplete';
+import CircularProgress from '@mui/material/CircularProgress';
+import InputAdornment from '@mui/material/InputAdornment';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
+import SearchIcon from '@mui/icons-material/Search';
+import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 
 type SearchHit = {
   place_id: number;
@@ -27,18 +34,8 @@ export function LocationPlaceSearch({ onSelect }: Props) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
 
   useEffect(() => {
     const q = query.trim();
@@ -71,7 +68,6 @@ export function LocationPlaceSearch({ onSelect }: Props) {
         if (!res.ok) throw new Error('Search failed');
         const data = (await res.json()) as SearchHit[];
         setHits(data);
-        setOpen(true);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         setHits([]);
@@ -84,73 +80,87 @@ export function LocationPlaceSearch({ onSelect }: Props) {
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  function selectHit(hit: SearchHit) {
+  function selectHit(hit: SearchHit | null) {
+    if (!hit) return;
     const nextLat = Number(hit.lat);
     const nextLng = Number(hit.lon);
     if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng)) return;
     onSelect(nextLat, nextLng, hit.display_name);
     setQuery(hit.display_name);
-    setHits([]);
-    setOpen(false);
-  }
-
-  function clearSearch() {
-    setQuery('');
-    setHits([]);
-    setOpen(false);
-    setError(null);
   }
 
   return (
-    <div className="field location-place-search" ref={wrapRef}>
-      <label htmlFor="placeSearch">Search place</label>
-      <span className="hint">Find an address or landmark, then pin it on the map.</span>
-      <div className="location-place-search-bar">
-        <span className="location-place-search-ico" aria-hidden>
-          <Search size={15} />
-        </span>
-        <input
-          id="placeSearch"
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => hits.length > 0 && setOpen(true)}
-          placeholder="Search address, city, or landmark…"
-          autoComplete="off"
-        />
-        {searching ? (
-          <Loader2 size={15} className="location-place-search-spin" aria-hidden />
-        ) : query ? (
-          <button type="button" className="location-place-search-clear" onClick={clearSearch} aria-label="Clear search">
-            <X size={14} />
-          </button>
-        ) : null}
-      </div>
-
-      {open && (hits.length > 0 || error) ? (
-        <ul className="location-place-results" role="listbox">
-          {error ? (
-            <li className="location-place-results-empty">{error}</li>
-          ) : (
-            hits.map((hit) => (
-              <li key={hit.place_id}>
-                <button type="button" onClick={() => selectHit(hit)}>
-                  <span className="location-place-results-ico" aria-hidden>
-                    <MapPin size={14} />
-                  </span>
-                  <span className="location-place-results-copy">
-                    <strong>{shortLabel(hit.display_name)}</strong>
-                    <span>{hit.display_name}</span>
-                  </span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
-    </div>
+    <Stack spacing={0.75}>
+      <Typography variant="subtitle2">Search place</Typography>
+      <Typography variant="body2">Find an address or landmark, then pin it on the map.</Typography>
+      <Autocomplete
+        freeSolo
+        options={hits}
+        filterOptions={(x) => x}
+        getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.display_name)}
+        inputValue={query}
+        onInputChange={(_e, value) => setQuery(value ?? '')}
+        onChange={(_e, value) => {
+          if (value && typeof value !== 'string') selectHit(value);
+        }}
+        loading={searching}
+        noOptionsText={error ?? (query.trim().length < 3 ? 'Type at least 3 characters' : 'No places found')}
+        renderOption={(props, option) => {
+          const { key, ...rest } = props;
+          return (
+            <li key={key} {...rest}>
+              <PlaceOutlinedIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
+              <span>
+                <strong>{shortLabel(option.display_name)}</strong>
+                <br />
+                <Typography variant="caption" color="text.secondary">
+                  {option.display_name}
+                </Typography>
+              </span>
+            </li>
+          );
+        }}
+        renderInput={(params) => {
+          const inputSlot =
+            params.slotProps?.input && typeof params.slotProps.input === 'object'
+              ? params.slotProps.input
+              : {};
+          const htmlInputSlot =
+            params.slotProps?.htmlInput && typeof params.slotProps.htmlInput === 'object'
+              ? params.slotProps.htmlInput
+              : {};
+          return (
+            <TextField
+              {...params}
+              placeholder="Search address, city, or landmark…"
+              slotProps={{
+                ...params.slotProps,
+                htmlInput: {
+                  ...htmlInputSlot,
+                  autoComplete: 'off',
+                },
+                input: {
+                  ...inputSlot,
+                  startAdornment: (
+                    <>
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" color="primary" />
+                      </InputAdornment>
+                      {'startAdornment' in inputSlot ? inputSlot.startAdornment : null}
+                    </>
+                  ),
+                  endAdornment: (
+                    <>
+                      {searching ? <CircularProgress color="inherit" size={16} /> : null}
+                      {'endAdornment' in inputSlot ? inputSlot.endAdornment : null}
+                    </>
+                  ),
+                },
+              }}
+            />
+          );
+        }}
+      />
+    </Stack>
   );
 }

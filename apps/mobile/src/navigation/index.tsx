@@ -13,6 +13,7 @@ import { ProjectsScreen } from '../screens/client/ProjectsScreen';
 import { PersonalProfileScreen } from '../screens/PersonalProfileScreen';
 import { ProjectDetailScreen } from '../screens/client/ProjectDetailScreen';
 import { ProjectSurveyorsScreen } from '../screens/client/ProjectSurveyorsScreen';
+import { NewProjectScreen } from '../screens/client/NewProjectScreen';
 import { DashboardScreen } from '../screens/surveyor/DashboardScreen';
 import { ProfileScreen as PortfolioScreen } from '../screens/surveyor/ProfileScreen';
 import { MatchesScreen } from '../screens/surveyor/MatchesScreen';
@@ -141,6 +142,7 @@ export function RootNavigator() {
         <Stack.Screen name="SurveyorHome" component={SurveyorHome} />
         <Stack.Screen name="ProjectDetail" component={ProjectDetailScreen} />
         <Stack.Screen name="ProjectSurveyors" component={ProjectSurveyorsScreen} />
+        <Stack.Screen name="NewProject" component={NewProjectScreen} />
         <Stack.Screen name="PersonalProfile" component={StackPersonalProfile} />
       </Stack.Navigator>
     </NavigationContainer>

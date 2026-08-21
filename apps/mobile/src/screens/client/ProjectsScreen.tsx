@@ -19,7 +19,7 @@ import {
 } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
 import { colors, radius, shadows, spacing } from '../../lib/theme';
-import { AlertBox, Badge } from '../../components/ui';
+import { AlertBox, Badge, Button } from '../../components/ui';
 import { AppHeader } from '../../components/AppHeader';
 import { FadeInUp, PressCard } from '../../components/motion';
 import type { RootStackParamList } from '../../navigation/types';
@@ -92,14 +92,24 @@ export function ProjectsScreen() {
         ListHeaderComponent={
           <FadeInUp delay={30}>
             <View style={styles.intro}>
-              <Text style={styles.title}>Your projects</Text>
-              <Text style={styles.sub}>
-                {projects == null
-                  ? 'Loading…'
-                  : count === 0
-                    ? 'No projects yet'
-                    : `${count} active ${count === 1 ? 'project' : 'projects'}`}
-              </Text>
+              <View style={styles.introTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>Your projects</Text>
+                  <Text style={styles.sub}>
+                    {projects == null
+                      ? 'Loading…'
+                      : count === 0
+                        ? 'No projects yet'
+                        : `${count} active ${count === 1 ? 'project' : 'projects'}`}
+                  </Text>
+                </View>
+                <Button
+                  label="Post"
+                  icon="plus"
+                  onPress={() => navigation.navigate('NewProject')}
+                  style={styles.postBtn}
+                />
+              </View>
             </View>
             {error ? (
               <View style={{ marginTop: spacing.md }}>
@@ -119,9 +129,14 @@ export function ProjectsScreen() {
                 </View>
                 <Text style={styles.emptyTitle}>Nothing here yet</Text>
                 <Text style={styles.emptyCopy}>
-                  Post a project from the web to get matched with a vetted surveyor. It will show up
-                  here instantly.
+                  Post a project with the guided brief — we&apos;ll match you to a vetted surveyor.
                 </Text>
+                <Button
+                  label="Post a project"
+                  icon="plus"
+                  onPress={() => navigation.navigate('NewProject')}
+                  style={{ marginTop: spacing.lg, alignSelf: 'stretch' }}
+                />
               </View>
             </FadeInUp>
           )
@@ -193,6 +208,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.md,
   },
+  introTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  postBtn: { paddingHorizontal: 14, minWidth: 96 },
   title: { fontSize: 27, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
   sub: { color: colors.muted, fontSize: 14, marginTop: 4 },
   card: {

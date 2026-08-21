@@ -406,6 +406,7 @@ export function isValidTransition<T extends string>(
 // --- Surveyor domain ---
 
 export * from './surveyor-portfolio';
+export * from './project-brief';
 
 import type {
   EquipmentId,
@@ -413,6 +414,7 @@ import type {
   SurveyService,
 } from './surveyor-portfolio';
 import { emptyPortfolioDetails } from './surveyor-portfolio';
+import { type ProjectDetails } from './project-brief';
 
 /** A portfolio image; DB stores the public S3 HTTPS URL in `key`. */
 export interface PortfolioItem {
@@ -599,6 +601,8 @@ export interface Project {
   areaSqft: number | null;
   neededWithin: string | null;
   notes: string | null;
+  /** Extended brief from the posting wizard. */
+  details: ProjectDetails;
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;

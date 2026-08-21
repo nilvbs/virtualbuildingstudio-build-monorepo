@@ -438,6 +438,31 @@ export class AuthService {
     return `${this.webAppUrl}/auth/callback`;
   }
 
+  private isAllowedWebRedirect(candidate: string, parsed: URL): boolean {
+    const allowed = new Set<string>([this.googleRedirectUri]);
+    const extra = (this.config.get<string>('CORS_ORIGINS') ?? '')
+      .split(',')
+      .map((o) => o.trim().replace(/\/$/, ''))
+      .filter(Boolean);
+    for (const origin of extra) {
+      allowed.add(`${origin}/auth/callback`);
+    }
+    if (allowed.has(candidate)) return true;
+
+    const nodeEnv = String(this.config.get('NODE_ENV') ?? process.env.NODE_ENV ?? '').trim();
+    const localHost =
+      parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+    if (
+      nodeEnv !== 'production' &&
+      localHost &&
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      parsed.pathname === '/auth/callback'
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Web uses `{WEB_APP_URL}/auth/callback`. Mobile passes its deep link
    * (`surveylink://…` or Expo `exp://…`). Both must be listed in Auth0
@@ -461,9 +486,9 @@ export class AuthService {
       throw new BadRequestException('OAuth redirectUri scheme is not allowed');
     }
 
-    // http(s) only allowed for the configured web callback (or same-origin path).
+    // http(s) must match WEB_APP_URL, CORS_ORIGINS, or localhost in non-production.
     if (scheme === 'http' || scheme === 'https') {
-      if (candidate === fallback) return fallback;
+      if (this.isAllowedWebRedirect(candidate, parsed)) return candidate;
       throw new BadRequestException('OAuth redirectUri is not allow-listed');
     }
 
@@ -752,32 +777,33 @@ export class AuthService {
   async startPhoneVerification(
     principal: AuthPrincipal,
     phone?: string,
-  ): Promise<{ ok: true }> {
+  ): Promise<{ ok: true; snsMessageId?: string; skipped?: string }> {
     const user = await this.requireUser(principal.sub);
     if (user.phoneVerified) {
-      return { ok: true };
+      return { ok: true, skipped: 'already_verified' };
     }
 
-    let targetPhone = user.phone;
-    if (phone) {
-      if (phone !== user.phone) {
-        const clash = await this.prisma.user.findFirst({
-          where: { phone, NOT: { id: user.id } },
-          select: { id: true },
-        });
-        if (clash) {
-          throw new ConflictException('An account with this phone number already exists');
-        }
-        await this.prisma.user.update({
-          where: { id: user.id },
-          data: { phone },
-        });
+    let targetPhone = phone || user.phone;
+    if (!targetPhone) {
+      throw new BadRequestException('Enter a mobile number before sending an OTP');
+    }
+    if (phone && phone !== user.phone) {
+      const clash = await this.prisma.user.findFirst({
+        where: { phone, NOT: { id: user.id } },
+        select: { id: true },
+      });
+      if (clash) {
+        throw new ConflictException('An account with this phone number already exists');
       }
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { phone },
+      });
       targetPhone = phone;
     }
 
-    await this.phone.startVerification(user.id, targetPhone);
-    return { ok: true };
+    const sent = await this.phone.startVerification(user.id, targetPhone);
+    return { ok: true, snsMessageId: sent.messageId };
   }
 
   /** Confirm email OTP. Profile unlock still requires phone verification. */

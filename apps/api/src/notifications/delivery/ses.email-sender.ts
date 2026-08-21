@@ -23,9 +23,18 @@ export class SesEmailSender implements EmailSender {
     this.fromName = config.get<string>('SES_FROM_NAME') ?? 'BLD';
     this.configurationSet = config.get<string>('SES_CONFIGURATION_SET') || undefined;
     const region = config.get<string>('AWS_REGION') || config.get<string>('SES_REGION');
-    this.configured = Boolean(this.from && region);
-    if (this.configured && region) {
-      this.client = new SESv2Client({ region });
+    const accessKeyId = (
+      config.get<string>('AWS_ACCESS_KEY_ID') || process.env.AWS_ACCESS_KEY_ID
+    )?.trim();
+    const secretAccessKey = (
+      config.get<string>('AWS_SECRET_ACCESS_KEY') || process.env.AWS_SECRET_ACCESS_KEY
+    )?.trim();
+    this.configured = Boolean(this.from && region && accessKeyId && secretAccessKey);
+    if (this.configured && region && accessKeyId && secretAccessKey) {
+      this.client = new SESv2Client({
+        region,
+        credentials: { accessKeyId, secretAccessKey },
+      });
     }
   }
 

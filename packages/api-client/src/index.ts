@@ -42,6 +42,7 @@ export interface CreateProjectBody {
   areaSqft?: number;
   neededWithin?: string;
   notes?: string;
+  details?: Record<string, unknown>;
 }
 
 export interface SurveyorProfileBody {

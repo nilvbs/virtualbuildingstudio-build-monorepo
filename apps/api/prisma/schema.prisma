@@ -193,6 +193,8 @@ model Project {
   areaSqft     Int?                                   @map("area_sqft")
   neededWithin String?                                @map("needed_within")
   notes        String?
+  /** Extended client brief from the posting wizard (JSON). */
+  details      Json                                   @default("{}")
   status       String                                 @default("submitted")
   createdAt    DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime                               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

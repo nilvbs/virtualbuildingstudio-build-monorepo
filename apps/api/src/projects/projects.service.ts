@@ -11,6 +11,7 @@ import type {
   ProjectStatus,
   SurveyService,
 } from '@surveylink/types';
+import { normalizeProjectDetails } from '@surveylink/types';
 import type { ClientSurveyorBrowseInput, CreateProjectInput } from '@surveylink/validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
@@ -44,6 +45,7 @@ export class ProjectsService {
         areaSqft: input.areaSqft ?? null,
         neededWithin: input.neededWithin ?? null,
         notes: input.notes ?? null,
+        details: (input.details ?? {}) as Prisma.InputJsonValue,
       },
     });
 
@@ -290,6 +292,7 @@ export class ProjectsService {
       areaSqft: row.areaSqft,
       neededWithin: row.neededWithin,
       notes: row.notes,
+      details: normalizeProjectDetails((row as { details?: unknown }).details ?? {}),
       status: row.status as ProjectStatus,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

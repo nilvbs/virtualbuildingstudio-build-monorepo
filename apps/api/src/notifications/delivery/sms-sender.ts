@@ -7,6 +7,6 @@ export interface SmsMessage {
 }
 
 export interface SmsSender {
-  /** Deliver a transactional SMS. Never throws — failures are logged. */
-  send(msg: SmsMessage): Promise<void>;
+  /** Deliver a transactional SMS. Throws on Publish failure. */
+  send(msg: SmsMessage): Promise<{ messageId?: string }>;
 }
