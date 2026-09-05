@@ -77,12 +77,20 @@ jobs:
           # Inlined at build time — required for landing / coverage Mapbox maps.
           NEXT_PUBLIC_MAPBOX_TOKEN: ${{ vars.NEXT_PUBLIC_MAPBOX_TOKEN }}
         run: |
-          if [ -z "${NEXT_PUBLIC_MAPBOX_TOKEN}" ]; then
+          set -euo pipefail
+          if [ -z "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]; then
             echo "::warning::NEXT_PUBLIC_MAPBOX_TOKEN is empty. Landing coverage map will use the SVG fallback."
             echo "Add it under Settings → Environments → staging → Environment variables."
           else
             echo "Mapbox token present for web build."
           fi
+          # OpenNext/Next only reliably inlines NEXT_PUBLIC_* from .env* files during
+          # `next build`. Process env alone was not making it into the Worker bundle.
+          {
+            echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}"
+            echo "NEXT_PUBLIC_AUTH_DEV_MODE=${NEXT_PUBLIC_AUTH_DEV_MODE:-false}"
+            echo "NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN:-}"
+          } > .env.production
           pnpm run deploy
 
       - name: Smoke staging.bld.online

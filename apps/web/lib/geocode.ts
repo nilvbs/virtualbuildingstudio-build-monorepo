@@ -1,6 +1,10 @@
 /** Mapbox geocoding (falls back to Nominatim if no token). */
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
+const MAPBOX_TOKEN = (
+  process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
+  process.env.MAPBOX_TOKEN ||
+  ''
+).trim();
 
 type MapboxContext = {
   id?: string;
