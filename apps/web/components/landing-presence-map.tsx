@@ -210,24 +210,63 @@ async function registerPinImages(map: MapboxMap) {
 }
 
 function PresenceFallback() {
+  // Compact continental U.S. silhouette. Used when NEXT_PUBLIC_MAPBOX_TOKEN
+  // is missing from the Cloudflare build (pins still use real metro coords).
   return (
     <div className="bld-presence-fallback" role="img" aria-label="U.S. surveyor coverage map">
-      <svg viewBox="0 0 960 520" className="bld-presence-fallback-svg" aria-hidden>
+      <svg viewBox="0 0 1000 620" className="bld-presence-fallback-svg" aria-hidden>
         <defs>
-          <radialGradient id="bldPresenceGlow" cx="50%" cy="45%" r="55%">
-            <stop offset="0%" stopColor="rgba(113,104,246,0.16)" />
-            <stop offset="100%" stopColor="rgba(113,104,246,0)" />
-          </radialGradient>
+          <linearGradient id="bldPresenceSky" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f7f8ff" />
+            <stop offset="55%" stopColor="#eeeaff" />
+            <stop offset="100%" stopColor="#f4f6fb" />
+          </linearGradient>
+          <linearGradient id="bldPresenceLand" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#ebe8ff" />
+            <stop offset="100%" stopColor="#ddd8f8" />
+          </linearGradient>
+          <filter id="bldPresenceSoft" x="-10%" y="-10%" width="120%" height="130%">
+            <feDropShadow dx="0" dy="12" stdDeviation="20" floodColor="#7168f6" floodOpacity="0.14" />
+          </filter>
         </defs>
-        <rect width="960" height="520" fill="url(#bldPresenceGlow)" />
+        <rect width="1000" height="620" fill="url(#bldPresenceSky)" />
         <path
           className="bld-presence-fallback-land"
-          d="M118 148c42-38 96-54 152-48 38 4 72 22 108 28 48 8 92-10 136-6 40 4 74 28 112 34 46 8 90-8 132 6 28 10 48 34 74 44 18 8 40 6 58 16v48c-36 10-70-4-104-2-48 4-90 28-138 26-52-2-98-28-148-30-42-2-80 16-122 14-46-2-88-24-134-22-36 2-68 20-102 18-18-1-34-10-50-16l26-110z"
+          fill="url(#bldPresenceLand)"
+          filter="url(#bldPresenceSoft)"
+          d="M145 255
+            C160 185 210 145 275 135
+            C330 128 380 150 435 148
+            C490 146 535 125 590 130
+            C645 135 690 155 745 160
+            C790 164 825 150 855 165
+            C875 175 885 200 890 230
+            C895 270 885 310 865 345
+            C845 380 810 405 770 420
+            C735 432 700 445 665 440
+            C630 435 600 455 565 450
+            C530 445 500 465 465 458
+            C430 450 400 435 365 442
+            C330 450 295 435 260 425
+            C220 412 185 385 165 345
+            C150 315 140 285 145 255 Z
+            M780 430
+            C805 445 830 460 855 455
+            C870 452 880 465 890 470
+            L890 505
+            C860 510 830 495 800 490
+            C775 486 755 470 740 455 Z
+            M255 445
+            C285 460 320 468 350 460
+            C370 455 385 465 400 470
+            L395 505
+            C360 512 320 500 285 490
+            C265 484 245 470 235 455 Z"
         />
         {HUB_SEEDS.map((hub) => {
-          const x = ((hub.lng + 125.5) / 59) * 860 + 50;
-          const y = ((49.5 - hub.lat) / 25.3) * 380 + 70;
-          const scale = 0.55 + hub.weight * 0.045;
+          const x = ((hub.lng + 125.5) / 59) * 780 + 110;
+          const y = ((49.5 - hub.lat) / 25.3) * 340 + 120;
+          const scale = 0.5 + hub.weight * 0.04;
           return (
             <g key={`${hub.city}-${hub.state}`} transform={`translate(${x} ${y}) scale(${scale})`}>
               <title>

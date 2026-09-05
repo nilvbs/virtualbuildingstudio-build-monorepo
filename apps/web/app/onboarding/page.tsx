@@ -339,7 +339,7 @@ export default function OnboardingPage() {
           <p className="ob-aside-kicker">Account setup</p>
           <h2 className="ob-aside-title">Get your workspace ready</h2>
           <p className="ob-aside-copy">
-            A few quick steps so we know who you are and how to match you on SurveyLink.
+            A few quick steps so we know who you are and how to match you on BLD.
           </p>
           <ol className="ob-aside-steps">
             {visibleSteps.map((item, index) => {

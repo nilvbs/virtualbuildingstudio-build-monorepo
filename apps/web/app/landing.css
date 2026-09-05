@@ -1400,9 +1400,8 @@
 }
 
 .bld-presence-fallback-land {
-  fill: #e6e9f6;
-  stroke: #d0d4ef;
-  stroke-width: 2;
+  stroke: rgba(113, 104, 246, 0.22);
+  stroke-width: 1.5;
 }
 
 @keyframes bldPresenceRise {

@@ -940,9 +940,9 @@ lord-icon {
   gap: 12px;
   align-items: start;
   padding: 14px 16px;
-  border: 1px solid rgba(0, 36, 107, 0.12);
-  border-radius: 14px;
-  background: #f8fbff;
+  border: 1px solid rgba(113, 104, 246, 0.16);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #f7f8ff);
   cursor: pointer;
 }
 
@@ -993,14 +993,28 @@ lord-icon {
 ========================================================================= */
 
 .ob {
-  --ob-navy: #00246b;
-  --ob-ice: #cadcfc;
-  --ob-mist: #eef4fc;
+  --ob-navy: #5b52e0;
+  --ob-ink: #2a2558;
+  --ob-ice: #c8c3ff;
+  --ob-mist: #eeeaff;
+  --ob-soft: #f7f8ff;
+  --ob-glow: rgba(113, 104, 246, 0.28);
+  --accent: #7168f6;
+  --accent-hover: #5b52e0;
+  --accent-press: #4a42c9;
+  --accent-soft: #eeeaff;
+  --accent-ring: rgba(113, 104, 246, 0.28);
+  --text: #2a2558;
+  --muted: #6b668c;
+  --border: rgba(113, 104, 246, 0.16);
   min-height: 100dvh;
   height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(220px, 28%) minmax(0, 1fr);
-  background: #fff;
+  grid-template-columns: minmax(240px, 30%) minmax(0, 1fr);
+  background:
+    radial-gradient(90% 70% at 100% 0%, rgba(162, 155, 255, 0.16), transparent 55%),
+    radial-gradient(70% 50% at 0% 100%, rgba(113, 104, 246, 0.08), transparent 50%),
+    var(--ob-soft);
   overflow: hidden;
 }
 
@@ -1018,12 +1032,14 @@ lord-icon {
   position: sticky;
   top: 0;
   height: 100dvh;
-  padding: 24px 22px;
+  padding: 28px 24px;
   color: #fff;
   background:
-    radial-gradient(120% 80% at 20% 0%, rgba(138, 182, 249, 0.45) 0%, transparent 55%),
-    linear-gradient(165deg, #00153f 0%, var(--ob-navy) 48%, #163a7a 100%);
+    radial-gradient(120% 80% at 18% 0%, rgba(162, 155, 255, 0.42) 0%, transparent 55%),
+    radial-gradient(90% 60% at 100% 100%, rgba(91, 82, 224, 0.35) 0%, transparent 50%),
+    linear-gradient(165deg, #4a42c9 0%, #7168f6 48%, #8b84f8 100%);
   overflow: auto;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.12);
 }
 
 .ob-aside-inner {
@@ -1046,7 +1062,7 @@ lord-icon {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(202, 220, 252, 0.85);
+  color: rgba(238, 234, 255, 0.88);
 }
 
 .ob-aside-title {
@@ -1055,11 +1071,12 @@ lord-icon {
   line-height: 1.15;
   letter-spacing: -0.03em;
   font-weight: 750;
+  color: #fff;
 }
 
 .ob-aside-copy {
   margin: 0 0 10px;
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 15px;
   line-height: 1.55;
 }
@@ -1078,14 +1095,19 @@ lord-icon {
   gap: 12px;
   width: 100%;
   padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.72);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.78);
   font-size: 14px;
   font-weight: 650;
   text-align: left;
   cursor: default;
+  backdrop-filter: blur(8px);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .ob-aside-step.is-reachable {
@@ -1093,7 +1115,8 @@ lord-icon {
 }
 
 .ob-aside-step.is-reachable:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.16);
+  transform: translateX(2px);
 }
 
 .ob-aside-step:disabled {
@@ -1102,15 +1125,16 @@ lord-icon {
 }
 
 .ob-aside-step.is-active {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.38);
   color: #fff;
+  box-shadow: 0 10px 28px rgba(42, 37, 88, 0.18);
 }
 
 .ob-aside-step.is-done {
-  color: #b8f0d8;
-  border-color: rgba(184, 240, 216, 0.28);
-  background: rgba(5, 150, 105, 0.18);
+  color: #efeaff;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .ob-aside-step-num {
@@ -1119,7 +1143,7 @@ lord-icon {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   font-size: 12px;
   font-weight: 750;
   flex-shrink: 0;
@@ -1127,7 +1151,7 @@ lord-icon {
 
 .ob-aside-step.is-active .ob-aside-step-num {
   background: #fff;
-  color: var(--ob-navy);
+  color: #5b52e0;
 }
 
 .ob-aside-signout {
@@ -1160,7 +1184,7 @@ lord-icon {
   min-height: 0;
   height: 100dvh;
   min-width: 0;
-  background: #fff;
+  background: transparent;
 }
 
 .ob-scroll {
@@ -1171,22 +1195,30 @@ lord-icon {
 
 .ob-content {
   width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 16px 20px 16px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 28px 40px;
   display: grid;
-  gap: 12px;
+  gap: 16px;
   align-content: start;
   box-sizing: border-box;
 }
 
 .ob-step-stage {
   min-height: 240px;
+  padding: 22px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(113, 104, 246, 0.12);
+  box-shadow:
+    0 18px 40px rgba(42, 37, 88, 0.06),
+    0 2px 8px rgba(42, 37, 88, 0.04);
+  backdrop-filter: blur(10px);
 }
 
 .ob-head {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .ob-back {
@@ -1219,17 +1251,18 @@ lord-icon {
 
 .ob-head h1 {
   margin: 0;
-  font-size: clamp(20px, 2.2vw, 26px);
+  font-size: clamp(22px, 2.4vw, 30px);
   line-height: 1.15;
   letter-spacing: -0.03em;
+  color: var(--ob-ink);
 }
 
 .ob-head p {
   margin: 0;
-  color: var(--muted);
-  font-size: 13.5px;
-  line-height: 1.4;
-  max-width: none;
+  color: #6b668c;
+  font-size: 14px;
+  line-height: 1.45;
+  max-width: 42rem;
 }
 
 .onboarding-form {
@@ -1258,9 +1291,9 @@ lord-icon {
   display: none;
   gap: 14px;
   padding: 14px 16px 10px;
-  border-bottom: 1px solid rgba(0, 36, 107, 0.08);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(113, 104, 246, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 5;
@@ -1283,10 +1316,10 @@ lord-icon {
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 36, 107, 0.12);
+  border-radius: 12px;
+  border: 1px solid rgba(113, 104, 246, 0.16);
   background: #fff;
-  color: var(--text);
+  color: var(--ob-ink);
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
@@ -1328,29 +1361,29 @@ lord-icon {
   display: block;
   height: 4px;
   border-radius: 999px;
-  background: rgba(0, 36, 107, 0.1);
+  background: rgba(113, 104, 246, 0.14);
 }
 
 .ob-progress-seg.is-active .ob-progress-bar,
 .ob-progress-seg.is-done .ob-progress-bar {
-  background: var(--ob-navy);
+  background: linear-gradient(90deg, #5b52e0, #9b94ff);
 }
 
 .ob-progress-seg.is-done .ob-progress-bar {
-  background: #0f766e;
+  background: #7168f6;
 }
 
 .ob-progress-label {
   font-size: 11px;
   font-weight: 650;
-  color: var(--muted);
+  color: #6b668c;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .ob-progress-seg.is-active .ob-progress-label {
-  color: var(--text);
+  color: var(--ob-ink);
 }
 
 .onboarding-form .field {
@@ -1380,13 +1413,13 @@ lord-icon {
 .onboarding-form input,
 .onboarding-form .input,
 .onboarding-form select {
-  min-height: 40px;
-  border: 1px solid rgba(0, 36, 107, 0.16);
-  border-radius: 10px;
+  min-height: 42px;
+  border: 1px solid rgba(113, 104, 246, 0.18);
+  border-radius: 12px;
   background: #fff;
   padding: 9px 12px;
   font: inherit;
-  color: var(--text);
+  color: var(--ob-ink);
   transition:
     border-color 0.15s var(--ease),
     box-shadow 0.15s var(--ease),
@@ -1396,15 +1429,15 @@ lord-icon {
 .onboarding-form input:hover,
 .onboarding-form .input:hover,
 .onboarding-form select:hover {
-  border-color: rgba(0, 36, 107, 0.28);
+  border-color: rgba(113, 104, 246, 0.34);
 }
 
 .onboarding-form input:focus,
 .onboarding-form .input:focus,
 .onboarding-form select:focus {
   outline: none;
-  border-color: var(--ob-navy);
-  box-shadow: 0 0 0 3px rgba(0, 36, 107, 0.12);
+  border-color: #7168f6;
+  box-shadow: 0 0 0 3px rgba(113, 104, 246, 0.16);
 }
 
 .onboarding-form .input-icon {
@@ -1419,9 +1452,9 @@ lord-icon {
 .onboarding-form .input-icon.is-disabled input,
 .onboarding-form input:disabled,
 .onboarding-form input[readonly] {
-  background: #f1f5fb;
-  color: #5a6f93;
-  border-color: rgba(0, 36, 107, 0.1);
+  background: #f4f5ff;
+  color: #6b668c;
+  border-color: rgba(113, 104, 246, 0.12);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -1435,10 +1468,10 @@ lord-icon {
   grid-template-columns: auto 1fr;
   gap: 12px;
   align-items: center;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 36, 107, 0.1);
-  border-radius: 14px;
-  background: #f8fbff;
+  padding: 12px 14px;
+  border: 1px solid rgba(113, 104, 246, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f7f8ff, #eeeaff);
 }
 
 .ob-avatar-btn {
@@ -1451,9 +1484,10 @@ lord-icon {
   overflow: hidden;
   cursor: pointer;
   color: #fff;
-  background: linear-gradient(145deg, #00246b, #315f9f);
+  background: linear-gradient(145deg, #5b52e0, #9b94ff);
   font-size: 17px;
   font-weight: 750;
+  box-shadow: 0 8px 18px rgba(113, 104, 246, 0.28);
 }
 
 .ob-form-footer {
@@ -1489,7 +1523,7 @@ lord-icon {
   display: grid;
   place-items: center;
   height: 22px;
-  background: rgba(0, 21, 63, 0.62);
+  background: rgba(74, 66, 201, 0.7);
 }
 
 .ob-identity-name {
@@ -1523,16 +1557,16 @@ lord-icon {
 .onboarding-channel-block {
   display: grid;
   gap: 10px;
-  padding: 12px;
-  border: 1px solid rgba(0, 36, 107, 0.1);
-  border-radius: 14px;
-  background: #f8fbff;
+  padding: 14px;
+  border: 1px solid rgba(113, 104, 246, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #f7f8ff);
 }
 
 .onboarding-channel-block.is-compact {
-  padding: 12px;
-  border: 1px solid rgba(0, 36, 107, 0.1);
-  background: #f8fbff;
+  padding: 14px;
+  border: 1px solid rgba(113, 104, 246, 0.14);
+  background: linear-gradient(180deg, #ffffff, #f7f8ff);
 }
 
 .onboarding-channel {
@@ -1602,12 +1636,12 @@ lord-icon {
   display: grid;
   justify-items: center;
   gap: 12px;
-  min-height: 140px;
+  min-height: 148px;
   padding: 24px 16px;
-  border: 1.5px solid rgba(0, 36, 107, 0.14);
-  border-radius: 18px;
+  border: 1.5px solid rgba(113, 104, 246, 0.16);
+  border-radius: 20px;
   background: #fff;
-  color: var(--muted);
+  color: #6b668c;
   font: inherit;
   font-size: 15px;
   font-weight: 750;
@@ -1621,15 +1655,16 @@ lord-icon {
 }
 
 .onboarding-account-card:hover {
-  border-color: rgba(0, 36, 107, 0.28);
-  transform: translateY(-1px);
+  border-color: rgba(113, 104, 246, 0.34);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(113, 104, 246, 0.1);
 }
 
 .onboarding-account-card.is-active {
-  border-color: rgba(0, 36, 107, 0.5);
-  background: var(--ob-mist);
-  color: var(--text);
-  box-shadow: 0 14px 34px rgba(0, 36, 107, 0.1);
+  border-color: rgba(113, 104, 246, 0.55);
+  background: linear-gradient(180deg, #f7f8ff 0%, #eeeaff 100%);
+  color: var(--ob-ink);
+  box-shadow: 0 16px 36px rgba(113, 104, 246, 0.16);
 }
 
 .onboarding-account-card svg {
