@@ -31,6 +31,9 @@ sudo systemctl enable --now certbot.timer
 
 If the Worker `*.workers.dev` URL changes, update `$cf_worker` in the snippet and push — deploy reloads Nginx.
 
+Use the **stable** hostname `bld-web-staging.<account-subdomain>.workers.dev` (matches `wrangler.jsonc` `name`).
+Never pin an OpenNext preview host (`<hash>-bld-web-staging.…`) — deploys update the stable name, not the preview URL.
+
 ### First-time / fix PostGIS
 
 The API **requires PostGIS**. Do **not** point staging at a plain host Postgres
