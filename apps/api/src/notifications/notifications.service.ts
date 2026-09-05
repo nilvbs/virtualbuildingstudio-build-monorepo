@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Notification, NotificationChannel } from '@surveylink/types';
 import type { Notification as NotificationRow } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,22 +9,33 @@ import { SMS_SENDER, type SmsSender } from './delivery/sms-sender';
 interface MatchNotificationContext {
   clientUserId: string;
   surveyorUserId: string;
+  projectId: string;
+  matchId: string;
   projectTitle: string;
 }
 
 interface ExternalMessage {
   emailSubject: string;
   emailBody: string;
+  emailHtml?: string;
   smsBody: string;
 }
 
 @Injectable()
 export class NotificationsService {
+  private readonly webAppUrl: string;
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
     @Inject(EMAIL_SENDER) private readonly email: EmailSender,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
-  ) {}
+  ) {
+    this.webAppUrl = (config.get<string>('WEB_APP_URL') ?? 'http://localhost:3000').replace(
+      /\/$/,
+      '',
+    );
+  }
 
   /**
    * Fired when the admin creates a match: an in-app notification plus email and
@@ -31,27 +43,39 @@ export class NotificationsService {
    * a dropped email/SMS is logged and never rolls back the match.
    */
   async notifyMatchCreated(ctx: MatchNotificationContext): Promise<void> {
-    const clientBody = `We matched a surveyor to "${ctx.projectTitle}". We'll be in touch to confirm.`;
-    const surveyorBody = `You've been matched to "${ctx.projectTitle}". Our team will reach out shortly.`;
+    const clientLink = `${this.webAppUrl}/client/projects/${ctx.projectId}`;
+    const surveyorLink = `${this.webAppUrl}/surveyor/requests?match=${ctx.matchId}`;
 
-    await this.createInApp(ctx.clientUserId, 'match_found', "We've found a surveyor", clientBody);
+    const clientBody = `We matched a surveyor to "${ctx.projectTitle}". Open your project to review.`;
+    const surveyorBody = `You've been matched to "${ctx.projectTitle}". Open the request to accept or decline.`;
+
+    await this.createInApp(
+      ctx.clientUserId,
+      'match_found',
+      "We've found a surveyor",
+      clientBody,
+      `/client/projects/${ctx.projectId}`,
+    );
     await this.createInApp(
       ctx.surveyorUserId,
       'match_proposed',
       "You've been matched to a project",
       surveyorBody,
+      `/surveyor/requests?match=${ctx.matchId}`,
     );
 
     await Promise.allSettled([
       this.dispatchExternal(ctx.clientUserId, {
         emailSubject: "We've found a surveyor for your project",
-        emailBody: clientBody,
-        smsBody: `SurveyLink: ${clientBody}`,
+        emailBody: `${clientBody}\n\n${clientLink}`,
+        emailHtml: `<p>${clientBody}</p><p><a href="${clientLink}">View your project</a></p>`,
+        smsBody: `BLD: We matched a surveyor to "${ctx.projectTitle}". View: ${clientLink}`,
       }),
       this.dispatchExternal(ctx.surveyorUserId, {
-        emailSubject: "You've been matched to a project on SurveyLink",
-        emailBody: surveyorBody,
-        smsBody: `SurveyLink: ${surveyorBody}`,
+        emailSubject: "You've been matched to a project on BLD",
+        emailBody: `${surveyorBody}\n\n${surveyorLink}`,
+        emailHtml: `<p>${surveyorBody}</p><p><a href="${surveyorLink}">Open request</a></p>`,
+        smsBody: `BLD: You've been matched to "${ctx.projectTitle}". Open request: ${surveyorLink}`,
       }),
     ]);
   }
@@ -84,9 +108,10 @@ export class NotificationsService {
     kind: string,
     title: string,
     body: string,
+    linkUrl?: string,
   ): Promise<void> {
     await this.prisma.notification.create({
-      data: { userId, kind, title, body, channel: 'in_app' },
+      data: { userId, kind, title, body, channel: 'in_app', linkUrl: linkUrl ?? null },
     });
   }
 
@@ -98,10 +123,18 @@ export class NotificationsService {
     });
     if (!user) return;
 
-    await Promise.allSettled([
-      this.email.send({ to: user.email, subject: msg.emailSubject, text: msg.emailBody }),
-      this.sms.send({ to: user.phone, body: msg.smsBody }),
-    ]);
+    const tasks: Promise<unknown>[] = [
+      this.email.send({
+        to: user.email,
+        subject: msg.emailSubject,
+        text: msg.emailBody,
+        html: msg.emailHtml,
+      }),
+    ];
+    if (user.phone?.trim()) {
+      tasks.push(this.sms.send({ to: user.phone, body: msg.smsBody }));
+    }
+    await Promise.allSettled(tasks);
   }
 
   private async requireUserId(subject: string): Promise<string> {
@@ -119,6 +152,7 @@ export class NotificationsService {
       kind: row.kind,
       title: row.title,
       body: row.body,
+      linkUrl: row.linkUrl,
       channel: row.channel as NotificationChannel,
       readAt: row.readAt ? row.readAt.toISOString() : null,
       createdAt: row.createdAt.toISOString(),

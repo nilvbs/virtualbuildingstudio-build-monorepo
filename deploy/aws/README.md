@@ -13,7 +13,7 @@ Route53 ─▶ ALB (HTTPS, ACM cert) ─▶ ECS Fargate service (NestJS, 2..N ta
                                        ├─▶ RDS Proxy ─▶ Aurora PostgreSQL (PostGIS) + read replica
                                        ├─▶ ElastiCache (Redis)
                                        ├─▶ S3 (portfolio uploads)
-                                       └─▶ Auth0 / SES / SNS / Sentry
+                                       └─▶ Auth0 / Twilio (SMS + SendGrid email) / Sentry / S3
 ```
 
 The API is **stateless** (auth = Auth0 JWTs), so it scales horizontally: add
@@ -41,7 +41,7 @@ tasks doesn't exhaust Postgres connections.
 12. **Secrets Manager** entries under `bld/api/*` (see the `secrets` block in the task def).
 13. **IAM**:
     - `bld-api-execution-role` (pull from ECR, read Secrets Manager, write logs).
-    - `bld-api-task-role` (app permissions: S3 uploads, SES send, SNS SMS publish).
+    - `bld-api-task-role` (app permissions: S3 uploads).
     - `bld-api-deploy-role` — trusted by GitHub OIDC (`token.actions.githubusercontent.com`)
       for the deploy workflow (ECR push, ECS update, PassRole).
 14. **Route53** records: `api.<env>.bld.app` → ALB, `app.<env>.bld.app` → CloudFront.
@@ -82,49 +82,50 @@ CI runs `prisma migrate deploy` (against `DIRECT_DATABASE_URL`) **before** the
 new tasks roll out. Keep migrations backward-compatible so old + new tasks
 coexist during the rolling deploy (zero downtime). Never `migrate dev` in CI.
 
-## Email & SMS (Amazon SES + SNS)
+## Email & SMS (Twilio SendGrid + Twilio Messaging)
 
 The API sends verification and notification messages through:
 
-| Channel | AWS service | App code |
-|---------|-------------|----------|
-| Email OTP + transactional email | **SES** (SESv2) | `SesEmailSender` |
-| Phone OTP + transactional SMS | **SNS** `Publish` to phone | `SnsSmsSender` + `LocalPhoneVerifier` |
+| Channel | Provider | App code |
+|---------|----------|----------|
+| Email OTP + match email | **Twilio SendGrid** | `TwilioEmailSender` + `EmailOtpService` |
+| Phone OTP + match SMS | **Twilio** Messaging | `TwilioSmsSender` + `LocalPhoneVerifier` |
 
-OTP codes are generated and stored hashed in Postgres (`contact_otps`). SNS/SES only deliver the message. No Twilio/SendGrid.
+OTP codes are generated and stored hashed in Postgres (`contact_otps`). Twilio only delivers the message.
 
 Phone numbers must be **E.164** (e.g. `+14155552671`, `+919876543210`).
 
 ### Env vars
 
 ```env
-AWS_REGION=us-east-2          # must match the region where SMS/SES are configured
+AWS_REGION=us-east-2
 # Local only — on ECS use the task IAM role instead of keys:
 # AWS_ACCESS_KEY_ID=
 # AWS_SECRET_ACCESS_KEY=
-# AWS_PROFILE=
 
-SES_FROM_EMAIL=noreply@yourdomain.com
-SES_FROM_NAME=BLD
-# SES_CONFIGURATION_SET=
+# Twilio Console → Account SID + Auth Token + a From number (E.164)
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=+1xxxxxxxxxx
 
-# Optional alphanumeric Sender ID (supported countries only):
-# SNS_SMS_SENDER_ID=
+# Twilio SendGrid (Mail Send) — API key starts with SG.
+SENDGRID_API_KEY=SG.xxxxx
+TWILIO_EMAIL_FROM=noreply@yourdomain.com
+TWILIO_EMAIL_FROM_NAME=BLD
+
+# Public web URL — used in match SMS/email deep links
+WEB_APP_URL=https://staging.bld.online
 
 # Media uploads — S3 only; DB stores public HTTPS URLs
-# Bucket layout: bld-build/{avatar|portfolio|document|logo|cover|certificate}/…
 S3_BUCKET=bld-build
-# S3_REGION=                    # defaults to AWS_REGION
-# S3_PUBLIC_BASE_URL=https://cdn.example.com   # CloudFront recommended
-# S3_OBJECT_ACL=public-read     # only if bucket ACLs are enabled
 ```
 
-If `AWS_REGION` / `SES_FROM_EMAIL` are missing, senders log `[stub email]` / `[stub sms]` and do not call AWS (local/CI safe).
-Media uploads default to bucket `bld-build` with segregated folders per kind.
+If SendGrid is unset, email logs a stub and does not call the API.
+SMS requires Twilio credentials (phone OTP fails closed; match SMS is best-effort).
 
 ### IAM (task role / local IAM user)
 
-Minimum for SMS OTP testing and production publish:
+S3 only for media (email/SMS are Twilio, not SES/SNS):
 
 ```json
 {
@@ -132,77 +133,36 @@ Minimum for SMS OTP testing and production publish:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": [
-        "sns:Publish",
-        "sns:SetSMSAttributes"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
-      "Resource": "*"
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::bld-build/*"
     }
   ]
 }
 ```
 
-Attach this to `bld-api-task-role` in ECS. Locally, grant the same on the IAM user behind `aws configure`.
+### Testing SMS on a Twilio trial
 
-### One-time: default SMS type = Transactional
+Trial accounts can only SMS **verified** destination numbers in the Twilio console.
 
-OTP traffic should be **Transactional**. The app also sets
-`AWS.SNS.SMS.SMSType=Transactional` on every `Publish`. Optionally set the
-account default once (CLI):
+1. Open [Twilio Console](https://console.twilio.com) → Phone Numbers → buy or use a trial number.
+2. Verify your personal mobile under Verified Caller IDs (trial).
+3. Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` in `.env`.
+4. Restart the API and trigger phone OTP or create an admin match.
 
-```bash
-aws sns set-sms-attributes \
-  --attributes DefaultSMSType=Transactional \
-  --region "$AWS_REGION"
-```
+### Testing email via SendGrid
 
-### Testing SMS while still in the SNS Sandbox
+1. Open [SendGrid](https://app.sendgrid.com) (Twilio) → create an API key with **Mail Send**.
+2. Verify a Single Sender or authenticate your domain.
+3. Set `SENDGRID_API_KEY`, `TWILIO_EMAIL_FROM`, `TWILIO_EMAIL_FROM_NAME` in `.env`.
+4. Restart the API and trigger email OTP or create an admin match.
 
-In sandbox, SNS can only deliver to **verified destination phone numbers**.
+### Match notifications
 
-1. Open **AWS End User Messaging SMS** (same region as `AWS_REGION`).
-2. Go to **Verified destination phone numbers** → **Add**.
-3. Enter the number in E.164 (e.g. `+91xxxxxxxxxx`).
-4. Enter the verification code AWS texts you.
-5. Put credentials + region in `.env` (or `aws configure`).
-6. Start the API and trigger phone OTP from web/mobile onboarding.
+When an admin creates a match, both the client and surveyor receive:
 
-Sandbox checklist:
-
-- [ ] Destination number verified in that region  
-- [ ] IAM allows `sns:Publish`  
-- [ ] `AWS_REGION` set (otherwise the app stubs SMS)  
-- [ ] Number in the app is E.164 and matches the verified number  
-
-CLI smoke test (optional):
-
-```bash
-aws sns publish \
-  --phone-number "+919876543210" \
-  --message "Your BLD verification code is 123456" \
-  --message-attributes '{"AWS.SNS.SMS.SMSType":{"DataType":"String","StringValue":"Transactional"}}' \
-  --region "$AWS_REGION"
-```
-
-### SES (email) quick path
-
-1. SES → verify domain or from-address in `AWS_REGION`.
-2. Leave SES sandbox (or verify recipient addresses while still in sandbox).
-3. Set `SES_FROM_EMAIL` / `SES_FROM_NAME` (Secrets Manager in ECS).
-
-### Production (exit SMS sandbox)
-
-After AWS approves **production SMS access**:
-
-- Any E.164 destination can receive messages (no per-number verify step).
-- Raise the monthly SMS spend limit if needed.
-- **No application code changes** — same `PublishCommand` path.
-- Keep message type **Transactional** for OTPs.
+- In-app notification (web toast bottom-right)
+- Email via SendGrid (with deep link)
+- SMS via Twilio (with deep link), when a phone is on the account
 
 ### OTP flow (already implemented)
 
@@ -213,7 +173,8 @@ Generate 6-digit OTP
 Hash + store in contact_otps (10 min TTL)
        │
        ▼
-SNS Publish (Transactional SMS)
+Email → SendGrid Mail Send
+SMS   → Twilio Messages.create
        │
        ▼
 User enters code → verify hash → mark consumed

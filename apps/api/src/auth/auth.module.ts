@@ -15,16 +15,16 @@ import { PHONE_VERIFIER } from './phone/phone-verifier';
 import { LocalPhoneVerifier } from './phone/local.phone-verifier';
 import { EmailOtpService } from './email/email-otp.service';
 import { EMAIL_SENDER } from '../notifications/delivery/email-sender';
-import { SesEmailSender } from '../notifications/delivery/ses.email-sender';
+import { TwilioEmailSender } from '../notifications/delivery/twilio.email-sender';
 import { SMS_SENDER } from '../notifications/delivery/sms-sender';
-import { SnsSmsSender } from '../notifications/delivery/sns.sms-sender';
+import { TwilioSmsSender } from '../notifications/delivery/twilio.sms-sender';
 import { AvatarStorageService } from './avatar-storage.service';
 import { MediaModule } from '../media/media.module';
 
 /**
  * Auth module — signup, email/phone OTP, onboarding, sessions via Auth0 +
- * Amazon SES (email) + Amazon SNS (SMS). Registers app-wide JWT / role /
- * permissions guards.
+ * Twilio SendGrid (email) + Twilio Messaging (SMS). Registers app-wide JWT /
+ * role / permissions guards.
  */
 @Module({
   imports: [PassportModule, MediaModule],
@@ -37,8 +37,8 @@ import { MediaModule } from '../media/media.module';
     EmailOtpService,
     AvatarStorageService,
     { provide: IDENTITY_PROVIDER, useClass: Auth0IdentityProvider },
-    { provide: EMAIL_SENDER, useClass: SesEmailSender },
-    { provide: SMS_SENDER, useClass: SnsSmsSender },
+    { provide: EMAIL_SENDER, useClass: TwilioEmailSender },
+    { provide: SMS_SENDER, useClass: TwilioSmsSender },
     { provide: PHONE_VERIFIER, useClass: LocalPhoneVerifier },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

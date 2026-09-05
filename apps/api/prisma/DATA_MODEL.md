@@ -60,7 +60,7 @@ Client (user)
 | Table | One sentence |
 |---|---|
 | `contact_otps` | Hashed OTP, expiry, consumed flag. |
-| `notifications` | Inbox rows (`kind`, `title`, `read_at`). |
+| `notifications` | Inbox rows (`kind`, `title`, `link_url`, `read_at`). |
 
 ## JSON (not more tables)
 

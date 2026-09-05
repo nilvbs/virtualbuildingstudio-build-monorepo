@@ -372,6 +372,8 @@ export interface Notification {
   kind: string;
   title: string;
   body: string | null;
+  /** Relative app path or absolute URL for the toast / inbox CTA. */
+  linkUrl: string | null;
   channel: NotificationChannel;
   readAt: string | null;
   createdAt: string;

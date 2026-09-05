@@ -746,7 +746,7 @@ export class AuthService {
     });
     await ensureMembership(this.prisma, user.id, workspaceRole);
 
-    // Best-effort, consistent with signup: missing SNS config must not fail this.
+    // Best-effort, consistent with signup: missing Twilio config must not fail this.
     await Promise.allSettled([this.phone.startVerification(user.id, input.phone)]);
 
     return this.hydrateUser(user, principal.roles);
@@ -777,7 +777,7 @@ export class AuthService {
   async startPhoneVerification(
     principal: AuthPrincipal,
     phone?: string,
-  ): Promise<{ ok: true; snsMessageId?: string; skipped?: string }> {
+  ): Promise<{ ok: true; messageId?: string; skipped?: string }> {
     const user = await this.requireUser(principal.sub);
     if (user.phoneVerified) {
       return { ok: true, skipped: 'already_verified' };
@@ -803,7 +803,7 @@ export class AuthService {
     }
 
     const sent = await this.phone.startVerification(user.id, targetPhone);
-    return { ok: true, snsMessageId: sent.messageId };
+    return { ok: true, messageId: sent.messageId };
   }
 
   /** Confirm email OTP. Profile unlock still requires phone verification. */

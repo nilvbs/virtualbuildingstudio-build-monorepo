@@ -10187,3 +10187,107 @@ a.plain:hover {
   padding: 12px 0 24px;
 }
 
+/* --- In-app notification toasts (bottom-right) --- */
+.bld-toast-stack {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 1200;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.shell--surveyor .bld-toast-stack,
+.shell--client .bld-toast-stack {
+  bottom: max(72px, calc(56px + env(safe-area-inset-bottom)));
+}
+
+@media (min-width: 901px) {
+  .shell--surveyor .bld-toast-stack,
+  .shell--client .bld-toast-stack {
+    bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+
+.bld-toast {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  align-items: start;
+  padding: 14px 12px 14px 16px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, #e8e6f5);
+  box-shadow:
+    0 12px 32px rgba(45, 40, 90, 0.14),
+    0 2px 6px rgba(45, 40, 90, 0.06);
+  animation: bld-toast-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bld-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.bld-toast-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.bld-toast-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg);
+  line-height: 1.3;
+}
+
+.bld-toast-copy {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.bld-toast-cta {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.bld-toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.bld-toast-close:hover {
+  background: var(--accent-soft);
+  color: var(--accent-press);
+}
+

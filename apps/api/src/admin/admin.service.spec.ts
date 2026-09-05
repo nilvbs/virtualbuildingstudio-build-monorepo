@@ -87,6 +87,8 @@ describe('AdminService', () => {
       expect(notifications.notifyMatchCreated).toHaveBeenCalledWith({
         clientUserId: 'client-1',
         surveyorUserId: 'suser-1',
+        projectId: 'proj-1',
+        matchId: 'match-1',
         projectTitle: 'Warehouse scan',
       });
     });

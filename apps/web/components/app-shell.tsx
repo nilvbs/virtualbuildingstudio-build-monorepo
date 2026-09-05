@@ -11,6 +11,7 @@ import { api, ApiError } from '../lib/api';
 import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
 import { clearSession, isAuthenticated, setActiveRole } from '../lib/session';
 import { IncompleteProfileModal, SidebarProfileMeter } from './profile-completion';
+import { NotificationToasts } from './notification-toasts';
 
 type Section = 'client' | 'surveyor' | 'admin';
 
@@ -446,6 +447,8 @@ export function AppShell({ section, children }: { section: Section; children: Re
           }}
         />
       )}
+
+      {(section === 'client' || section === 'surveyor') && <NotificationToasts />}
     </div>
   );
 }

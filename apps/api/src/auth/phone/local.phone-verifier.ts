@@ -8,8 +8,8 @@ const OTP_TTL_MS = 10 * 60 * 1000;
 const CHANNEL = 'phone';
 
 /**
- * Phone OTP owned by the app and delivered via Amazon SNS in every environment
- * (local included). Codes are hashed in `contact_otps`; SNS only sends the message.
+ * Phone OTP owned by the app and delivered via Twilio in every environment
+ * (local included). Codes are hashed in `contact_otps`; Twilio only sends the message.
  */
 @Injectable()
 export class LocalPhoneVerifier implements PhoneVerifier {
@@ -47,9 +47,9 @@ export class LocalPhoneVerifier implements PhoneVerifier {
       });
       return { messageId: sent.messageId };
     } catch (err) {
-      this.logger.error(`SNS OTP to ${phone} failed: ${(err as Error).message}`);
+      this.logger.error(`Twilio OTP to ${phone} failed: ${(err as Error).message}`);
       throw new ServiceUnavailableException(
-        'Could not send SMS. Check AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, sns:Publish, and SNS sandbox verification for this number.',
+        'Could not send SMS. Check TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, and that the destination number is allowed on your Twilio account.',
       );
     }
   }

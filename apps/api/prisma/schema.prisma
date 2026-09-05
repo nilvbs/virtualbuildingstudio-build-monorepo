@@ -224,6 +224,8 @@ model Notification {
   kind      String
   title     String
   body      String?
+  /** In-app deep link path (e.g. /client/projects/:id). Absolute URLs also allowed. */
+  linkUrl   String?   @map("link_url")
   channel   String    @default("in_app")
   readAt    DateTime? @map("read_at") @db.Timestamptz(6)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

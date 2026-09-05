@@ -219,6 +219,8 @@ export class AdminService {
     await this.notifications.notifyMatchCreated({
       clientUserId: project.clientId,
       surveyorUserId: surveyor.userId,
+      projectId: project.id,
+      matchId: match.id,
       projectTitle: project.title,
     });
 
