@@ -9,22 +9,17 @@ import { api, errorMessage } from '../../lib/api';
 import { getSession, isAuthenticated, setSession } from '../../lib/session';
 import { defaultPhoneInput, PhoneInput, phoneInputIsValid, phoneInputToE164 } from '../../components/phone-input';
 
-function roleFrom(raw: string | null): WorkspaceRole {
-  return raw === 'surveyor' ? 'surveyor' : 'client';
-}
-
 function CompleteProfileForm() {
   const router = useRouter();
   const params = useSearchParams();
 
   const [fullName, setFullName] = useState(params.get('name') ?? '');
   const [phone, setPhone] = useState(defaultPhoneInput);
-  const [roleHint, setRoleHint] = useState<WorkspaceRole>(roleFrom(params.get('role')));
+  const roleHint: WorkspaceRole = 'surveyor';
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const email = params.get('email') ?? undefined;
-  const roleLocked = params.get('role') === 'client' || params.get('role') === 'surveyor';
 
   useEffect(() => {
     if (!isAuthenticated()) router.replace('/sign-in');
@@ -108,26 +103,8 @@ function CompleteProfileForm() {
 
           <PhoneInput id="phone" value={phone} onChange={setPhone} required disabled={busy} />
           <p className="hint" style={{ marginTop: -8, marginBottom: 12 }}>
-            We&apos;ll text a code to verify it.
+            We&apos;ll text a code to verify it. You&apos;re joining as a surveyor.
           </p>
-
-          <div className="field">
-            <label htmlFor="roleHint">I am a</label>
-            <select
-              id="roleHint"
-              value={roleHint}
-              disabled={roleLocked}
-              onChange={(e) => setRoleHint(e.target.value as WorkspaceRole)}
-            >
-              <option value="client">Client — I need surveys</option>
-              <option value="surveyor">Expert (surveyor) — I offer surveys</option>
-            </select>
-            {roleLocked ? (
-              <p className="hint" style={{ marginTop: 6 }}>
-                Chosen on the previous step. Sign out and start again to change it.
-              </p>
-            ) : null}
-          </div>
 
           <button className="btn block" type="submit" disabled={busy} style={{ marginTop: 4 }}>
             {busy ? <span className="spin" /> : null}

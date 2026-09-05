@@ -95,7 +95,7 @@ export function OnboardingScreen({ navigation }: Props) {
 
   const finishHome = useCallback(
     async (role?: WorkspaceRole | null) => {
-      const next = role ?? (await getActiveRole()) ?? 'client';
+      const next = role ?? (await getActiveRole()) ?? 'surveyor';
       navigation.reset({
         index: 0,
         routes: [{ name: homeForWorkspace(next) === 'client' ? 'ClientHome' : 'SurveyorHome' }],
@@ -130,7 +130,7 @@ export function OnboardingScreen({ navigation }: Props) {
     if (next.termsAccepted) setAcceptTerms(true);
     if (next.ndaAccepted) setAcceptNda(true);
     if (next.phoneVerified) setPhoneOtpSent(false);
-    const role = (await getActiveRole()) ?? 'client';
+    const role = (await getActiveRole()) ?? 'surveyor';
     roleRef.current = role;
     if (next.step === 'done') await finishHome(role);
   }, [finishHome]);

@@ -1,14 +1,16 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -49,6 +51,23 @@ function toggleInList<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
 }
 
+const PROFILE_STEPS = [
+  { id: 'services', label: 'Services', blurb: 'What you deliver' },
+  { id: 'coverage', label: 'Coverage', blurb: 'Where you work' },
+  { id: 'commercial', label: 'Rates & kit', blurb: 'Pricing and gear' },
+  { id: 'work', label: 'Showcase', blurb: 'Languages & sectors' },
+  { id: 'identity', label: 'You', blurb: 'Your story' },
+] as const;
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+function goStep(next: number, setStep: (n: number) => void) {
+  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  setStep(next);
+}
+
 function ChipGrid<T extends string>({
   options,
   labels,
@@ -85,13 +104,21 @@ export function ProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [hasProfile, setHasProfile] = useState(false);
-  const [tab, setTab] = useState<'core' | 'identity'>('core');
+  const [step, setStep] = useState(0);
   const [accountType, setAccountType] = useState<AccountType>('individual');
+  const stepStripRef = useRef<ScrollView | null>(null);
+  const stepOffsets = useRef<number[]>([]);
+
+  useEffect(() => {
+    const x = stepOffsets.current[step];
+    if (x === undefined) return;
+    stepStripRef.current?.scrollTo({ x: Math.max(0, x - 12), animated: true });
+  }, [step]);
 
   const [services, setServices] = useState<SurveyService[]>([]);
   const [equipment, setEquipment] = useState<string[]>([]);
   const [baseCity, setBaseCity] = useState('');
-  const [radiusKm, setRadiusKm] = useState('250');
+  const [radiusMiles, setRadiusMiles] = useState('155');
   const [dayRate, setDayRate] = useState('');
   const [hourlyRate, setHourlyRate] = useState('');
   const [lat, setLat] = useState('');
@@ -110,7 +137,7 @@ export function ProfileScreen() {
     setServices(p.services ?? []);
     setEquipment(p.equipment ?? []);
     setBaseCity(p.baseCity ?? '');
-    setRadiusKm(p.radiusKm != null ? String(p.radiusKm) : '250');
+    setRadiusMiles(p.radiusKm != null ? String(Math.max(1, Math.round(p.radiusKm / 1.609344))) : '155');
     setDayRate(p.dayRateCents != null ? String(Math.round(p.dayRateCents / 100)) : '');
     setHourlyRate(
       p.details?.hourlyRateCents != null
@@ -216,7 +243,9 @@ export function ProfileScreen() {
       baseCity: baseCity.trim() || undefined,
       services,
       equipment,
-      radiusKm: radiusKm ? Number(radiusKm) : undefined,
+      radiusKm: radiusMiles
+        ? Math.max(1, Math.round(Number(radiusMiles) * 1.609344))
+        : undefined,
       dayRateCents: dayRate ? Math.round(Number(dayRate) * 100) : undefined,
       location: hasLocation ? { lat: latN, lng: lngN } : undefined,
       details: nextDetails,
@@ -329,27 +358,44 @@ export function ProfileScreen() {
           <View style={styles.intro}>
             <Text style={styles.title}>Your portfolio</Text>
             <Text style={styles.lede}>
-              Core info is shared. Identity adapts for {accountType} accounts. Completion:{' '}
-              {liveCompletion.percent}%.
+              {PROFILE_STEPS.length} short stages. Identity adapts for {accountType} accounts.
+              Completion: {liveCompletion.percent}%.
             </Text>
           </View>
 
-          <View style={styles.tabs}>
-            <Pressable
-              style={[styles.tab, tab === 'core' && styles.tabOn]}
-              onPress={() => setTab('core')}
-            >
-              <Text style={[styles.tabText, tab === 'core' && styles.tabTextOn]}>Core</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.tab, tab === 'identity' && styles.tabOn]}
-              onPress={() => setTab('identity')}
-            >
-              <Text style={[styles.tabText, tab === 'identity' && styles.tabTextOn]}>
-                {accountType === 'company' ? 'Company' : 'Professional'}
-              </Text>
-            </Pressable>
-          </View>
+          <ScrollView
+            ref={stepStripRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.stepper}
+          >
+            {PROFILE_STEPS.map((item, i) => (
+              <Pressable
+                key={item.id}
+                style={[
+                  styles.stepItem,
+                  i === step && styles.stepItemOn,
+                  i < step && styles.stepItemDone,
+                ]}
+                onLayout={(e) => {
+                  stepOffsets.current[i] = e.nativeEvent.layout.x;
+                }}
+                onPress={() => goStep(i, setStep)}
+              >
+                <View style={[styles.stepIndex, i === step && styles.stepIndexOn]}>
+                  <Text style={[styles.stepIndexText, i === step && styles.stepIndexTextOn]}>
+                    {i < step ? '✓' : i + 1}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={[styles.stepLabel, i === step && styles.stepLabelOn]}>
+                    {item.label}
+                  </Text>
+                  <Text style={styles.stepBlurb}>{item.blurb}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
 
           {error ? <AlertBox message={error} /> : null}
           {info ? <AlertBox tone="success" message={info} /> : null}
@@ -375,7 +421,7 @@ export function ProfileScreen() {
             />
           </View>
 
-          {tab === 'core' ? (
+          {step === 0 ? (
             <>
               {SURVEY_SERVICE_GROUPS.map((group) => (
                 <View key={group.id}>
@@ -388,14 +434,16 @@ export function ProfileScreen() {
                   />
                 </View>
               ))}
-
+            </>
+          ) : step === 1 ? (
+            <>
               <Text style={styles.section}>Coverage</Text>
               <Field label="Base location" icon="map-pin" value={baseCity} onChangeText={setBaseCity} />
               <Field
-                label="Coverage radius (km)"
+                label="Coverage radius (miles)"
                 icon="target"
-                value={radiusKm}
-                onChangeText={setRadiusKm}
+                value={radiusMiles}
+                onChangeText={setRadiusMiles}
                 keyboardType="number-pad"
               />
               <Field
@@ -451,7 +499,9 @@ export function ProfileScreen() {
                   onChangeText={(busyUntil) => patchDetails({ busyUntil: busyUntil || null })}
                 />
               ) : null}
-
+            </>
+          ) : step === 2 ? (
+            <>
               <Text style={styles.section}>Pricing</Text>
               <Field
                 label="Currency"
@@ -484,7 +534,9 @@ export function ProfileScreen() {
                   />
                 </View>
               ))}
-
+            </>
+          ) : step === 3 ? (
+            <>
               <Text style={styles.section}>Languages</Text>
               <ChipGrid
                 options={PORTFOLIO_LANGUAGES}
@@ -643,11 +695,32 @@ export function ProfileScreen() {
             </>
           )}
 
-          <Button
-            label={saving ? 'Saving…' : 'Save portfolio'}
-            busy={saving}
-            onPress={() => void save()}
-          />
+          <View style={styles.navRow}>
+            {step > 0 ? (
+              <Button
+                label="Back"
+                variant="outline"
+                style={{ flex: 1 }}
+                onPress={() => goStep(step - 1, setStep)}
+              />
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
+            {step < PROFILE_STEPS.length - 1 ? (
+              <Button
+                label="Continue"
+                style={{ flex: 1 }}
+                onPress={() => goStep(step + 1, setStep)}
+              />
+            ) : (
+              <Button
+                label={saving ? 'Saving…' : 'Save portfolio'}
+                busy={saving}
+                style={{ flex: 1 }}
+                onPress={() => void save()}
+              />
+            )}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -667,18 +740,40 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 26, fontWeight: '700', color: colors.text, marginTop: 2 },
   lede: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
-  tabs: {
+  stepper: { gap: 8, paddingBottom: 8, marginBottom: 8 },
+  stepItem: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-    padding: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,36,107,0.06)',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 188,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-  tabOn: { backgroundColor: '#fff' },
-  tabText: { color: colors.muted, fontWeight: '700', fontSize: 13 },
-  tabTextOn: { color: colors.text },
+  stepItemOn: {
+    borderColor: colors.accent,
+    backgroundColor: '#fff',
+    ...shadows.sm,
+  },
+  stepItemDone: { borderColor: 'rgba(14,159,110,0.28)' },
+  stepIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,36,107,0.08)',
+  },
+  stepIndexOn: { backgroundColor: colors.accent },
+  stepIndexText: { color: colors.accent, fontWeight: '800', fontSize: 12 },
+  stepIndexTextOn: { color: colors.ice },
+  stepLabel: { fontSize: 13, fontWeight: '700', color: colors.muted },
+  stepLabelOn: { color: colors.text },
+  stepBlurb: { fontSize: 11, color: colors.muted, marginTop: 1 },
+  navRow: { flexDirection: 'row', gap: 10, marginTop: 22 },
   matchRow: {
     flexDirection: 'row',
     alignItems: 'center',

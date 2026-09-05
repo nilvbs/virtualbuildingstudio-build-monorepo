@@ -39,7 +39,7 @@ import type {
   SignupInput,
   UpdateMeInput,
 } from '@surveylink/validation';
-import type { AccountProfile, ClientProfile } from '@prisma/client';
+import type { AccountProfile } from '@prisma/client';
 import { normalizeEmail } from '@surveylink/validation';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -841,14 +841,11 @@ export class AuthService {
   async getOnboarding(principal: AuthPrincipal): Promise<OnboardingStatus> {
     const user = await this.requireUser(principal.sub);
     const memberships = await listMemberships(this.prisma, user.id);
-    const clientProfile = memberships.includes('client')
-      ? await this.prisma.clientProfile.findUnique({ where: { userId: user.id } })
-      : null;
     const accountProfile = await this.prisma.accountProfile.findUnique({
       where: { userId: user.id },
     });
     const requiresPortfolio = await this.surveyorNeedsPortfolioStep(user.id, memberships);
-    return this.toOnboardingStatus(user, memberships, clientProfile, accountProfile, requiresPortfolio);
+    return this.toOnboardingStatus(user, memberships, accountProfile, requiresPortfolio);
   }
 
   /**
@@ -940,7 +937,6 @@ export class AuthService {
   /** Update personal profile fields (name, avatar, company, address). */
   async updateMe(principal: AuthPrincipal, input: UpdateMeInput): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
-    const memberships = await listMemberships(this.prisma, user.id);
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -950,20 +946,13 @@ export class AuthService {
       },
     });
 
-    if (input.companyName !== undefined && memberships.includes('client')) {
-      await this.prisma.clientProfile.upsert({
-        where: { userId: user.id },
-        create: { userId: user.id, companyName: input.companyName },
-        update: { companyName: input.companyName },
-      });
-    }
-
-    if (
-      input.address !== undefined ||
-      input.registrationNumber !== undefined ||
-      input.website !== undefined
-    ) {
-      const addressData = input.address
+    const profilePatch = {
+      ...(input.companyName !== undefined ? { companyName: input.companyName } : {}),
+      ...(input.registrationNumber !== undefined
+        ? { registrationNumber: input.registrationNumber?.trim() || null }
+        : {}),
+      ...(input.website !== undefined ? { website: input.website?.trim() || null } : {}),
+      ...(input.address
         ? {
             addressLine1: input.address.line1,
             addressLine2: input.address.line2?.trim() ? input.address.line2.trim() : null,
@@ -972,19 +961,14 @@ export class AuthService {
             postalCode: input.address.postalCode,
             country: input.address.country,
           }
-        : {};
-      const companyData = {
-        ...(input.registrationNumber !== undefined
-          ? { registrationNumber: input.registrationNumber?.trim() || null }
-          : {}),
-        ...(input.website !== undefined
-          ? { website: input.website?.trim() || null }
-          : {}),
-      };
+        : {}),
+    };
+
+    if (Object.keys(profilePatch).length > 0) {
       await this.prisma.accountProfile.upsert({
         where: { userId: user.id },
-        create: { userId: user.id, ...addressData, ...companyData },
-        update: { ...addressData, ...companyData },
+        create: { userId: user.id, ...profilePatch },
+        update: profilePatch,
       });
     }
 
@@ -1051,6 +1035,7 @@ export class AuthService {
       state: input.address.state,
       postalCode: input.address.postalCode,
       country: input.address.country,
+      ...(input.companyName !== undefined ? { companyName: input.companyName } : {}),
     };
     const companyData = isCompany
       ? { registrationNumber: input.registrationNumber!.trim(), website }
@@ -1061,14 +1046,6 @@ export class AuthService {
       create: { userId: user.id, ...addressData, ...companyData },
       update: { ...addressData, ...companyData },
     });
-
-    if (input.companyName !== undefined && memberships.includes('client')) {
-      await this.prisma.clientProfile.upsert({
-        where: { userId: user.id },
-        create: { userId: user.id, companyName: input.companyName },
-        update: { companyName: input.companyName },
-      });
-    }
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -1117,7 +1094,6 @@ export class AuthService {
   private toOnboardingStatus(
     user: User,
     memberships: MembershipRole[],
-    clientProfile: ClientProfile | null,
     accountProfile: AccountProfile | null,
     requiresPortfolio = memberships.includes('surveyor'),
   ): OnboardingStatus {
@@ -1164,7 +1140,7 @@ export class AuthService {
       requiresPortfolio,
       avatarKey: this.media.resolveSignedUrl(user.avatarKey),
       fullName: user.fullName,
-      companyName: clientProfile?.companyName ?? null,
+      companyName: accountProfile?.companyName ?? null,
       address,
       workEmail: accountProfile?.workEmail ?? null,
       workEmailVerified: accountProfile?.workEmailVerified ?? false,

@@ -61,7 +61,7 @@ export function AppHeader({ showLogout = false, showAccountMenu = false }: Props
 
   async function openPersonalProfile() {
     setMenuOpen(false);
-    const role = (await getActiveRole()) ?? 'client';
+    const role = (await getActiveRole()) ?? 'surveyor';
     navigation.navigate('PersonalProfile', { role });
   }
 

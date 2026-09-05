@@ -269,7 +269,7 @@ export class ProfilesService {
             client: {
               select: {
                 fullName: true,
-                clientProfile: { select: { companyName: true } },
+                accountProfile: { select: { companyName: true } },
               },
             },
           },
@@ -297,7 +297,7 @@ export class ProfilesService {
       },
       client: {
         fullName: m.project.client.fullName,
-        companyName: m.project.client.clientProfile?.companyName ?? null,
+        companyName: m.project.client.accountProfile?.companyName ?? null,
       },
     }));
   }

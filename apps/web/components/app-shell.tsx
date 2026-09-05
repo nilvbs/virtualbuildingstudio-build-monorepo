@@ -4,20 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  Building2,
-  ChevronDown,
-  Handshake,
-  Inbox,
-  LayoutDashboard,
-  LogOut,
-  CircleUserRound,
-  type LucideIcon,
-  Shield,
-  Users,
-  UserCheck,
-  UserRound,
-} from 'lucide-react';
+import { ChevronDown, CircleUserRound, LogOut } from 'lucide-react';
+import { LordIcon, type LordIconName } from './lord-icon';
 import type { AuthenticatedUser, WorkspaceRole, StaffPermission } from '@surveylink/types';
 import { api, ApiError } from '../lib/api';
 import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
@@ -35,7 +23,9 @@ const SECTION_HOME: Record<Section, string> = {
 interface NavItem {
   href: string;
   label: string;
-  icon: LucideIcon;
+  /** Compact label for the mobile tab bar when `label` is too long. */
+  shortLabel?: string;
+  icon: LordIconName;
   exact?: boolean;
   /** Surveyor: hide until profile is 100% complete. */
   requiresCompleteProfile?: boolean;
@@ -46,45 +36,43 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
   client: {
     label: 'Your projects',
     sub: 'Post and track your survey projects',
-    items: [{ href: '/client', label: 'Projects', icon: LayoutDashboard }],
+    items: [{ href: '/client', label: 'Projects', icon: 'chart' }],
   },
   surveyor: {
     label: 'Surveyor workspace',
-    sub: 'Dashboard, portfolio, and matches',
+    sub: 'Dashboard and portfolio',
     items: [
-      { href: '/surveyor', label: 'Dashboard', icon: LayoutDashboard, exact: true, requiresCompleteProfile: true },
-      { href: '/surveyor/profile', label: 'Portfolio', icon: UserRound },
-      { href: '/surveyor/requests', label: 'My Requests', icon: Inbox },
-      { href: '/surveyor/matches', label: 'My Matches', icon: Handshake },
+      { href: '/surveyor', label: 'Dashboard', icon: 'chart', exact: true },
+      { href: '/surveyor/profile', label: 'Portfolio', icon: 'briefcase' },
     ],
   },
   admin: {
     label: 'Operations',
     sub: 'Match projects to surveyors',
     items: [
-      { href: '/build/admin/queue', label: 'Overview', icon: LayoutDashboard, exact: true },
+      { href: '/build/admin/queue', label: 'Overview', icon: 'chart', exact: true },
       {
         href: '/build/admin/clients',
         label: 'Clients',
-        icon: Users,
+        icon: 'avatar',
         requiresPermission: 'clients:view',
       },
       {
         href: '/build/admin/surveyors',
         label: 'Surveyors',
-        icon: UserCheck,
+        icon: 'account',
         requiresPermission: 'surveyors:view',
       },
       {
         href: '/build/admin/projects',
         label: 'Projects',
-        icon: Building2,
+        icon: 'briefcase',
         requiresPermission: 'projects:view',
       },
       {
         href: '/build/admin/staff',
         label: 'Staff',
-        icon: Shield,
+        icon: 'security',
         requiresPermission: 'staff:manage',
       },
     ],
@@ -122,8 +110,8 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     if (pathname.startsWith('/surveyor/profile')) {
       return { label: 'Portfolio', sub: 'Services, coverage, and rates' };
     }
-    if (pathname.startsWith('/surveyor/matches')) {
-      return { label: 'My Matches', sub: 'Projects matched to you' };
+    if (pathname.startsWith('/surveyor/requests') || pathname.startsWith('/surveyor/matches')) {
+      return { label: 'Dashboard', sub: 'Requests and matches' };
     }
     return { label: 'Dashboard', sub: 'Live matching status' };
   }
@@ -217,7 +205,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
           setShowProfilePrompt(!status.profileComplete && (forcePrompt || !snoozed));
         })
         .catch(() => {
-          /* leave completion null; nav still shows Profile + Matches */
+          /* leave completion null; nav still shows Dashboard + Portfolio */
         });
     }
 
@@ -293,11 +281,11 @@ export function AppShell({ section, children }: { section: Section; children: Re
   const photo = avatarUrl(user?.avatarKey);
 
   return (
-    <div className="shell">
+    <div className={`shell shell--${section}`}>
       <aside className="sidebar">
         <div className="sidebar-top">
           <Link
-            href={section === 'surveyor' && !profileComplete ? '/surveyor/profile' : SECTION_HOME[section]}
+            href={SECTION_HOME[section]}
             className="brand plain"
             aria-label="BLD home"
           >
@@ -306,7 +294,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
               alt="BLD"
               width={636}
               height={236}
-              className="brand-logo"
+              className="brand-logo brand-logo--ink"
               priority
             />
           </Link>
@@ -315,7 +303,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
           <nav className={`nav${nav.sectionLabel ? '' : ' nav--flush'}`}>
             {navItems.map((item) => {
               const active = isNavActive(pathname, item);
-              const Icon = item.icon;
               return (
                 <Link
                   key={item.href}
@@ -323,7 +310,9 @@ export function AppShell({ section, children }: { section: Section; children: Re
                   className={`nav-item plain ${active ? 'active' : ''}`}
                   aria-label={item.label}
                 >
-                  <Icon size={18} strokeWidth={2} />
+                  <span className="nav-item-ico" aria-hidden>
+                    <LordIcon name={item.icon} size={20} trigger="hover" target=".nav-item" />
+                  </span>
                   <span className="nav-item-label">{item.label}</span>
                 </Link>
               );
@@ -393,11 +382,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
                     Personal profile
                   </button>
                 )}
-                {section !== 'admin' && workspaces.includes('client') && section !== 'client' && (
-                  <button className="menu-item" type="button" role="menuitem" onClick={() => switchWorkspace('client')}>
-                    Switch to client
-                  </button>
-                )}
                 {section !== 'admin' && workspaces.includes('surveyor') && section !== 'surveyor' && (
                   <button className="menu-item" type="button" role="menuitem" onClick={() => switchWorkspace('surveyor')}>
                     Switch to expert (surveyor)
@@ -431,6 +415,25 @@ export function AppShell({ section, children }: { section: Section; children: Re
           {children}
         </div>
       </div>
+
+      <nav className="tabbar" aria-label="Workspace">
+        {navItems.map((item) => {
+          const active = isNavActive(pathname, item);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`tabbar-item plain ${active ? 'is-active' : ''}`}
+              aria-current={active ? 'page' : undefined}
+            >
+              <span className="tabbar-ico" aria-hidden>
+                <LordIcon name={item.icon} size={22} trigger="hover" target=".tabbar-item" />
+              </span>
+              <span className="tabbar-label">{item.shortLabel ?? item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
       {section === 'surveyor' && completionPercent != null && (
         <IncompleteProfileModal

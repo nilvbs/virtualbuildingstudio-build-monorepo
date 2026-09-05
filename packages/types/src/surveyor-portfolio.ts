@@ -446,7 +446,159 @@ export interface CompanyIdentity {
 
 export type PortfolioIdentity = IndividualIdentity | CompanyIdentity;
 
+export const DAILY_CAPTURE_CAPACITIES = [
+  'under_5k',
+  '5k_20k',
+  '20k_50k',
+  '50k_plus',
+] as const;
+export type DailyCaptureCapacity = (typeof DAILY_CAPTURE_CAPACITIES)[number];
+
+export const DAILY_CAPTURE_CAPACITY_LABELS: Record<DailyCaptureCapacity, string> = {
+  under_5k: '<5,000 sq ft/day',
+  '5k_20k': '5,000–20,000 sq ft/day',
+  '20k_50k': '20,000–50,000 sq ft/day',
+  '50k_plus': '50,000+ sq ft/day',
+};
+
+export const COVERAGE_COUNTRIES = ['us', 'ca', 'mx', 'other'] as const;
+export type CoverageCountryId = (typeof COVERAGE_COUNTRIES)[number];
+
+export const COVERAGE_COUNTRY_LABELS: Record<CoverageCountryId, string> = {
+  us: 'United States',
+  ca: 'Canada',
+  mx: 'Mexico',
+  other: 'Other',
+};
+
+export const COVERAGE_REGIONS: Record<Exclude<CoverageCountryId, 'other'>, string[]> = {
+  us: [
+    'Alabama',
+    'Alaska',
+    'Arizona',
+    'Arkansas',
+    'California',
+    'Colorado',
+    'Connecticut',
+    'Delaware',
+    'Florida',
+    'Georgia',
+    'Hawaii',
+    'Idaho',
+    'Illinois',
+    'Indiana',
+    'Iowa',
+    'Kansas',
+    'Kentucky',
+    'Louisiana',
+    'Maine',
+    'Maryland',
+    'Massachusetts',
+    'Michigan',
+    'Minnesota',
+    'Mississippi',
+    'Missouri',
+    'Montana',
+    'Nebraska',
+    'Nevada',
+    'New Hampshire',
+    'New Jersey',
+    'New Mexico',
+    'New York',
+    'North Carolina',
+    'North Dakota',
+    'Ohio',
+    'Oklahoma',
+    'Oregon',
+    'Pennsylvania',
+    'Rhode Island',
+    'South Carolina',
+    'South Dakota',
+    'Tennessee',
+    'Texas',
+    'Utah',
+    'Vermont',
+    'Virginia',
+    'Washington',
+    'West Virginia',
+    'Wisconsin',
+    'Wyoming',
+    'District of Columbia',
+  ],
+  ca: [
+    'Alberta',
+    'British Columbia',
+    'Manitoba',
+    'New Brunswick',
+    'Newfoundland and Labrador',
+    'Northwest Territories',
+    'Nova Scotia',
+    'Nunavut',
+    'Ontario',
+    'Prince Edward Island',
+    'Quebec',
+    'Saskatchewan',
+    'Yukon',
+  ],
+  mx: [
+    'Aguascalientes',
+    'Baja California',
+    'Baja California Sur',
+    'Campeche',
+    'Chiapas',
+    'Chihuahua',
+    'Coahuila',
+    'Colima',
+    'Durango',
+    'Guanajuato',
+    'Guerrero',
+    'Hidalgo',
+    'Jalisco',
+    'Mexico City',
+    'Mexico State',
+    'Michoacán',
+    'Morelos',
+    'Nayarit',
+    'Nuevo León',
+    'Oaxaca',
+    'Puebla',
+    'Querétaro',
+    'Quintana Roo',
+    'San Luis Potosí',
+    'Sinaloa',
+    'Sonora',
+    'Tabasco',
+    'Tamaulipas',
+    'Tlaxcala',
+    'Veracruz',
+    'Yucatán',
+    'Zacatecas',
+  ],
+};
+
+export interface CoverageCountyEntry {
+  zip: string;
+  county: string;
+  state: string;
+  country: CoverageCountryId;
+  lat: number;
+  lng: number;
+  /** [west, south, east, north] from geocoder when available */
+  bbox: [number, number, number, number] | null;
+  /** Closed ring of [lng, lat] pairs for map polygon (preferred over bbox) */
+  polygon: [number, number][] | null;
+  /** Census GEOID / FIPS when available — used to reload county polygons */
+  fips: string | null;
+  /** When false, county stays in the ZIP result list but is excluded from coverage/map */
+  selected: boolean;
+}
+
 export interface SurveyorPortfolioDetails {
+  dailyCaptureCapacity: DailyCaptureCapacity | null;
+  coverageCountries: CoverageCountryId[];
+  coverageRegions: Partial<Record<CoverageCountryId, string[]>>;
+  /** US ZIP-driven counties that participate in coverage */
+  coverageCounties: CoverageCountyEntry[];
   travelNationwide: boolean;
   internationalProjects: boolean;
   remoteServices: boolean;
@@ -457,6 +609,10 @@ export interface SurveyorPortfolioDetails {
   minimumProjectCents: number | null;
   emergencyRateCents: number | null;
   travelCharges: TravelChargeOption | null;
+  /** Extra travel cost in cents when travelCharges === 'extra' */
+  travelExtraCents: number | null;
+  yearsRealityCapture: number | null;
+  generalLiabilityInsurance: boolean | null;
   languages: PortfolioLanguage[];
   industries: IndustryServed[];
   certifications: PortfolioCertification[];
@@ -522,6 +678,10 @@ export function emptyPortfolioDetails(
   accountType: 'individual' | 'company' = 'individual',
 ): SurveyorPortfolioDetails {
   return {
+    dailyCaptureCapacity: null,
+    coverageCountries: [],
+    coverageRegions: {},
+    coverageCounties: [],
     travelNationwide: false,
     internationalProjects: false,
     remoteServices: false,
@@ -532,6 +692,9 @@ export function emptyPortfolioDetails(
     minimumProjectCents: null,
     emergencyRateCents: null,
     travelCharges: null,
+    travelExtraCents: null,
+    yearsRealityCapture: null,
+    generalLiabilityInsurance: null,
     languages: [],
     industries: [],
     certifications: [],
@@ -568,7 +731,69 @@ export function normalizePortfolioDetails(
     }
   }
 
+  const coverageCountries = Array.isArray(src.coverageCountries)
+    ? (src.coverageCountries.filter((c) =>
+        (COVERAGE_COUNTRIES as readonly string[]).includes(c),
+      ) as CoverageCountryId[])
+    : [];
+  const coverageRegions: Partial<Record<CoverageCountryId, string[]>> = {};
+  if (src.coverageRegions && typeof src.coverageRegions === 'object') {
+    for (const country of COVERAGE_COUNTRIES) {
+      const list = src.coverageRegions[country];
+      if (Array.isArray(list)) coverageRegions[country] = list.filter((x) => typeof x === 'string');
+    }
+  }
+
+  const coverageCounties: CoverageCountyEntry[] = Array.isArray(src.coverageCounties)
+    ? src.coverageCounties
+        .filter((entry): entry is CoverageCountyEntry => {
+          if (!entry || typeof entry !== 'object') return false;
+          const e = entry as CoverageCountyEntry;
+          return (
+            typeof e.zip === 'string' &&
+            typeof e.county === 'string' &&
+            typeof e.state === 'string' &&
+            typeof e.lat === 'number' &&
+            typeof e.lng === 'number'
+          );
+        })
+        .map((e) => ({
+          zip: e.zip.trim(),
+          county: e.county.trim(),
+          state: e.state.trim(),
+          country: ((COVERAGE_COUNTRIES as readonly string[]).includes(e.country) ? e.country : 'us') as CoverageCountryId,
+          lat: e.lat,
+          lng: e.lng,
+          bbox:
+            Array.isArray(e.bbox) && e.bbox.length === 4 && e.bbox.every((n) => typeof n === 'number')
+              ? ([e.bbox[0], e.bbox[1], e.bbox[2], e.bbox[3]] as [number, number, number, number])
+              : null,
+          polygon:
+            Array.isArray(e.polygon) &&
+            e.polygon.length >= 4 &&
+            e.polygon.every(
+              (pt) =>
+                Array.isArray(pt) &&
+                pt.length >= 2 &&
+                typeof pt[0] === 'number' &&
+                typeof pt[1] === 'number',
+            )
+              ? (e.polygon.map((pt) => [pt[0], pt[1]] as [number, number]) as [number, number][])
+              : null,
+          fips: typeof e.fips === 'string' && e.fips.trim() ? e.fips.trim() : null,
+          selected: e.selected !== false,
+        }))
+    : [];
+
   return {
+    dailyCaptureCapacity: (DAILY_CAPTURE_CAPACITIES as readonly string[]).includes(
+      src.dailyCaptureCapacity as string,
+    )
+      ? (src.dailyCaptureCapacity as DailyCaptureCapacity)
+      : null,
+    coverageCountries,
+    coverageRegions,
+    coverageCounties,
     travelNationwide: Boolean(src.travelNationwide),
     internationalProjects: Boolean(src.internationalProjects),
     remoteServices: Boolean(src.remoteServices),
@@ -579,6 +804,13 @@ export function normalizePortfolioDetails(
     minimumProjectCents: src.minimumProjectCents ?? null,
     emergencyRateCents: src.emergencyRateCents ?? null,
     travelCharges: (src.travelCharges as TravelChargeOption | null) ?? null,
+    travelExtraCents: src.travelExtraCents ?? null,
+    yearsRealityCapture:
+      typeof src.yearsRealityCapture === 'number' && Number.isFinite(src.yearsRealityCapture)
+        ? src.yearsRealityCapture
+        : null,
+    generalLiabilityInsurance:
+      typeof src.generalLiabilityInsurance === 'boolean' ? src.generalLiabilityInsurance : null,
     languages: Array.isArray(src.languages) ? (src.languages as PortfolioLanguage[]) : [],
     industries: Array.isArray(src.industries) ? (src.industries as IndustryServed[]) : [],
     certifications: Array.isArray(src.certifications)

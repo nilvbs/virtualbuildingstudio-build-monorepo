@@ -33,6 +33,8 @@ packages/
 | Backend | NestJS (modular monolith), TypeScript |
 | Database | PostgreSQL + PostGIS |
 | ORM / migrations | Prisma (migrations from commit #1) |
+
+Data model (what each table is for): [`apps/api/prisma/DATA_MODEL.md`](apps/api/prisma/DATA_MODEL.md).
 | Logging / errors | pino (structured) + Sentry |
 
 ## Prerequisites

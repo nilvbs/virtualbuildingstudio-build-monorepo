@@ -94,7 +94,7 @@ export class AdminService {
       where: { roles: { some: { role: 'client' } } },
       orderBy: { createdAt: 'desc' },
       include: {
-        clientProfile: true,
+        accountProfile: { select: { companyName: true } },
         _count: { select: { projects: true } },
       },
     });
@@ -103,7 +103,7 @@ export class AdminService {
       fullName: u.fullName,
       email: u.email,
       phone: u.phone,
-      companyName: u.clientProfile?.companyName ?? null,
+      companyName: u.accountProfile?.companyName ?? null,
       emailVerified: u.emailVerified,
       phoneVerified: u.phoneVerified,
       projectCount: u._count.projects,

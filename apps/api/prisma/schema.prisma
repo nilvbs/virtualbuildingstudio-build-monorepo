@@ -1,12 +1,16 @@
-// SurveyLink — Phase 1 data model.
+// SurveyLink — Phase 1 data model (11 tables, four groups).
 //
-// The authoritative schema is the hand-authored SQL migration in
-// ./migrations, which implements the founding brief verbatim (PostGIS
-// GEOGRAPHY columns, GIST/GIN indexes, CHECK-constrained status columns).
-// This Prisma schema mirrors that migration so `@prisma/client` is fully
-// typed. Geography columns are modelled as `Unsupported(...)`; geo reads use
-// raw SQL. Schema changes ship as new SQL migrations applied with
-// `prisma migrate deploy` — never by hand-editing a live database.
+//   Person     users, user_roles
+//   Profiles   account_profiles, surveyor_profiles, admin_profiles
+//   Jobs       projects, matches
+//   Plumbing   contact_otps, notifications
+//
+// Read DATA_MODEL.md in this folder before adding tables. Wizard fields go in
+// JSON (`projects.details`, `surveyor_profiles.details`), not new tables.
+//
+// SQL in ./migrations is authoritative (PostGIS GEOGRAPHY, GIST/GIN, CHECKs).
+// This file mirrors it for `@prisma/client`. Geography is Unsupported(...);
+// geo I/O is raw SQL. Ship changes as new migrations (`prisma migrate deploy`).
 
 generator client {
   provider        = "prisma-client-js"
@@ -20,6 +24,7 @@ datasource db {
   extensions = [pgcrypto, postgis]
 }
 
+/** Login identity. Hats live in UserRole; do not use roleHint for access. */
 model User {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   fullName       String   @map("full_name")
@@ -51,7 +56,6 @@ model User {
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   roles           UserRole[]
-  clientProfile   ClientProfile?
   surveyorProfile SurveyorProfile?
   adminProfile    AdminProfile?
   accountProfile  AccountProfile?
@@ -82,6 +86,7 @@ model ContactOtp {
   @@map("contact_otps")
 }
 
+/** One row per hat: client | surveyor | admin. */
 model UserRole {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
@@ -96,26 +101,14 @@ model UserRole {
   @@map("user_roles")
 }
 
-model ClientProfile {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String   @unique @map("user_id") @db.Uuid
-  companyName String?  @map("company_name")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("client_profiles")
-}
-
 /**
- * Onboarding-collected account details shared by both roles.
- * Individuals fill in a base address; companies add work email (with its own OTP),
- * a company address, registration number, and an optional website.
+ * Shared address + company fields for any hat (client or surveyor).
+ * Individuals fill an address; companies add name, work email, registration, website.
  */
 model AccountProfile {
   id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId             String   @unique @map("user_id") @db.Uuid
+  companyName        String?  @map("company_name")
   addressLine1       String?  @map("address_line1")
   addressLine2       String?  @map("address_line2")
   city               String?

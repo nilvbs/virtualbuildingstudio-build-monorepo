@@ -54,7 +54,7 @@ describe('AuthService', () => {
       findMany: jest.Mock;
       upsert: jest.Mock;
     };
-    clientProfile: { upsert: jest.Mock; findUnique: jest.Mock };
+    accountProfile: { upsert: jest.Mock; findUnique: jest.Mock };
     surveyorProfile: { upsert: jest.Mock };
     adminProfile: { findUnique: jest.Mock; upsert: jest.Mock };
   };
@@ -75,7 +75,7 @@ describe('AuthService', () => {
         findMany: jest.fn().mockResolvedValue([{ role: 'client' }]),
         upsert: jest.fn().mockResolvedValue({}),
       },
-      clientProfile: {
+      accountProfile: {
         upsert: jest.fn().mockResolvedValue({}),
         findUnique: jest.fn().mockResolvedValue(null),
       },

@@ -15,17 +15,12 @@ function profileRow(overrides: Record<string, unknown> = {}) {
     radiusKm: 50,
     dayRateCents: BigInt(120000),
     portfolio: [],
-    // Must satisfy surveyorProfileCompletion (availability, languages, industries, identity).
+    // Must satisfy surveyorProfileCompletion (availability, years, industries, insurance).
     details: {
       availability: 'available_immediately',
-      languages: ['english'],
+      yearsRealityCapture: 8,
+      generalLiabilityInsurance: true,
       industries: ['commercial'],
-      identity: {
-        kind: 'individual',
-        professionalTitle: 'Surveyor',
-        headline: 'Laser scanning specialist',
-        aboutMe: 'Austin-based scanning specialist.',
-      },
     },
     isMatchable: true,
     createdAt: now,

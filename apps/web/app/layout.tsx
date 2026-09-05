@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { DM_Sans, Fraunces } from 'next/font/google';
 import 'leaflet/dist/leaflet.css';
@@ -20,6 +20,15 @@ export const metadata: Metadata = {
   title: 'BLD',
   description:
     'BLD is a managed marketplace connecting clients with independent site surveyors.',
+};
+
+// viewportFit: 'cover' is what makes env(safe-area-inset-*) resolve on notched
+// iPhones; without it those insets are always 0 and sticky bars sit under the
+// home indicator.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 // Client-heavy app (auth/session); skip SSG prerender that breaks under monorepo React.

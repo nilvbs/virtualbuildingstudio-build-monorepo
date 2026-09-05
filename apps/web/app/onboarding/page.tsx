@@ -3,27 +3,19 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Building2,
-  CheckCircle2,
-  FileText,
-  ImagePlus,
   LogOut,
-  Mail,
-  MapPin,
-  Phone,
-  Shield,
-  User,
-  Users,
 } from 'lucide-react';
 import type { AccountType, OnboardingStatus, OnboardingStep, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
 import { clearSession, getActiveRole, getSession, isAuthenticated } from '../../lib/session';
 import { homePathForWorkspace } from '../../lib/home';
 import { e164ToPhoneInput } from '../../lib/country-codes';
+import { LordIcon } from '../../components/lord-icon';
 import {
   OnboardingPhoneVerify,
   defaultPhoneInput,
@@ -84,6 +76,7 @@ export default function OnboardingPage() {
   const [viewStep, setViewStep] = useState<OnboardingStep | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const role = getActiveRole();
+  const reduceMotion = useReducedMotion();
 
   async function load() {
     const next = await api.getOnboarding();
@@ -446,6 +439,16 @@ export default function OnboardingPage() {
               </div>
             )}
 
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={displayStep}
+              className="ob-step-stage"
+              initial={reduceMotion ? false : { opacity: 0, y: 16, filter: 'blur(5px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -10, filter: 'blur(4px)' }}
+              transition={{ duration: 0.4, ease: [0.22, 0.61, 0.36, 1] }}
+            >
+
           {needsAccountType && (
             <form onSubmit={submitAccountType} className="onboarding-form">
               <div className="field">
@@ -457,7 +460,7 @@ export default function OnboardingPage() {
                     onClick={() => !accountTypeLocked && setAccountType('individual')}
                     disabled={accountTypeLocked}
                   >
-                    <Users size={22} />
+                    <LordIcon name="avatar" size={28} trigger="hover" />
                     Individual
                   </button>
                   <button
@@ -466,7 +469,7 @@ export default function OnboardingPage() {
                     onClick={() => !accountTypeLocked && setAccountType('company')}
                     disabled={accountTypeLocked}
                   >
-                    <Building2 size={22} />
+                    <LordIcon name="home" size={28} trigger="hover" />
                     Company
                   </button>
                 </div>
@@ -490,7 +493,7 @@ export default function OnboardingPage() {
                   onChange={(e) => setAcceptTerms(e.target.checked)}
                 />
                 <span>
-                  <FileText size={16} />
+                  <LordIcon name="document" size={18} trigger="hover" />
                   <strong>I accept the Terms & Conditions</strong>
                   <small>
                     Required. Review the{' '}
@@ -509,7 +512,7 @@ export default function OnboardingPage() {
                   onChange={(e) => setAcceptNda(e.target.checked)}
                 />
                 <span>
-                  <Shield size={16} />
+                  <LordIcon name="security" size={18} trigger="hover" />
                   <strong>I accept the NDA</strong>
                   <small>
                     Required. Review the{' '}
@@ -539,7 +542,7 @@ export default function OnboardingPage() {
               {!status.emailVerified && (
                 <div className="onboarding-channel-block">
                   <div className="onboarding-channel">
-                    <Mail size={18} />
+                    <LordIcon name="mail" size={20} trigger="in" />
                     <span className="onboarding-channel-copy">
                       <strong>Email</strong>
                       <small>Enter the OTP sent to your inbox</small>
@@ -573,12 +576,12 @@ export default function OnboardingPage() {
 
               {status.emailVerified && (
                 <div className="onboarding-channel is-verified">
-                  <Mail size={18} />
+                  <LordIcon name="mail" size={20} trigger="in" />
                   <span className="onboarding-channel-copy">
                     <strong>Email</strong>
                     <small>Verified</small>
                   </span>
-                  <CheckCircle2 size={18} className="onboarding-channel-check" />
+                  <LordIcon name="check" size={20} trigger="in" />
                 </div>
               )}
 
@@ -619,7 +622,7 @@ export default function OnboardingPage() {
                       <span>{initials(fullName)}</span>
                     )}
                     <span className="ob-avatar-overlay">
-                      <ImagePlus size={16} />
+                      <LordIcon name="document" size={18} trigger="hover" />
                     </span>
                   </button>
                   <input
@@ -634,7 +637,7 @@ export default function OnboardingPage() {
                 <div className="field ob-identity-name">
                   <label htmlFor="fullName">Full name</label>
                   <div className="input-icon is-disabled">
-                    <User size={16} />
+                    <LordIcon name="avatar" size={18} trigger="hover" />
                     <input id="fullName" value={fullName} readOnly disabled tabIndex={-1} />
                   </div>
                   <span className="hint">From your account · not editable here</span>
@@ -648,7 +651,7 @@ export default function OnboardingPage() {
                   <div className="field">
                     <label htmlFor="companyName">Company name</label>
                     <div className="input-icon">
-                      <Building2 size={16} />
+                      <LordIcon name="home" size={18} trigger="hover" />
                       <input
                         id="companyName"
                         type="text"
@@ -660,7 +663,7 @@ export default function OnboardingPage() {
                   </div>
 
                   <div className="onboarding-channel is-verified" style={{ cursor: 'default' }}>
-                    <Mail size={18} />
+                    <LordIcon name="mail" size={20} trigger="in" />
                     <span className="onboarding-channel-copy">
                       <strong>Work email</strong>
                       <small>
@@ -670,7 +673,7 @@ export default function OnboardingPage() {
                       </small>
                     </span>
                     {status.workEmailVerified && (
-                      <CheckCircle2 size={18} className="onboarding-channel-check" />
+                      <LordIcon name="check" size={20} trigger="in" />
                     )}
                   </div>
                   {!status.workEmailVerified && (
@@ -743,17 +746,17 @@ export default function OnboardingPage() {
                 <div className="ob-verify-inline">
                   {status.emailVerified ? (
                     <div className="onboarding-channel is-verified">
-                      <Mail size={18} />
+                      <LordIcon name="mail" size={20} trigger="in" />
                       <span className="onboarding-channel-copy">
                         <strong>Email</strong>
                         <small>Verified</small>
                       </span>
-                      <CheckCircle2 size={18} className="onboarding-channel-check" />
+                      <LordIcon name="check" size={20} trigger="in" />
                     </div>
                   ) : (
                     <div className="onboarding-channel-block">
                       <div className="onboarding-channel">
-                        <Mail size={18} />
+                        <LordIcon name="mail" size={20} trigger="in" />
                         <span className="onboarding-channel-copy">
                           <strong>Email</strong>
                           <small>Enter the OTP from your inbox</small>
@@ -781,12 +784,12 @@ export default function OnboardingPage() {
                   )}
                   {status.phoneVerified ? (
                     <div className="onboarding-channel is-verified">
-                      <Phone size={18} />
+                      <LordIcon name="bell" size={20} trigger="in" />
                       <span className="onboarding-channel-copy">
                         <strong>Mobile number</strong>
                         <small>Verified{status.phone ? ` · ${status.phone}` : ''}</small>
                       </span>
-                      <CheckCircle2 size={18} className="onboarding-channel-check" />
+                      <LordIcon name="check" size={20} trigger="in" />
                     </div>
                   ) : (
                     <OnboardingPhoneVerify
@@ -811,7 +814,7 @@ export default function OnboardingPage() {
               <div className="field">
                 <label htmlFor="line1">{isCompany ? 'Company address' : 'Base address'}</label>
                   <div className="input-icon">
-                    <MapPin size={16} />
+                    <LordIcon name="location" size={18} trigger="hover" />
                     <input
                       id="line1"
                       type="text"
@@ -911,6 +914,8 @@ export default function OnboardingPage() {
               </button>
             </div>
           )}
+            </motion.div>
+          </AnimatePresence>
           </div>
         </div>
       </section>

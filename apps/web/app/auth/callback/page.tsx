@@ -64,7 +64,7 @@ function CallbackInner() {
         }
 
         const q = new URLSearchParams({
-          role: activeRole ?? (res.roleHint === 'surveyor' ? 'surveyor' : 'client'),
+          role: 'surveyor',
           email: res.profile.email,
           name: res.profile.fullName,
         });
@@ -93,7 +93,7 @@ function CallbackInner() {
             <>
               <h1 style={{ fontSize: 20, marginBottom: 6 }}>Couldn&apos;t finish sign-in</h1>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 20 }}>{error}</p>
-              <Link href="/?auth=login" className="btn block">
+              <Link href="/?auth=login&role=surveyor" className="btn block">
                 Back to sign in
               </Link>
             </>

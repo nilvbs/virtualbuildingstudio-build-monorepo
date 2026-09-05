@@ -9,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
@@ -25,19 +24,13 @@ import {
 import { colors, radius, shadows, spacing } from '../lib/theme';
 import { AlertBox, BackButton, Button, Divider, Field, GoogleButton } from '../components/ui';
 import { PhoneNumberField } from '../components/PhoneNumberField';
-import { PressCard } from '../components/motion';
-import { BottomSheet } from '../components/BottomSheet';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Auth'>;
 type Mode = 'login' | 'signup' | 'forgot' | 'complete';
 
-function workspaceLabel(role: WorkspaceRole): string {
-  return role === 'surveyor' ? 'Expert (surveyor)' : 'Client';
-}
-
 export function AuthScreen({ navigation, route }: Props) {
-  const [role, setRole] = useState<WorkspaceRole | null>(route.params?.role ?? null);
+  const [role] = useState<WorkspaceRole>('surveyor');
   const [mode, setMode] = useState<Mode>(route.params?.mode === 'signup' ? 'signup' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,8 +40,6 @@ export function AuthScreen({ navigation, route }: Props) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-
-  const needsRole = !role;
 
   useEffect(() => {
     setError(null);
@@ -180,41 +171,24 @@ export function AuthScreen({ navigation, route }: Props) {
     }
   }
 
-  function pickRole(next: WorkspaceRole) {
-    setRole(next);
-  }
-
   function onBack() {
     if (mode === 'forgot' || mode === 'complete') {
       setMode('login');
       return;
     }
-    if (route.params?.role) {
-      navigation.goBack();
-    } else {
-      setRole(null);
-    }
+    navigation.goBack();
   }
 
   return (
-    <View style={[styles.root, !needsRole && styles.rootSolid]}>
-      {needsRole ? <View style={styles.dim} /> : null}
-
-      {!needsRole ? (
-        <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <View style={[styles.root, styles.rootSolid]}>
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
             <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
               <BackButton
-                label={
-                  mode === 'forgot'
-                    ? 'Sign in'
-                    : mode === 'complete'
-                      ? 'Back'
-                      : `Change · ${workspaceLabel(role!)}`
-                }
+                label={mode === 'forgot' ? 'Sign in' : mode === 'complete' ? 'Back' : 'Back'}
                 onPress={onBack}
               />
 
@@ -230,10 +204,10 @@ export function AuthScreen({ navigation, route }: Props) {
               </Text>
               <Text style={styles.lede}>
                 {mode === 'forgot'
-                  ? `Enter the email for your ${workspaceLabel(role!).toLowerCase()} account.`
+                  ? 'Enter the email for your surveyor account.'
                   : mode === 'complete'
                     ? 'Add your phone number to complete your account.'
-                    : `Continue as ${workspaceLabel(role!).toLowerCase()}.`}
+                    : 'Continue as a surveyor.'}
               </Text>
 
               {mode === 'complete' ? (
@@ -358,39 +332,6 @@ export function AuthScreen({ navigation, route }: Props) {
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
-      ) : null}
-
-      <BottomSheet visible={needsRole} heightRatio={0.7} onClose={() => navigation.goBack()}>
-        <Text style={styles.sheetKicker}>Get started</Text>
-        <Text style={styles.sheetTitle}>Who are you?</Text>
-        <Text style={styles.sheetLede}>
-          Pick your workspace. Then you can sign in or create an account.
-        </Text>
-
-        <View style={styles.roles}>
-          <PressCard style={styles.role} onPress={() => pickRole('client')}>
-            <View style={[styles.roleIcon, { backgroundColor: colors.accentSoft }]}>
-              <Feather name="home" size={22} color={colors.accent} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.roleTitle}>Client</Text>
-              <Text style={styles.roleCopy}>I need surveys for a site</Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={colors.faint} />
-          </PressCard>
-
-          <PressCard style={styles.role} onPress={() => pickRole('surveyor')}>
-            <View style={[styles.roleIcon, { backgroundColor: colors.accentSoft2 }]}>
-              <Feather name="compass" size={22} color={colors.accent2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.roleTitle}>Expert (surveyor)</Text>
-              <Text style={styles.roleCopy}>I offer survey services</Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={colors.faint} />
-          </PressCard>
-        </View>
-      </BottomSheet>
     </View>
   );
 }

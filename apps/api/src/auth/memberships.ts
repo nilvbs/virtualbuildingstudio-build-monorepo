@@ -1,7 +1,7 @@
 import type { MembershipRole, RoleHint, WorkspaceRole } from '@surveylink/types';
 import type { PrismaService } from '../prisma/prisma.service';
 
-type PrismaTx = Pick<PrismaService, 'userRole' | 'clientProfile' | 'surveyorProfile' | 'adminProfile' | 'user'>;
+type PrismaTx = Pick<PrismaService, 'userRole' | 'surveyorProfile' | 'adminProfile' | 'user'>;
 
 export function hintFromMemberships(memberships: MembershipRole[]): RoleHint {
   const hasClient = memberships.includes('client');
@@ -33,13 +33,6 @@ export async function ensureMembership(
     update: {},
   });
 
-  if (role === 'client') {
-    await prisma.clientProfile.upsert({
-      where: { userId },
-      create: { userId },
-      update: {},
-    });
-  }
   if (role === 'surveyor') {
     await prisma.surveyorProfile.upsert({
       where: { userId },

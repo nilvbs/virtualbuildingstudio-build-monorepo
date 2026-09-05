@@ -1,61 +1,78 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import dynamic from 'next/dynamic';
 import {
-  Briefcase,
-  Building2,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  ArrowLeft,
+  ArrowRight,
   Check,
-  CircleDollarSign,
-  FileText,
-  Globe2,
-  HardHat,
-  Languages,
-  LocateFixed,
-  MapPin,
-  Radar,
-  UserRound,
-  Wrench,
+  MapPinned,
+  TriangleAlert,
+  X,
 } from 'lucide-react';
 import {
   AVAILABILITY_LABELS,
   AVAILABILITY_OPTIONS,
-  BUSINESS_TYPE_LABELS,
-  BUSINESS_TYPES,
-  COMPANY_CERTIFICATION_LABELS,
-  COMPANY_CERTIFICATIONS,
-  DOCUMENT_TYPE_LABELS,
-  DOCUMENT_TYPES,
+  COVERAGE_REGIONS,
+  DAILY_CAPTURE_CAPACITIES,
+  DAILY_CAPTURE_CAPACITY_LABELS,
   EQUIPMENT_GROUPS,
   EQUIPMENT_LABELS,
   INDUSTRIES_SERVED,
   INDUSTRY_LABELS,
-  PORTFOLIO_LANGUAGE_LABELS,
-  PORTFOLIO_LANGUAGES,
-  PROFESSIONAL_MEMBERSHIP_LABELS,
-  PROFESSIONAL_MEMBERSHIPS,
   SURVEY_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
-  SURVEYOR_PROFILE_COMPLETION_CHECKS,
   emptyPortfolioDetails,
-  newEntryId,
   normalizePortfolioDetails,
   surveyorProfileCompletion,
   type AccountType,
   type AvailabilityOption,
-  type CompanyIdentity,
+  type CoverageCountryId,
+  type CoverageCountyEntry,
+  type DailyCaptureCapacity,
   type EquipmentId,
-  type IndividualIdentity,
   type IndustryServed,
-  type PortfolioLanguage,
-  type PortfolioProject,
   type SurveyService,
   type SurveyorPortfolioDetails,
+  type SurveyorProfileCompletionKey,
   type TravelChargeOption,
 } from '@surveylink/types';
 import type { SurveyorProfileBody } from '@surveylink/api-client';
 import { api, ApiError, errorMessage } from '../../../lib/api';
-import { S3MediaField } from '../../../components/s3-media-field';
+import {
+  kmToMiles,
+  lookupCountiesByZipRadius,
+  mapboxToken,
+  milesToKm,
+} from '../../../lib/geocode';
+import { IncompleteProfileModal } from '../../../components/profile-completion';
+import { LordIcon } from '../../../components/lord-icon';
+import { SurveyorIdentityFigure } from '../../../components/surveyor-identity-figure';
+
+const CoverageMapPreview = dynamic(
+  () => import('../../../components/coverage-map-preview').then((m) => m.CoverageMapPreview),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="svy-coverage-map svy-coverage-map--loading">Loading map…</div>
+    ),
+  },
+);
+
+function parseCoord(value: string): number | null {
+  const n = Number(value);
+  return value.trim() !== '' && Number.isFinite(n) ? n : null;
+}
 
 function CompletionRing({ percent }: { percent: number }) {
   const clamped = Math.max(0, Math.min(100, percent));
@@ -64,14 +81,27 @@ function CompletionRing({ percent }: { percent: number }) {
   const offset = c - (clamped / 100) * c;
 
   return (
-    <div className="svy-ring" role="img" aria-label={`Portfolio ${clamped}% complete`}>
+    <div
+      className={`svy-ring${clamped > 0 ? ' is-live' : ''}${clamped >= 100 ? ' is-full' : ''}`}
+      role="img"
+      aria-label={`Portfolio ${clamped}% complete`}
+    >
+      <span className="svy-ring-glow" aria-hidden />
       <svg viewBox="0 0 108 108" className="svy-ring-svg">
+        <defs>
+          <linearGradient id="svyRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#a29bff" />
+            <stop offset="55%" stopColor="#7168f6" />
+            <stop offset="100%" stopColor="#5b52e0" />
+          </linearGradient>
+        </defs>
         <circle className="svy-ring-track" cx="54" cy="54" r={r} />
         <circle
           className="svy-ring-fill"
           cx="54"
           cy="54"
           r={r}
+          stroke="url(#svyRingGrad)"
           strokeDasharray={c}
           strokeDashoffset={offset}
         />
@@ -101,26 +131,83 @@ function toggleInList<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
 }
 
-type TabId = 'core' | 'identity';
+type ProfileStepId = 'services' | 'coverage' | 'commercial' | 'work';
+
+const PROFILE_STEP_KEYS: Record<ProfileStepId, SurveyorProfileCompletionKey[]> = {
+  services: ['services'],
+  coverage: ['baseCity', 'location'],
+  commercial: ['equipment', 'availability', 'pricing'],
+  work: ['yearsRealityCapture', 'industries', 'generalLiabilityInsurance'],
+};
+
+const PROFILE_PROMPT_SNOOZE_KEY = 'bld.surveyor.profilePromptSnoozed';
+
+const PROFILE_STEPS: {
+  id: ProfileStepId;
+  label: string;
+  shortLabel: string;
+  blurb: string;
+  beat: string;
+}[] = [
+  {
+    id: 'services',
+    label: 'Services',
+    shortLabel: 'Services',
+    blurb: 'What you deliver',
+    beat: 'Tap every service you actually ship on site.',
+  },
+  {
+    id: 'coverage',
+    label: 'Coverage',
+    shortLabel: 'Cover',
+    blurb: 'Where you work',
+    beat: 'Add ZIPs — counties load and show on the map.',
+  },
+  {
+    id: 'commercial',
+    label: 'Rates & kit',
+    shortLabel: 'Rates',
+    blurb: 'Pricing and gear',
+    beat: 'Set rates and the kit that wins the brief.',
+  },
+  {
+    id: 'work',
+    label: 'Showcase',
+    shortLabel: 'Work',
+    blurb: 'Sectors and credentials',
+    beat: 'Set experience, insurance, and the sectors you know.',
+  },
+];
+
+const stepEase = [0.22, 0.61, 0.36, 1] as const;
 
 export default function SurveyorProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'create' | 'edit'>('create');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<TabId>('core');
+  const [step, setStep] = useState(0);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>('individual');
 
   const [services, setServices] = useState<SurveyService[]>([]);
   const [equipment, setEquipment] = useState<string[]>([]);
   const [baseCity, setBaseCity] = useState('');
-  const [radiusKm, setRadiusKm] = useState('250');
+  const [radiusMiles, setRadiusMiles] = useState('50');
   const [dayRate, setDayRate] = useState('');
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [isMatchable, setIsMatchable] = useState(true);
   const [details, setDetails] = useState<SurveyorPortfolioDetails>(emptyPortfolioDetails());
+  const [zipInput, setZipInput] = useState('');
+  const [searchRadiusMiles, setSearchRadiusMiles] = useState(75);
+  const [zipBusy, setZipBusy] = useState(false);
+  const [zipError, setZipError] = useState<string | null>(null);
+  const zipAbortRef = useRef<AbortController | null>(null);
+
+  const RADIUS_OPTIONS = [25, 50, 75, 100, 150, 200] as const;
 
   useEffect(() => {
     Promise.all([
@@ -141,17 +228,28 @@ export default function SurveyorProfilePage() {
         setMode('edit');
         setServices(profile.services);
         setEquipment(profile.equipment);
-        setBaseCity(profile.baseCity ?? '');
-        setRadiusKm(String(profile.radiusKm));
         setDayRate(dollarsFromCents(profile.dayRateCents));
-        setLat(profile.location ? String(profile.location.lat) : '');
-        setLng(profile.location ? String(profile.location.lng) : '');
         setIsMatchable(profile.isMatchable);
         const nextDetails = normalizePortfolioDetails(profile.details, type);
         if (!nextDetails.identity || nextDetails.identity.kind !== type) {
           nextDetails.identity = emptyPortfolioDetails(type).identity;
         }
         setDetails(nextDetails);
+        const selectedCounties = (nextDetails.coverageCounties ?? []).filter(
+          (c) => c.selected !== false,
+        );
+        if (selectedCounties.length > 0) {
+          applyBaseFromCounties(nextDetails.coverageCounties ?? []);
+          const fips = selectedCounties.map((c) => c.fips).filter((f): f is string => Boolean(f));
+          if (fips.length > 0) {
+            void import('../../../lib/us-counties').then((m) => m.fetchCountyGeometriesByFips(fips));
+          }
+        } else {
+          setBaseCity(profile.baseCity ?? '');
+          setRadiusMiles(String(Math.max(1, Math.round(kmToMiles(profile.radiusKm)))));
+          setLat(profile.location ? String(profile.location.lat) : '');
+          setLng(profile.location ? String(profile.location.lng) : '');
+        }
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) router.replace('/sign-in');
@@ -159,6 +257,14 @@ export default function SurveyorProfilePage() {
       })
       .finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    if (loading) return;
+    const focus = searchParams.get('step') as ProfileStepId | null;
+    if (!focus) return;
+    const idx = PROFILE_STEPS.findIndex((s) => s.id === focus);
+    if (idx >= 0) setStep(idx);
+  }, [loading, searchParams]);
 
   const liveCompletion = useMemo(() => {
     const dayRateCents = centsFromDollars(dayRate);
@@ -174,92 +280,273 @@ export default function SurveyorProfilePage() {
     });
   }, [services, equipment, baseCity, lat, lng, dayRate, details]);
 
+  const stepFill = useMemo(() => {
+    const missing = new Set(liveCompletion.missing);
+    return PROFILE_STEPS.map((s) => {
+      const keys = PROFILE_STEP_KEYS[s.id];
+      const incomplete = keys.some((k) => missing.has(k));
+      return { id: s.id, complete: !incomplete, incomplete };
+    });
+  }, [liveCompletion.missing]);
+
+  const firstIncompleteStep = useMemo(
+    () => stepFill.findIndex((s) => s.incomplete),
+    [stepFill],
+  );
+
   const canSubmit = services.length > 0 && !busy;
+  const currentStep = PROFILE_STEPS[step]!;
+  const isLastStep = step === PROFILE_STEPS.length - 1;
+  const reduceMotion = useReducedMotion();
+  const [figureMood, setFigureMood] = useState<'waiting' | 'running' | 'done'>('waiting');
+  const [walkerX, setWalkerX] = useState(0);
+  const [walkerReady, setWalkerReady] = useState(false);
+  const travelRef = useRef(false);
+  const TRAVEL_SEC = reduceMotion ? 0 : 2.8;
+
+  const stepperWrapRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const stepRefs = useRef<Array<HTMLLIElement | null>>([]);
+
+  useEffect(() => {
+    const wrap = stepperWrapRef.current;
+    const active = stepRefs.current[step];
+    if (!wrap || !active || wrap.scrollWidth <= wrap.clientWidth) return;
+    wrap.scrollTo({
+      left: Math.max(0, active.offsetLeft - 12),
+      behavior: reduceMotion ? 'auto' : 'smooth',
+    });
+  }, [step, reduceMotion]);
+
+  useEffect(() => {
+    if (liveCompletion.complete && figureMood !== 'running') setFigureMood('done');
+  }, [liveCompletion.complete, figureMood]);
+
+  const measureWalker = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const w = track.clientWidth;
+    const denom = Math.max(PROFILE_STEPS.length - 1, 1);
+    const pad = 28;
+    setWalkerX(pad + (step / denom) * Math.max(w - pad * 2, 0));
+    setWalkerReady(true);
+  }, [step]);
+
+  useLayoutEffect(() => {
+    measureWalker();
+  }, [measureWalker]);
+
+  useEffect(() => {
+    const onResize = () => measureWalker();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [measureWalker]);
+
+  function goToStep(next: number) {
+    const clamped = Math.max(0, Math.min(PROFILE_STEPS.length - 1, next));
+    if (clamped === step || figureMood === 'running') return;
+    if (clamped > step && !reduceMotion) {
+      travelRef.current = true;
+      setFigureMood('running');
+      setStep(clamped);
+      return;
+    }
+    travelRef.current = false;
+    setStep(clamped);
+    setFigureMood(liveCompletion.complete ? 'done' : 'waiting');
+  }
+
+  function onWalkerArrived() {
+    if (!travelRef.current) return;
+    travelRef.current = false;
+    // Land on the building after the cruise/scan.
+    setFigureMood(liveCompletion.complete ? 'done' : 'waiting');
+  }
 
   function patchDetails(patch: Partial<SurveyorPortfolioDetails>) {
     setDetails((current) => ({ ...current, ...patch }));
   }
 
-  function patchIndividual(patch: Partial<IndividualIdentity>) {
-    setDetails((current) => {
-      const identity =
-        current.identity?.kind === 'individual'
-          ? current.identity
-          : (emptyPortfolioDetails('individual').identity as IndividualIdentity);
-      return { ...current, identity: { ...identity, ...patch, kind: 'individual' } };
-    });
+  function matchCoverageState(stateName: string): string | null {
+    const regions = COVERAGE_REGIONS.us;
+    const exact = regions.find((r) => r.toLowerCase() === stateName.trim().toLowerCase());
+    return exact ?? null;
   }
 
-  function patchCompany(patch: Partial<CompanyIdentity>) {
-    setDetails((current) => {
-      const identity =
-        current.identity?.kind === 'company'
-          ? current.identity
-          : (emptyPortfolioDetails('company').identity as CompanyIdentity);
-      return { ...current, identity: { ...identity, ...patch, kind: 'company' } };
-    });
+  function applyBaseFromCounties(counties: CoverageCountyEntry[]) {
+    const selected = counties.filter((c) => c.selected !== false);
+    if (selected.length === 0) {
+      setBaseCity('');
+      setLat('');
+      setLng('');
+      setRadiusMiles('50');
+      return;
+    }
+
+    const primary = selected[0]!;
+    setBaseCity(`${primary.county}, ${primary.state}`);
+    setLat(primary.lat.toFixed(6));
+    setLng(primary.lng.toFixed(6));
+
+    // Derive a radius that roughly covers all selected county bboxes from the primary center.
+    let maxKm = 40;
+    for (const county of selected) {
+      const points: Array<[number, number]> = [[county.lng, county.lat]];
+      if (county.bbox) {
+        const [west, south, east, north] = county.bbox;
+        points.push([west, south], [east, south], [east, north], [west, north]);
+      }
+      for (const [x, y] of points) {
+        const dLat = ((y - primary.lat) * Math.PI) / 180;
+        const dLng = ((x - primary.lng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((primary.lat * Math.PI) / 180) *
+            Math.cos((y * Math.PI) / 180) *
+            Math.sin(dLng / 2) ** 2;
+        const km = 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)));
+        if (km > maxKm) maxKm = km;
+      }
+    }
+    setRadiusMiles(String(Math.max(15, Math.round(kmToMiles(maxKm * 1.15)))));
   }
 
-  function useMyLocation() {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-      setLat(pos.coords.latitude.toFixed(6));
-      setLng(pos.coords.longitude.toFixed(6));
-    });
-  }
-
-  function addProject() {
-    const project: PortfolioProject = {
-      id: newEntryId(),
-      title: '',
-      clientIndustry: '',
-      location: '',
-      buildingType: '',
-      projectSize: '',
-      completionYear: '',
-      servicesProvided: [],
-      images: [],
-      description: '',
-      deliverables: '',
+  function syncCoverageFromCounties(counties: CoverageCountyEntry[]) {
+    const selected = counties.filter((c) => c.selected !== false);
+    const regions = Array.from(
+      new Set(
+        selected
+          .map((c) => matchCoverageState(c.state))
+          .filter((s): s is string => Boolean(s)),
+      ),
+    );
+    applyBaseFromCounties(counties);
+    return {
+      coverageCountries: (selected.length > 0 ? ['us'] : []) as CoverageCountryId[],
+      coverageRegions: regions.length > 0 ? { us: regions } : {},
+      coverageCounties: counties,
     };
-    patchDetails({ projects: [...details.projects, project] });
   }
 
-  function addCertification() {
-    patchDetails({
-      certifications: [
-        ...details.certifications,
-        {
-          id: newEntryId(),
-          name: '',
-          issuingOrganization: '',
-          certificateNumber: '',
-          expiryDate: null,
-          fileKey: null,
-        },
-      ],
+  async function searchCoverageByRadius() {
+    const raw = zipInput.trim();
+    if (!raw) return;
+    setZipError(null);
+    setZipBusy(true);
+    zipAbortRef.current?.abort();
+    const controller = new AbortController();
+    zipAbortRef.current = controller;
+    try {
+      const result = await lookupCountiesByZipRadius(raw, searchRadiusMiles, controller.signal);
+      if (!result) {
+        setZipError(
+          !mapboxToken()
+            ? 'Mapbox token is required to look up ZIP counties.'
+            : 'Could not find counties for that ZIP and distance. Try another ZIP.',
+        );
+        return;
+      }
+      if (result.counties.length === 0) {
+        setZipError('No counties found within that distance. Try a larger radius.');
+        return;
+      }
+
+      const nextEntries: CoverageCountyEntry[] = result.counties.map((hit) => ({
+        zip: result.zip,
+        county: hit.county,
+        state: hit.state,
+        country: 'us' as const,
+        lat: hit.lat,
+        lng: hit.lng,
+        bbox: hit.bbox,
+        polygon: null,
+        fips: hit.fips,
+        selected: true,
+      }));
+
+      setDetails((current) => {
+        const existing = current.coverageCounties ?? [];
+        const merged = [...existing];
+        for (const entry of nextEntries) {
+          const key = entry.fips
+            ? `fips:${entry.fips}`
+            : `${entry.county.toLowerCase()}|${entry.state.toLowerCase()}`;
+          const idx = merged.findIndex((c) =>
+            entry.fips
+              ? c.fips === entry.fips
+              : `${c.county.toLowerCase()}|${c.state.toLowerCase()}` === key,
+          );
+          if (idx >= 0) {
+            merged[idx] = { ...merged[idx], ...entry, selected: true };
+          } else {
+            merged.push(entry);
+          }
+        }
+        return { ...current, ...syncCoverageFromCounties(merged) };
+      });
+      setLat(result.lat.toFixed(6));
+      setLng(result.lng.toFixed(6));
+      setRadiusMiles(String(result.radiusMiles));
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') return;
+      setZipError('County lookup failed. Try again in a moment.');
+    } finally {
+      setZipBusy(false);
+    }
+  }
+
+  function removeCounty(county: string, state: string, fips?: string | null) {
+    setDetails((current) => {
+      const next = (current.coverageCounties ?? []).filter((c) => {
+        if (fips && c.fips) return c.fips !== fips;
+        return !(c.county === county && c.state === state);
+      });
+      return { ...current, ...syncCoverageFromCounties(next) };
     });
   }
+
+  function removeStateGroup(state: string) {
+    setDetails((current) => {
+      const next = (current.coverageCounties ?? []).filter((c) => c.state !== state);
+      return { ...current, ...syncCoverageFromCounties(next) };
+    });
+  }
+
+  function removeAllCounties() {
+    setDetails((current) => ({ ...current, ...syncCoverageFromCounties([]) }));
+  }
+
+  useEffect(() => {
+    if (currentStep.id !== 'coverage') return;
+    void import('../../../lib/us-counties').then((m) => m.preloadCountyIndex().catch(() => null));
+  }, [currentStep.id]);
+
+  const selectedCounties = useMemo(
+    () => (details.coverageCounties ?? []).filter((c) => c.selected !== false),
+    [details.coverageCounties],
+  );
+
+  const countiesByState = useMemo(() => {
+    const map = new Map<string, CoverageCountyEntry[]>();
+    for (const county of selectedCounties) {
+      const list = map.get(county.state) ?? [];
+      list.push(county);
+      map.set(county.state, list);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [selectedCounties]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
 
-    const identity = details.identity;
-    const bio =
-      identity?.kind === 'individual'
-        ? identity.aboutMe.trim() || identity.headline.trim()
-        : identity?.kind === 'company'
-          ? identity.aboutCompany.trim() || identity.tagline.trim()
-          : '';
-
     const body: SurveyorProfileBody = {
       services,
       equipment,
-      bio: bio || undefined,
+      bio: undefined,
       baseCity: baseCity.trim() || undefined,
-      radiusKm: Number(radiusKm) || 25,
+      radiusKm: Math.max(1, Math.round(milesToKm(Number(radiusMiles) || 15))),
       details,
       isMatchable: liveCompletion.complete ? isMatchable : false,
     };
@@ -271,15 +558,38 @@ export default function SurveyorProfilePage() {
       if (mode === 'edit') await api.updateSurveyorProfile(body);
       else await api.createSurveyorProfile(body);
       if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('bld.surveyor.profilePromptSnoozed');
         window.dispatchEvent(new Event('bld:surveyor-profile-saved'));
       }
-      router.push(liveCompletion.complete ? '/surveyor' : '/surveyor/profile');
+      if (liveCompletion.complete) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(PROFILE_PROMPT_SNOOZE_KEY);
+        }
+        router.push('/surveyor');
+        return;
+      }
+      // Stay on portfolio and show the incomplete modal; snooze shell so it
+      // does not open a second copy of the same dialog.
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(PROFILE_PROMPT_SNOOZE_KEY, '1');
+      }
+      setShowIncompleteModal(true);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  function dismissIncompleteModal() {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(PROFILE_PROMPT_SNOOZE_KEY, '1');
+    }
+    setShowIncompleteModal(false);
+  }
+
+  function continueIncompletePortfolio() {
+    setShowIncompleteModal(false);
+    if (firstIncompleteStep >= 0) goToStep(firstIncompleteStep);
   }
 
   if (loading) {
@@ -294,206 +604,357 @@ export default function SurveyorProfilePage() {
     );
   }
 
-  const individual =
-    details.identity?.kind === 'individual' ? details.identity : null;
-  const company = details.identity?.kind === 'company' ? details.identity : null;
-
   return (
     <div className="svy-profile">
-      <header className="svy-profile-hero">
-        <div className="svy-profile-hero-copy">
-          <p className="svy-profile-kicker">Expert workspace</p>
-          <h1 className="svy-profile-title">
-            {mode === 'edit' ? 'Shape your expert portfolio' : 'Build your expert portfolio'}
-          </h1>
-          <p className="svy-profile-lede">
-            Core information is shared by everyone. Identity fields adapt for{' '}
-            {accountType === 'company' ? 'company' : 'individual'} accounts.
-          </p>
-          <div className="svy-profile-steps" aria-label="Completion checklist">
-            {SURVEYOR_PROFILE_COMPLETION_CHECKS.map((item) => {
-              const done = liveCompletion.done.includes(item.key);
-              return (
-                <span key={item.key} className={`svy-profile-step${done ? ' is-done' : ''}`}>
-                  {done ? <Check size={13} strokeWidth={2.6} /> : null}
-                  {item.label}
+      <div className="svy-progress-unit">
+      <motion.header
+        className={`svy-profile-hero is-scanning${liveCompletion.complete ? ' is-complete' : ''}`}
+        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.32, ease: stepEase }}
+      >
+        <div className="svy-skyline-bg" aria-hidden>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/profile-skyline-bg.png" alt="" draggable={false} />
+          <span className="svy-skyline-veil" />
+        </div>
+
+        <div className="svy-hero-intro">
+          <p className="svy-profile-kicker">Portfolio setup</p>
+          {!liveCompletion.complete ? (
+            <p className="svy-hero-blurb">{currentStep.beat}</p>
+          ) : null}
+        </div>
+
+        <div className="svy-eta-mid">
+          <p className="svy-eta-meta">{liveCompletion.percent}% filled</p>
+          <div
+            className="svy-eta-track"
+            ref={trackRef}
+            style={{ ['--svy-progress' as string]: String(Math.max(liveCompletion.percent, 4) / 100) }}
+            aria-hidden
+          >
+            <motion.i
+              animate={{ width: `${Math.max(liveCompletion.percent, 2)}%` }}
+              transition={{ duration: 0.45, ease: stepEase }}
+            />
+            {walkerReady ? (
+              <motion.div
+                className={`svy-walker-slot is-scanning${figureMood === 'running' ? ' is-moving' : ''}`}
+                initial={false}
+                animate={{ x: walkerX }}
+                transition={{
+                  duration: figureMood === 'running' ? TRAVEL_SEC : reduceMotion ? 0 : 0.4,
+                  ease: [0.4, 0.05, 0.2, 1],
+                }}
+                onAnimationComplete={onWalkerArrived}
+              >
+                <span className="svy-building-scan" aria-hidden>
+                  <span className="svy-building-scan-glow" />
+                  <span className="svy-building-scan-raster" />
+                  <span className="svy-building-scan-grid" />
                 </span>
-              );
-            })}
+                <span className="svy-laser-cone" />
+                <span className="svy-laser-core" />
+                <span className="svy-laser-hit" />
+                <SurveyorIdentityFigure step={step} mood={figureMood === 'done' ? 'waiting' : figureMood} />
+              </motion.div>
+            ) : null}
           </div>
         </div>
-        <CompletionRing percent={liveCompletion.percent} />
-      </header>
 
-      <div className="svy-tabs" role="tablist" aria-label="Portfolio sections">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'core'}
-          className={`svy-tab${tab === 'core' ? ' is-active' : ''}`}
-          onClick={() => setTab('core')}
-        >
-          Core information
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'identity'}
-          className={`svy-tab${tab === 'identity' ? ' is-active' : ''}`}
-          onClick={() => setTab('identity')}
-        >
-          {accountType === 'company' ? 'Company profile' : 'Professional profile'}
-        </button>
+        <CompletionRing percent={liveCompletion.percent} />
+      </motion.header>
+
+      <div className="svy-stepper-wrap" ref={stepperWrapRef}>
+        <ol className="svy-stepper" aria-label="Portfolio stages">
+          {PROFILE_STEPS.map((s, i) => {
+            const fill = stepFill[i]!;
+            return (
+            <li
+              key={s.id}
+              ref={(el) => {
+                stepRefs.current[i] = el;
+              }}
+              className={i === step ? 'is-here' : undefined}
+            >
+              <button
+                type="button"
+                className={`svy-stepper-item${i === step ? ' is-active' : ''}${fill.complete ? ' is-complete' : ''}${fill.incomplete ? ' is-incomplete' : ''}`}
+                onClick={() => goToStep(i)}
+                disabled={figureMood === 'running'}
+                aria-label={
+                  fill.incomplete
+                    ? `${s.label} — details still needed`
+                    : fill.complete
+                      ? `${s.label} — complete`
+                      : s.label
+                }
+              >
+                <span className="svy-stepper-index" aria-hidden>
+                  {fill.complete ? (
+                    <LordIcon name="check" size={18} trigger="in" />
+                  ) : fill.incomplete ? (
+                    <TriangleAlert size={13} strokeWidth={2.5} />
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                <span className="svy-stepper-copy">
+                  <strong>
+                    <span className="svy-step-label-full">{s.label}</span>
+                    <span className="svy-step-label-short">{s.shortLabel}</span>
+                  </strong>
+                </span>
+              </button>
+            </li>
+            );
+          })}
+        </ol>
+      </div>
       </div>
 
       <form className="svy-profile-form" onSubmit={onSubmit} noValidate>
         {error && <div className="alert error">{error}</div>}
 
-        {tab === 'core' ? (
-          <div className="svy-profile-grid svy-profile-grid-wide">
-            <section className="svy-panel svy-panel-span">
-              <div className="svy-panel-head">
-                <span className="svy-panel-ico">
-                  <Briefcase size={18} />
-                </span>
-                <div>
-                  <h2>1. Services offered</h2>
-                  <p>Multi-select by category</p>
-                </div>
-              </div>
-              {SURVEY_SERVICE_GROUPS.map((group) => (
-                <div key={group.id} className="svy-group">
-                  <h3 className="svy-group-title">{group.label}</h3>
-                  <div className="svy-service-grid">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStep.id}
+            className="svy-step-stage"
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          >
+        {currentStep.id === 'services' ? (
+          <div className="svy-q-stack">
+              {SURVEY_SERVICE_GROUPS.map((group, gi) => (
+                <section key={group.id} className="svy-q">
+                  <div className="svy-q-head">
+                    <span className="svy-q-num">{gi + 1}</span>
+                    <div>
+                      <h2>{group.label}</h2>
+                      <p>Choose all that apply.</p>
+                    </div>
+                  </div>
+                  <div className="svy-q-body">
+                    <div className="svy-opts">
                     {group.services.map((s) => {
                       const selected = services.includes(s);
                       return (
                         <button
                           key={s}
                           type="button"
-                          className={`svy-service${selected ? ' is-selected' : ''}`}
+                          className={`svy-opt${selected ? ' is-on' : ''}`}
                           aria-pressed={selected}
                           onClick={() => setServices((prev) => toggleInList(prev, s))}
                         >
-                          <span className="svy-service-check">
-                            {selected ? <Check size={14} strokeWidth={2.6} /> : null}
+                          <span className="svy-opt-mark" aria-hidden>
+                            {selected ? <Check size={11} strokeWidth={3} /> : null}
                           </span>
                           <span>{SURVEY_SERVICE_LABELS[s]}</span>
                         </button>
                       );
                     })}
+                    </div>
+                  </div>
+                </section>
+              ))}
+          </div>
+        ) : currentStep.id === 'coverage' ? (
+          <div className="svy-coverage">
+            <section className="svy-panel svy-area-panel">
+              <div className="svy-panel-head">
+                <span className="svy-q-num">2</span>
+                <div>
+                  <h2>Service coverage</h2>
+                  <p>Tell us about your service area so we can find you the right projects.</p>
+                </div>
+              </div>
+
+              <div className="svy-area-layout">
+                <div className="svy-area-main">
+                  <div className="svy-area-search">
+                    <div className="svy-area-search-title">
+                      <span className="svy-area-search-icon" aria-hidden>
+                        <MapPinned size={22} strokeWidth={2.2} />
+                      </span>
+                      <div>
+                        <strong>Find counties by radius</strong>
+                        <p>Search from a postal code and keep the counties you cover.</p>
+                      </div>
+                    </div>
+                    <div className="svy-area-search-row">
+                      <label className="svy-area-field">
+                        <span>Distance</span>
+                        <select
+                          value={searchRadiusMiles}
+                          disabled={zipBusy}
+                          onChange={(e) => setSearchRadiusMiles(Number(e.target.value))}
+                        >
+                          {RADIUS_OPTIONS.map((miles) => (
+                            <option key={miles} value={miles}>
+                              {miles} Miles
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="svy-area-field svy-area-field--grow">
+                        <span>of Postal Code</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          maxLength={10}
+                          value={zipInput}
+                          disabled={zipBusy}
+                          onChange={(e) => {
+                            setZipError(null);
+                            setZipInput(e.target.value);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void searchCoverageByRadius();
+                            }
+                          }}
+                          placeholder="75038"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn primary svy-area-search-btn"
+                        disabled={zipBusy || !zipInput.trim()}
+                        onClick={() => void searchCoverageByRadius()}
+                      >
+                        {zipBusy ? 'Searching…' : 'Search'}
+                      </button>
+                    </div>
+                    {zipBusy ? (
+                      <p className="svy-zip-status" role="status">
+                        Finding counties within {searchRadiusMiles} miles…
+                      </p>
+                    ) : null}
+                    {zipError ? (
+                      <p className="svy-zip-error" role="alert">
+                        {zipError}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="svy-area-body">
+                    <div className="svy-area-map">
+                      <CoverageMapPreview
+                        className="svy-coverage-map--profile"
+                        lat={parseCoord(lat)}
+                        lng={parseCoord(lng)}
+                        radiusKm={Math.max(1, Math.round(milesToKm(Number(radiusMiles) || searchRadiusMiles)))}
+                        label={baseCity || null}
+                        showRadius={false}
+                        counties={selectedCounties}
+                        areas={selectedCounties.map((c) => c.county.replace(/\s+County$/i, ''))}
+                      />
+                    </div>
                   </div>
                 </div>
-              ))}
-            </section>
 
-            <section className="svy-panel">
-              <div className="svy-panel-head">
-                <span className="svy-panel-ico">
-                  <MapPin size={18} />
-                </span>
-                <div>
-                  <h2>2. Service coverage</h2>
-                  <p>Where you can take work</p>
-                </div>
+                <aside className="svy-area-selected">
+                  <div className="svy-area-selected-head">
+                    <strong>Selected Counties:</strong>
+                    {selectedCounties.length > 0 ? (
+                      <button type="button" className="svy-area-link" onClick={removeAllCounties}>
+                        Remove All
+                      </button>
+                    ) : null}
+                  </div>
+                  {countiesByState.length === 0 ? (
+                    <p className="svy-area-empty">Search a ZIP to load counties on the map.</p>
+                  ) : (
+                    countiesByState.map(([state, counties]) => (
+                      <div key={`sel-${state}`} className="svy-area-selected-group">
+                        <div className="svy-area-selected-group-head">
+                          <span>
+                            {state} {counties.length} Selected
+                          </span>
+                          <button
+                            type="button"
+                            className="svy-area-link"
+                            onClick={() => removeStateGroup(state)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="svy-area-state-chips">
+                          {counties.map((county) => (
+                            <span
+                              key={`sel-${county.fips ?? `${county.county}-${county.state}`}`}
+                              className="svy-area-chip"
+                            >
+                              {county.county.replace(/\s+County$/i, '')}
+                              <button
+                                type="button"
+                                aria-label={`Remove ${county.county}`}
+                                onClick={() =>
+                                  removeCounty(county.county, county.state, county.fips)
+                                }
+                              >
+                                <X size={12} strokeWidth={2.5} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </aside>
               </div>
-              <div className="svy-fields">
-                <div className="field">
-                  <label htmlFor="baseCity">Base location</label>
-                  <input
-                    id="baseCity"
-                    value={baseCity}
-                    onChange={(e) => setBaseCity(e.target.value)}
-                    placeholder="Houston, Texas"
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="radius">Coverage radius (km)</label>
-                  <input
-                    id="radius"
-                    type="number"
-                    min={1}
-                    max={10000}
-                    value={radiusKm}
-                    onChange={(e) => setRadiusKm(e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="lat">Latitude</label>
-                  <input
-                    id="lat"
-                    type="number"
-                    step="any"
-                    value={lat}
-                    onChange={(e) => setLat(e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="lng">Longitude</label>
-                  <input
-                    id="lng"
-                    type="number"
-                    step="any"
-                    value={lng}
-                    onChange={(e) => setLng(e.target.value)}
-                  />
-                </div>
-              </div>
-              <button type="button" className="btn secondary sm svy-locate" onClick={useMyLocation}>
-                <LocateFixed size={15} /> Use my current location
-              </button>
-              <div className="svy-toggle-row">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={details.travelNationwide}
-                    onChange={(e) => patchDetails({ travelNationwide: e.target.checked })}
-                  />
-                  Travel nationwide
+
+              <div className="field svy-area-capacity">
+                <label htmlFor="dailyCapture">
+                  Typical daily capture capacity <span className="req">*</span>
                 </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={details.internationalProjects}
-                    onChange={(e) => patchDetails({ internationalProjects: e.target.checked })}
-                  />
-                  International projects
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={details.remoteServices}
-                    onChange={(e) => patchDetails({ remoteServices: e.target.checked })}
-                  />
-                  Remote services available
-                </label>
+                <p className="svy-field-hint">Approximate sq ft/day with your primary equipment.</p>
+                <select
+                  id="dailyCapture"
+                  value={details.dailyCaptureCapacity ?? ''}
+                  onChange={(e) =>
+                    patchDetails({
+                      dailyCaptureCapacity: (e.target.value || null) as DailyCaptureCapacity | null,
+                    })
+                  }
+                >
+                  <option value="">Select a range...</option>
+                  {DAILY_CAPTURE_CAPACITIES?.map((id) => (
+                    <option key={id} value={id}>
+                      {DAILY_CAPTURE_CAPACITY_LABELS?.[id] ?? id}
+                    </option>
+                  ))}
+                </select>
               </div>
             </section>
 
-            <section className="svy-panel">
+            <section className="svy-panel svy-panel-side">
               <div className="svy-panel-head">
-                <span className="svy-panel-ico">
-                  <Radar size={18} />
-                </span>
+                <span className="svy-q-num">3</span>
                 <div>
-                  <h2>3. Availability</h2>
+                  <h2>Availability</h2>
                   <p>How soon you can start</p>
                 </div>
               </div>
-              <div className="svy-service-grid">
+              <div className="svy-avail">
                 {AVAILABILITY_OPTIONS.map((option) => {
                   const selected = details.availability === option;
                   return (
                     <button
                       key={option}
                       type="button"
-                      className={`svy-service${selected ? ' is-selected' : ''}`}
+                      className={`svy-opt${selected ? ' is-on' : ''}`}
                       onClick={() =>
                         patchDetails({ availability: option as AvailabilityOption })
                       }
                     >
-                      <span className="svy-service-check">
-                        {selected ? <Check size={14} strokeWidth={2.6} /> : null}
+                      <span className="svy-opt-mark" aria-hidden>
+                        {selected ? <Check size={11} strokeWidth={3} /> : null}
                       </span>
                       <span>{AVAILABILITY_LABELS[option]}</span>
                     </button>
@@ -511,12 +972,40 @@ export default function SurveyorProfilePage() {
                   />
                 </div>
               ) : null}
+              <p className="svy-geo-label" style={{ marginTop: 18 }}>Travel &amp; remote</p>
+              <div className="svy-avail">
+                {(
+                  [
+                    ['travelNationwide', 'Travel nationwide'],
+                    ['internationalProjects', 'International projects'],
+                    ['remoteServices', 'Remote services'],
+                  ] as const
+                ).map(([key, label]) => {
+                  const on = Boolean(details[key]);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`svy-opt${on ? ' is-on' : ''}`}
+                      aria-pressed={on}
+                      onClick={() => patchDetails({ [key]: !on })}
+                    >
+                      <span className="svy-opt-mark" aria-hidden>
+                        {on ? <Check size={11} strokeWidth={3} /> : null}
+                      </span>
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </section>
-
+          </div>
+        ) : currentStep.id === 'commercial' ? (
+          <div className="svy-profile-grid svy-profile-grid-wide">
             <section className="svy-panel">
               <div className="svy-panel-head">
                 <span className="svy-panel-ico">
-                  <CircleDollarSign size={18} />
+                  <LordIcon name="coins" size={22} trigger="in" />
                 </span>
                 <div>
                   <h2>4. Pricing</h2>
@@ -577,37 +1066,61 @@ export default function SurveyorProfilePage() {
                     />
                   </div>
                 </div>
-                <div className="field">
-                  <label htmlFor="emergency">Emergency rate (/day)</label>
-                  <div className="svy-money">
-                    <span>$</span>
-                    <input
-                      id="emergency"
-                      type="number"
-                      min={0}
-                      value={dollarsFromCents(details.emergencyRateCents)}
-                      onChange={(e) =>
-                        patchDetails({
-                          emergencyRateCents: centsFromDollars(e.target.value),
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="field">
+                <div className="field svy-field-span">
                   <label>Travel charges</label>
-                  <div className="svy-toggle-row">
-                    {(['included', 'extra'] as TravelChargeOption[]).map((option) => (
-                      <label key={option}>
-                        <input
-                          type="radio"
-                          name="travelCharges"
-                          checked={details.travelCharges === option}
-                          onChange={() => patchDetails({ travelCharges: option })}
-                        />
-                        {option === 'included' ? 'Included' : 'Extra'}
-                      </label>
-                    ))}
+                  <div className="svy-travel-row">
+                    <label className="svy-travel-opt">
+                      <input
+                        type="radio"
+                        name="travelCharges"
+                        checked={details.travelCharges === 'included'}
+                        onChange={() =>
+                          patchDetails({
+                            travelCharges: 'included',
+                            travelExtraCents: null,
+                          })
+                        }
+                      />
+                      Included
+                    </label>
+                    <label className="svy-travel-opt">
+                      <input
+                        type="radio"
+                        name="travelCharges"
+                        checked={details.travelCharges === 'extra'}
+                        onChange={() =>
+                          patchDetails({
+                            travelCharges: 'extra',
+                            travelExtraCents: details.travelExtraCents,
+                          })
+                        }
+                      />
+                      Extra
+                    </label>
+                    {details.travelCharges === 'extra' ? (
+                      <>
+                        <span className="svy-travel-extra-label" id="travelExtraLabel">
+                          Extra cost
+                        </span>
+                        <div className="svy-money svy-travel-extra-money">
+                          <span>$</span>
+                          <input
+                            id="travelExtra"
+                            type="number"
+                            min={0}
+                            inputMode="decimal"
+                            placeholder="0"
+                            aria-labelledby="travelExtraLabel"
+                            value={dollarsFromCents(details.travelExtraCents)}
+                            onChange={(e) =>
+                              patchDetails({
+                                travelExtraCents: centsFromDollars(e.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -616,7 +1129,7 @@ export default function SurveyorProfilePage() {
             <section className="svy-panel svy-panel-span">
               <div className="svy-panel-head">
                 <span className="svy-panel-ico">
-                  <Wrench size={18} />
+                  <LordIcon name="tools" size={22} trigger="in" />
                 </span>
                 <div>
                   <h2>5. Equipment</h2>
@@ -626,18 +1139,19 @@ export default function SurveyorProfilePage() {
               {EQUIPMENT_GROUPS.map((group) => (
                 <div key={group.id} className="svy-group">
                   <h3 className="svy-group-title">{group.label}</h3>
-                  <div className="svy-service-grid">
+                  <div className="svy-opts">
                     {group.items.map((id) => {
                       const selected = equipment.includes(id);
                       return (
                         <button
                           key={id}
                           type="button"
-                          className={`svy-service${selected ? ' is-selected' : ''}`}
+                          className={`svy-opt${selected ? ' is-on' : ''}`}
+                          aria-pressed={selected}
                           onClick={() => setEquipment((prev) => toggleInList(prev, id))}
                         >
-                          <span className="svy-service-check">
-                            {selected ? <Check size={14} strokeWidth={2.6} /> : null}
+                          <span className="svy-opt-mark" aria-hidden>
+                            {selected ? <Check size={11} strokeWidth={3} /> : null}
                           </span>
                           <span>{EQUIPMENT_LABELS[id as EquipmentId]}</span>
                         </button>
@@ -647,166 +1161,69 @@ export default function SurveyorProfilePage() {
                 </div>
               ))}
             </section>
-
-            <section className="svy-panel svy-panel-span">
+          </div>
+        ) : (
+          <div className="svy-profile-grid svy-profile-grid-wide">
+            <section className="svy-panel">
               <div className="svy-panel-head">
                 <span className="svy-panel-ico">
-                  <FileText size={18} />
+                  <LordIcon name="clock" size={22} trigger="in" />
                 </span>
                 <div>
-                  <h2>6. Certifications</h2>
-                  <p>Name, issuer, number, expiry</p>
+                  <h2>
+                    6. Years of experience in reality capture / scanning <span className="req">*</span>
+                  </h2>
+                  <p>How long you have been capturing on site</p>
                 </div>
               </div>
-              <div className="svy-stack">
-                {details.certifications.map((cert, index) => (
-                  <div key={cert.id} className="svy-repeat-card">
-                    <div className="svy-fields">
-                      <div className="field">
-                        <label>Certificate name</label>
-                        <input
-                          value={cert.name}
-                          onChange={(e) => {
-                            const next = [...details.certifications];
-                            next[index] = { ...cert, name: e.target.value };
-                            patchDetails({ certifications: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Issuing organization</label>
-                        <input
-                          value={cert.issuingOrganization}
-                          onChange={(e) => {
-                            const next = [...details.certifications];
-                            next[index] = { ...cert, issuingOrganization: e.target.value };
-                            patchDetails({ certifications: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Certificate number</label>
-                        <input
-                          value={cert.certificateNumber}
-                          onChange={(e) => {
-                            const next = [...details.certifications];
-                            next[index] = { ...cert, certificateNumber: e.target.value };
-                            patchDetails({ certifications: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Expiry date</label>
-                        <input
-                          type="date"
-                          value={cert.expiryDate ?? ''}
-                          onChange={(e) => {
-                            const next = [...details.certifications];
-                            next[index] = { ...cert, expiryDate: e.target.value || null };
-                            patchDetails({ certifications: next });
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <S3MediaField
-                      kind="certificate"
-                      label="Certificate file (S3)"
-                      variant="doc"
-                      url={cert.fileKey}
-                      fileName={cert.fileKey ? 'Certificate' : null}
-                      onUploaded={({ url }) => {
-                        const next = [...details.certifications];
-                        next[index] = { ...cert, fileKey: url };
-                        patchDetails({ certifications: next });
-                      }}
-                      onCleared={() => {
-                        const next = [...details.certifications];
-                        next[index] = { ...cert, fileKey: null };
-                        patchDetails({ certifications: next });
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="btn secondary sm"
-                      onClick={() =>
-                        patchDetails({
-                          certifications: details.certifications.filter((c) => c.id !== cert.id),
-                        })
-                      }
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-                <button type="button" className="btn secondary sm" onClick={addCertification}>
-                  Add certification
-                </button>
+              <div className="field">
+                <label htmlFor="yearsRealityCapture">Years</label>
+                <input
+                  id="yearsRealityCapture"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={80}
+                  value={details.yearsRealityCapture ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.trim();
+                    const n = Number(raw);
+                    patchDetails({
+                      yearsRealityCapture: raw === '' || !Number.isFinite(n) ? null : Math.round(n),
+                    });
+                  }}
+                  placeholder="e.g. 8"
+                />
               </div>
             </section>
 
             <section className="svy-panel">
               <div className="svy-panel-head">
                 <span className="svy-panel-ico">
-                  <Languages size={18} />
+                  <LordIcon name="consult" size={22} trigger="in" />
                 </span>
                 <div>
-                  <h2>7. Languages</h2>
-                  <p>Languages you work in</p>
-                </div>
-              </div>
-              <div className="svy-service-grid">
-                {PORTFOLIO_LANGUAGES.map((lang) => {
-                  const selected = details.languages.includes(lang);
-                  return (
-                    <button
-                      key={lang}
-                      type="button"
-                      className={`svy-service${selected ? ' is-selected' : ''}`}
-                      onClick={() =>
-                        patchDetails({
-                          languages: toggleInList(details.languages, lang as PortfolioLanguage),
-                        })
-                      }
-                    >
-                      <span className="svy-service-check">
-                        {selected ? <Check size={14} strokeWidth={2.6} /> : null}
-                      </span>
-                      <span>{PORTFOLIO_LANGUAGE_LABELS[lang]}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="svy-panel">
-              <div className="svy-panel-head">
-                <span className="svy-panel-ico">
-                  <Globe2 size={18} />
-                </span>
-                <div>
-                  <h2>8. Industries served</h2>
+                  <h2>7. Industries served</h2>
                   <p>Sectors you know well</p>
                 </div>
               </div>
-              <div className="svy-service-grid">
+              <div className="svy-opts">
                 {INDUSTRIES_SERVED.map((industry) => {
                   const selected = details.industries.includes(industry);
                   return (
                     <button
                       key={industry}
                       type="button"
-                      className={`svy-service${selected ? ' is-selected' : ''}`}
+                      className={`svy-opt${selected ? ' is-on' : ''}`}
+                      aria-pressed={selected}
                       onClick={() =>
                         patchDetails({
-                          industries: toggleInList(
-                            details.industries,
-                            industry as IndustryServed,
-                          ),
+                          industries: toggleInList(details.industries, industry as IndustryServed),
                         })
                       }
                     >
-                      <span className="svy-service-check">
-                        {selected ? <Check size={14} strokeWidth={2.6} /> : null}
+                      <span className="svy-opt-mark" aria-hidden>
+                        {selected ? <Check size={11} strokeWidth={3} /> : null}
                       </span>
                       <span>{INDUSTRY_LABELS[industry]}</span>
                     </button>
@@ -818,805 +1235,51 @@ export default function SurveyorProfilePage() {
             <section className="svy-panel svy-panel-span">
               <div className="svy-panel-head">
                 <span className="svy-panel-ico">
-                  <Briefcase size={18} />
+                  <LordIcon name="security" size={22} trigger="in" />
                 </span>
                 <div>
-                  <h2>9. Portfolio projects</h2>
-                  <p>Case studies clients can review</p>
+                  <h2>
+                    8. General liability insurance <span className="req">*</span>
+                  </h2>
+                  <p>Required for matching on commercial work</p>
                 </div>
               </div>
-              <div className="svy-stack">
-                {details.projects.map((project, index) => (
-                  <div key={project.id} className="svy-repeat-card">
-                    <div className="svy-fields">
-                      <div className="field">
-                        <label>Project title</label>
-                        <input
-                          value={project.title}
-                          onChange={(e) => {
-                            const next = [...details.projects];
-                            next[index] = { ...project, title: e.target.value };
-                            patchDetails({ projects: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Client industry</label>
-                        <input
-                          value={project.clientIndustry}
-                          onChange={(e) => {
-                            const next = [...details.projects];
-                            next[index] = { ...project, clientIndustry: e.target.value };
-                            patchDetails({ projects: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Location</label>
-                        <input
-                          value={project.location}
-                          onChange={(e) => {
-                            const next = [...details.projects];
-                            next[index] = { ...project, location: e.target.value };
-                            patchDetails({ projects: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Building type</label>
-                        <input
-                          value={project.buildingType}
-                          onChange={(e) => {
-                            const next = [...details.projects];
-                            next[index] = { ...project, buildingType: e.target.value };
-                            patchDetails({ projects: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Project size</label>
-                        <input
-                          value={project.projectSize}
-                          onChange={(e) => {
-                            const next = [...details.projects];
-                            next[index] = { ...project, projectSize: e.target.value };
-                            patchDetails({ projects: next });
-                          }}
-                        />
-                      </div>
-                      <div className="field">
-                        <label>Completion year</label>
-                        <input
-                          value={project.completionYear}
-                          onChange={(e) => {
-                            const next = [...details.projects];
-                            next[index] = { ...project, completionYear: e.target.value };
-                            patchDetails({ projects: next });
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className="field">
-                      <label>Description</label>
-                      <textarea
-                        rows={3}
-                        value={project.description}
-                        onChange={(e) => {
-                          const next = [...details.projects];
-                          next[index] = { ...project, description: e.target.value };
-                          patchDetails({ projects: next });
-                        }}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Deliverables</label>
-                      <textarea
-                        rows={2}
-                        value={project.deliverables}
-                        onChange={(e) => {
-                          const next = [...details.projects];
-                          next[index] = { ...project, deliverables: e.target.value };
-                          patchDetails({ projects: next });
-                        }}
-                      />
-                    </div>
-                    <div className="svy-project-images">
-                      <span className="label">Project images (S3)</span>
-                      <div className="svy-image-grid">
-                        {project.images.map((img, imgIndex) => (
-                          <div key={`${img.key}-${imgIndex}`} className="svy-image-tile">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={img.key} alt={img.caption || project.title || 'Project'} />
-                            <button
-                              type="button"
-                              className="svy-image-remove"
-                              onClick={() => {
-                                const next = [...details.projects];
-                                next[index] = {
-                                  ...project,
-                                  images: project.images.filter((_, i) => i !== imgIndex),
-                                };
-                                patchDetails({ projects: next });
-                              }}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <S3MediaField
-                        kind="portfolio"
-                        label="Add project image"
-                        hint="Uploaded to S3 — preview uses the public URL"
-                        url={null}
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        onUploaded={({ url }) => {
-                          const next = [...details.projects];
-                          next[index] = {
-                            ...project,
-                            images: [...project.images, { key: url }],
-                          };
-                          patchDetails({ projects: next });
-                        }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="btn secondary sm"
-                      onClick={() =>
-                        patchDetails({
-                          projects: details.projects.filter((p) => p.id !== project.id),
-                        })
-                      }
-                    >
-                      Remove project
-                    </button>
-                  </div>
-                ))}
-                <button type="button" className="btn secondary sm" onClick={addProject}>
-                  Add project
-                </button>
-              </div>
-            </section>
-
-            <section className="svy-panel svy-panel-span">
-              <div className="svy-panel-head">
-                <span className="svy-panel-ico">
-                  <FileText size={18} />
-                </span>
-                <div>
-                  <h2>10. Documents</h2>
-                  <p>Each file uploads to S3 — we store the public URL</p>
-                </div>
-              </div>
-              <div className="svy-doc-grid">
-                {DOCUMENT_TYPES.map((type) => {
-                  const doc = details.documents.find((d) => d.type === type) ?? {
-                    type,
-                    fileKey: null,
-                    fileName: null,
-                  };
+              <div className="svy-opts svy-opts-geo">
+                {([
+                  [true, 'Yes'],
+                  [false, 'No'],
+                ] as const).map(([value, label]) => {
+                  const on = details.generalLiabilityInsurance === value;
                   return (
-                    <S3MediaField
-                      key={type}
-                      kind="document"
-                      label={DOCUMENT_TYPE_LABELS[type]}
-                      variant="doc"
-                      url={doc.fileKey}
-                      fileName={doc.fileName}
-                      onUploaded={({ url, fileName }) => {
-                        const next = DOCUMENT_TYPES.map((t) => {
-                          const existing = details.documents.find((d) => d.type === t) ?? {
-                            type: t,
-                            fileKey: null,
-                            fileName: null,
-                          };
-                          if (t !== type) return existing;
-                          return { type: t, fileKey: url, fileName };
-                        });
-                        patchDetails({ documents: next });
-                      }}
-                      onCleared={() => {
-                        const next = DOCUMENT_TYPES.map((t) => {
-                          const existing = details.documents.find((d) => d.type === t) ?? {
-                            type: t,
-                            fileKey: null,
-                            fileName: null,
-                          };
-                          if (t !== type) return existing;
-                          return { type: t, fileKey: null, fileName: null };
-                        });
-                        patchDetails({ documents: next });
-                      }}
-                    />
+                    <button
+                      key={label}
+                      type="button"
+                      className={`svy-opt${on ? ' is-on' : ''}`}
+                      aria-pressed={on}
+                      onClick={() => patchDetails({ generalLiabilityInsurance: value })}
+                    >
+                      <span className="svy-opt-mark" aria-hidden>
+                        {on ? <Check size={11} strokeWidth={3} /> : null}
+                      </span>
+                      <span>{label}</span>
+                    </button>
                   );
                 })}
               </div>
             </section>
           </div>
-        ) : (
-          <div className="svy-profile-grid svy-profile-grid-wide">
-            {accountType === 'individual' && individual ? (
-              <>
-                <section className="svy-panel svy-panel-span">
-                  <div className="svy-panel-head">
-                    <span className="svy-panel-ico">
-                      <UserRound size={18} />
-                    </span>
-                    <div>
-                      <h2>Professional profile</h2>
-                      <p>Personal information for individual accounts</p>
-                    </div>
-                  </div>
-                  <div className="svy-fields">
-                    <div className="field">
-                      <label>Professional title</label>
-                      <input
-                        value={individual.professionalTitle}
-                        onChange={(e) => patchIndividual({ professionalTitle: e.target.value })}
-                        placeholder="Licensed Land Surveyor"
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Headline</label>
-                      <input
-                        value={individual.headline}
-                        onChange={(e) => patchIndividual({ headline: e.target.value })}
-                        placeholder="Commercial Survey Specialist with 12 Years Experience"
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Years of experience</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={individual.yearsExperience ?? ''}
-                        onChange={(e) =>
-                          patchIndividual({
-                            yearsExperience: e.target.value
-                              ? Number(e.target.value)
-                              : null,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Current company (optional)</label>
-                      <input
-                        value={individual.currentCompany}
-                        onChange={(e) => patchIndividual({ currentCompany: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="field">
-                    <label>About me</label>
-                    <textarea
-                      rows={6}
-                      value={individual.aboutMe}
-                      onChange={(e) => patchIndividual({ aboutMe: e.target.value })}
-                    />
-                  </div>
-                </section>
-
-                <section className="svy-panel">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Skills</h2>
-                      <p>Comma-separated</p>
-                    </div>
-                  </div>
-                  <div className="field">
-                    <input
-                      value={individual.skills.join(', ')}
-                      onChange={(e) =>
-                        patchIndividual({
-                          skills: e.target.value
-                            .split(',')
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                      placeholder="Laser Scanning, Topographic Survey, Civil3D"
-                    />
-                  </div>
-                </section>
-
-                <section className="svy-panel">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Professional memberships</h2>
-                    </div>
-                  </div>
-                  <div className="svy-service-grid">
-                    {PROFESSIONAL_MEMBERSHIPS.map((m) => {
-                      const selected = individual.memberships.includes(m);
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          className={`svy-service${selected ? ' is-selected' : ''}`}
-                          onClick={() =>
-                            patchIndividual({
-                              memberships: toggleInList(individual.memberships, m),
-                            })
-                          }
-                        >
-                          <span className="svy-service-check">
-                            {selected ? <Check size={14} strokeWidth={2.6} /> : null}
-                          </span>
-                          <span>{PROFESSIONAL_MEMBERSHIP_LABELS[m]}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="svy-panel">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Achievements</h2>
-                      <p>One per line</p>
-                    </div>
-                  </div>
-                  <textarea
-                    rows={4}
-                    value={individual.achievements.join('\n')}
-                    onChange={(e) =>
-                      patchIndividual({
-                        achievements: e.target.value
-                          .split('\n')
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                    placeholder={'Top Rated Surveyor\n300+ Projects'}
-                  />
-                </section>
-
-                <section className="svy-panel svy-panel-span">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Previous experience</h2>
-                    </div>
-                  </div>
-                  <div className="svy-stack">
-                    {individual.previousExperience.map((entry, index) => (
-                      <div key={entry.id} className="svy-repeat-card">
-                        <div className="svy-fields">
-                          <div className="field">
-                            <label>Company</label>
-                            <input
-                              value={entry.company}
-                              onChange={(e) => {
-                                const next = [...individual.previousExperience];
-                                next[index] = { ...entry, company: e.target.value };
-                                patchIndividual({ previousExperience: next });
-                              }}
-                            />
-                          </div>
-                          <div className="field">
-                            <label>Designation</label>
-                            <input
-                              value={entry.designation}
-                              onChange={(e) => {
-                                const next = [...individual.previousExperience];
-                                next[index] = { ...entry, designation: e.target.value };
-                                patchIndividual({ previousExperience: next });
-                              }}
-                            />
-                          </div>
-                          <div className="field">
-                            <label>Duration</label>
-                            <input
-                              value={entry.duration}
-                              onChange={(e) => {
-                                const next = [...individual.previousExperience];
-                                next[index] = { ...entry, duration: e.target.value };
-                                patchIndividual({ previousExperience: next });
-                              }}
-                              placeholder="2019-Present"
-                            />
-                          </div>
-                        </div>
-                        <div className="field">
-                          <label>Description</label>
-                          <textarea
-                            rows={2}
-                            value={entry.description}
-                            onChange={(e) => {
-                              const next = [...individual.previousExperience];
-                              next[index] = { ...entry, description: e.target.value };
-                              patchIndividual({ previousExperience: next });
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn secondary sm"
-                      onClick={() =>
-                        patchIndividual({
-                          previousExperience: [
-                            ...individual.previousExperience,
-                            {
-                              id: newEntryId(),
-                              company: '',
-                              designation: '',
-                              duration: '',
-                              description: '',
-                            },
-                          ],
-                        })
-                      }
-                    >
-                      Add experience
-                    </button>
-                  </div>
-                </section>
-
-                <section className="svy-panel svy-panel-span">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Education</h2>
-                    </div>
-                  </div>
-                  <div className="svy-stack">
-                    {individual.education.map((entry, index) => (
-                      <div key={entry.id} className="svy-fields svy-repeat-card">
-                        <div className="field">
-                          <label>Degree</label>
-                          <input
-                            value={entry.degree}
-                            onChange={(e) => {
-                              const next = [...individual.education];
-                              next[index] = { ...entry, degree: e.target.value };
-                              patchIndividual({ education: next });
-                            }}
-                          />
-                        </div>
-                        <div className="field">
-                          <label>University</label>
-                          <input
-                            value={entry.university}
-                            onChange={(e) => {
-                              const next = [...individual.education];
-                              next[index] = { ...entry, university: e.target.value };
-                              patchIndividual({ education: next });
-                            }}
-                          />
-                        </div>
-                        <div className="field">
-                          <label>Year</label>
-                          <input
-                            value={entry.year}
-                            onChange={(e) => {
-                              const next = [...individual.education];
-                              next[index] = { ...entry, year: e.target.value };
-                              patchIndividual({ education: next });
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn secondary sm"
-                      onClick={() =>
-                        patchIndividual({
-                          education: [
-                            ...individual.education,
-                            { id: newEntryId(), degree: '', university: '', year: '' },
-                          ],
-                        })
-                      }
-                    >
-                      Add education
-                    </button>
-                  </div>
-                </section>
-              </>
-            ) : null}
-
-            {accountType === 'company' && company ? (
-              <>
-                <section className="svy-panel svy-panel-span">
-                  <div className="svy-panel-head">
-                    <span className="svy-panel-ico">
-                      <Building2 size={18} />
-                    </span>
-                    <div>
-                      <h2>Company profile</h2>
-                      <p>Company information</p>
-                    </div>
-                  </div>
-                  <div className="svy-brand-media">
-                    <S3MediaField
-                      kind="logo"
-                      label="Company logo"
-                      hint="Square logo — stored as S3 URL"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      url={company.logoKey}
-                      onUploaded={({ url }) => patchCompany({ logoKey: url })}
-                      onCleared={() => patchCompany({ logoKey: null })}
-                    />
-                    <S3MediaField
-                      kind="cover"
-                      label="Cover image"
-                      hint="Wide banner — stored as S3 URL"
-                      variant="wide"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      url={company.coverImageKey}
-                      onUploaded={({ url }) => patchCompany({ coverImageKey: url })}
-                      onCleared={() => patchCompany({ coverImageKey: null })}
-                    />
-                  </div>
-                  <div className="svy-fields">
-                    <div className="field">
-                      <label>Company name</label>
-                      <input
-                        value={company.companyName}
-                        onChange={(e) => patchCompany({ companyName: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Tagline</label>
-                      <input
-                        value={company.tagline}
-                        onChange={(e) => patchCompany({ tagline: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Website</label>
-                      <input
-                        value={company.website}
-                        onChange={(e) => patchCompany({ website: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>LinkedIn</label>
-                      <input
-                        value={company.linkedIn}
-                        onChange={(e) => patchCompany({ linkedIn: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Business registration number</label>
-                      <input
-                        value={company.registrationNumber}
-                        onChange={(e) => patchCompany({ registrationNumber: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Tax ID / EIN (optional)</label>
-                      <input
-                        value={company.taxId}
-                        onChange={(e) => patchCompany({ taxId: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Business type</label>
-                      <select
-                        value={company.businessType ?? ''}
-                        onChange={(e) =>
-                          patchCompany({
-                            businessType: (e.target.value || null) as CompanyIdentity['businessType'],
-                          })
-                        }
-                      >
-                        <option value="">Select…</option>
-                        {BUSINESS_TYPES.map((t) => (
-                          <option key={t} value={t}>
-                            {BUSINESS_TYPE_LABELS[t]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label>Founded year</label>
-                      <input
-                        value={company.foundedYear}
-                        onChange={(e) => patchCompany({ foundedYear: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Number of employees</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={company.employeeCount ?? ''}
-                        onChange={(e) =>
-                          patchCompany({
-                            employeeCount: e.target.value ? Number(e.target.value) : null,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="field">
-                    <label>About company</label>
-                    <textarea
-                      rows={6}
-                      value={company.aboutCompany}
-                      onChange={(e) => patchCompany({ aboutCompany: e.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Head office address</label>
-                    <textarea
-                      rows={2}
-                      value={company.headOfficeAddress}
-                      onChange={(e) => patchCompany({ headOfficeAddress: e.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Office locations (comma-separated)</label>
-                    <input
-                      value={company.officeLocations.map((o) => o.city).join(', ')}
-                      onChange={(e) =>
-                        patchCompany({
-                          officeLocations: e.target.value
-                            .split(',')
-                            .map((city) => city.trim())
-                            .filter(Boolean)
-                            .map((city) => ({ id: newEntryId(), city })),
-                        })
-                      }
-                      placeholder="Houston, Dallas, Austin"
-                    />
-                  </div>
-                </section>
-
-                <section className="svy-panel">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Company capacity</h2>
-                    </div>
-                  </div>
-                  <div className="svy-fields">
-                    <div className="field">
-                      <label>Projects handled annually</label>
-                      <input
-                        type="number"
-                        value={company.projectsHandledAnnually ?? ''}
-                        onChange={(e) =>
-                          patchCompany({
-                            projectsHandledAnnually: e.target.value
-                              ? Number(e.target.value)
-                              : null,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Largest project</label>
-                      <input
-                        value={company.largestProject}
-                        onChange={(e) => patchCompany({ largestProject: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Average team size</label>
-                      <input
-                        type="number"
-                        value={company.averageTeamSize ?? ''}
-                        onChange={(e) =>
-                          patchCompany({
-                            averageTeamSize: e.target.value ? Number(e.target.value) : null,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Concurrent projects</label>
-                      <input
-                        type="number"
-                        value={company.concurrentProjects ?? ''}
-                        onChange={(e) =>
-                          patchCompany({
-                            concurrentProjects: e.target.value
-                              ? Number(e.target.value)
-                              : null,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                <section className="svy-panel">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Company certifications</h2>
-                    </div>
-                  </div>
-                  <div className="svy-service-grid">
-                    {COMPANY_CERTIFICATIONS.map((c) => {
-                      const selected = company.companyCertifications.includes(c);
-                      return (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`svy-service${selected ? ' is-selected' : ''}`}
-                          onClick={() =>
-                            patchCompany({
-                              companyCertifications: toggleInList(
-                                company.companyCertifications,
-                                c,
-                              ),
-                            })
-                          }
-                        >
-                          <span className="svy-service-check">
-                            {selected ? <Check size={14} strokeWidth={2.6} /> : null}
-                          </span>
-                          <span>{COMPANY_CERTIFICATION_LABELS[c]}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="svy-panel">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Social links</h2>
-                    </div>
-                  </div>
-                  <div className="svy-fields">
-                    <div className="field">
-                      <label>Facebook</label>
-                      <input
-                        value={company.facebook}
-                        onChange={(e) => patchCompany({ facebook: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Instagram</label>
-                      <input
-                        value={company.instagram}
-                        onChange={(e) => patchCompany({ instagram: e.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>YouTube</label>
-                      <input
-                        value={company.youtube}
-                        onChange={(e) => patchCompany({ youtube: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                <section className="svy-panel">
-                  <div className="svy-panel-head">
-                    <div>
-                      <h2>Awards</h2>
-                      <p>One per line</p>
-                    </div>
-                  </div>
-                  <textarea
-                    rows={4}
-                    value={company.awards.join('\n')}
-                    onChange={(e) =>
-                      patchCompany({
-                        awards: e.target.value
-                          .split('\n')
-                          .map((s) => s.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                  />
-                </section>
-              </>
-            ) : null}
-          </div>
         )}
+          </motion.div>
+        </AnimatePresence>
 
         <footer className="svy-profile-foot">
           <label className={`svy-matchable${!liveCompletion.complete ? ' is-locked' : ''}`}>
             <span className="svy-matchable-ico" aria-hidden>
-              {liveCompletion.complete ? <Radar size={18} /> : <HardHat size={18} />}
+              {liveCompletion.complete ? (
+                <LordIcon name="check" size={22} trigger="loop-on-hover" />
+              ) : (
+                <LordIcon name="tools" size={22} trigger="loop-on-hover" />
+              )}
             </span>
             <span className="svy-matchable-copy">
               <strong>Available for new matches</strong>
@@ -1626,20 +1289,54 @@ export default function SurveyorProfilePage() {
                   : 'Unlocks automatically once your portfolio hits 100%.'}
               </span>
             </span>
-            <input
-              type="checkbox"
-              checked={isMatchable && liveCompletion.complete}
-              onChange={(e) => setIsMatchable(e.target.checked)}
-              disabled={!liveCompletion.complete}
-            />
+            <span className="svy-switch">
+              <input
+                type="checkbox"
+                checked={isMatchable && liveCompletion.complete}
+                onChange={(e) => setIsMatchable(e.target.checked)}
+                disabled={!liveCompletion.complete}
+              />
+              <span className="svy-switch-ui" aria-hidden />
+            </span>
           </label>
 
-          <button className="btn svy-save" type="submit" disabled={!canSubmit}>
-            {busy ? <span className="spin" /> : <UserRound size={17} />}
-            {busy ? 'Saving…' : mode === 'edit' ? 'Save portfolio' : 'Create portfolio'}
-          </button>
+          <div className="svy-foot-nav">
+            {step > 0 ? (
+              <button
+                type="button"
+                className="btn secondary svy-foot-back"
+                onClick={() => goToStep(step - 1)}
+              >
+                <ArrowLeft size={16} />
+                Back
+              </button>
+            ) : null}
+            {!isLastStep ? (
+              <button
+                type="button"
+                className={`btn svy-save${services.length > 0 ? ' is-pulse' : ''}`}
+                disabled={figureMood === 'running'}
+                onClick={() => goToStep(step + 1)}
+              >
+                Continue
+                <ArrowRight size={16} />
+              </button>
+            ) : (
+              <button className="btn svy-save" type="submit" disabled={!canSubmit}>
+                {busy ? <span className="spin" /> : <LordIcon name="briefcase" size={20} trigger="in" />}
+                {busy ? 'Saving…' : mode === 'edit' ? 'Save portfolio' : 'Create portfolio'}
+              </button>
+            )}
+          </div>
         </footer>
       </form>
+
+      <IncompleteProfileModal
+        percent={liveCompletion.percent}
+        open={showIncompleteModal}
+        onClose={dismissIncompleteModal}
+        onGoToProfile={continueIncompletePortfolio}
+      />
     </div>
   );
 }

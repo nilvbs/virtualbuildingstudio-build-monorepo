@@ -1,19 +1,46 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { MapContainer, Marker, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl';
 import { MapPin } from 'lucide-react';
-import 'leaflet/dist/leaflet.css';
+import { mapboxToken } from '../lib/geocode';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629];
 const DEFAULT_ZOOM = 5;
-const PICKED_ZOOM = 15;
+const PICKED_ZOOM = 16.5;
+const PITCH = 62;
+const BEARING = -20;
+
+const BASEMAP_VISIBILITY = {
+  lightPreset: 'night',
+  theme: 'default',
+  show3dObjects: true,
+  show3dBuildings: true,
+  show3dTrees: true,
+  show3dLandmarks: true,
+  show3dFacades: true,
+  showLandmarkIcons: true,
+  showLandmarkIconLabels: true,
+  showPlaceLabels: true,
+  showPointOfInterestLabels: true,
+  showRoadLabels: true,
+  showTransitLabels: true,
+  showPedestrianRoads: true,
+} as const;
+
+function applyBasemapVisibility(map: MapboxMap) {
+  for (const [key, value] of Object.entries(BASEMAP_VISIBILITY)) {
+    map.setConfigProperty('basemap', key, value);
+  }
+}
 
 type Props = {
   lat: string;
   lng: string;
   label?: string | null;
+  compact?: boolean;
+  mapId?: string;
   onPick: (lat: number, lng: number) => void;
 };
 
@@ -31,85 +58,28 @@ function shortLabel(name: string) {
   return `${parts[0]}, ${parts[1]}`;
 }
 
-function WhenMapReady({ children }: { children: ReactNode }) {
-  const map = useMap();
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    let frame = 0;
-
-    const check = () => {
-      if (cancelled) return;
-      try {
-        const pane = map.getPane('tilePane');
-        const el = map.getContainer();
-        if (pane && el?.parentNode) {
-          setReady(true);
-          map.invalidateSize({ animate: false });
-          return;
-        }
-      } catch {
-        // map not initialized yet
-      }
-      frame = window.requestAnimationFrame(check);
-    };
-
-    frame = window.requestAnimationFrame(check);
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-    };
-  }, [map]);
-
-  if (!ready) return null;
-  return <>{children}</>;
+function pinElement() {
+  const el = document.createElement('div');
+  el.className = 'location-map-pin';
+  el.innerHTML = `
+    <span class="location-map-pin-wrap">
+      <span class="location-map-pin-pulse"></span>
+      <span class="location-map-pin-dot"></span>
+    </span>
+  `;
+  return el;
 }
 
-function MapClick({ onPick }: { onPick: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onPick(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
-}
-
-function MapLifecycle({ position }: { position: [number, number] | null }) {
-  const map = useMap();
-
-  useEffect(() => {
-    const container = map.getContainer();
-    const refresh = () => map.invalidateSize({ animate: false });
-
-    refresh();
-    const timers = [50, 150, 350, 700].map((ms) => window.setTimeout(refresh, ms));
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refresh) : null;
-    ro?.observe(container);
-    window.addEventListener('resize', refresh);
-
-    return () => {
-      timers.forEach((id) => window.clearTimeout(id));
-      ro?.disconnect();
-      window.removeEventListener('resize', refresh);
-    };
-  }, [map]);
-
-  useEffect(() => {
-    if (!position) return;
-    const center = map.getCenter();
-    const [nextLat, nextLng] = position;
-    if (Math.abs(center.lat - nextLat) < 1e-6 && Math.abs(center.lng - nextLng) < 1e-6) return;
-    map.flyTo(position, Math.max(map.getZoom(), PICKED_ZOOM), { duration: 0.5 });
-    window.setTimeout(() => map.invalidateSize({ animate: false }), 520);
-  }, [map, position]);
-
-  return null;
-}
-
-export function LocationMapPicker({ lat, lng, label, onPick }: Props) {
+export function LocationMapPicker({ lat, lng, label, compact, mapId, onPick }: Props) {
   const [pickedLabel, setPickedLabel] = useState<string | null>(label ?? null);
   const [mounted, setMounted] = useState(false);
+  const token = mapboxToken();
+  const [mapReady, setMapReady] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapboxMap | null>(null);
+  const markerRef = useRef<MapboxMarker | null>(null);
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
 
   useEffect(() => {
     setMounted(true);
@@ -130,54 +100,127 @@ export function LocationMapPicker({ lat, lng, label, onPick }: Props) {
   const center = position ?? DEFAULT_CENTER;
   const zoom = position ? PICKED_ZOOM : DEFAULT_ZOOM;
 
-  const pin = useMemo(
-    () =>
-      L.divIcon({
-        className: 'location-map-pin',
-        html: `
-          <span class="location-map-pin-wrap">
-            <span class="location-map-pin-pulse"></span>
-            <span class="location-map-pin-dot"></span>
-          </span>
-        `,
-        iconSize: [40, 48],
-        iconAnchor: [20, 42],
-      }),
-    [],
-  );
+  useEffect(() => {
+    if (!mounted || !token || !shellRef.current) return;
+
+    let cancelled = false;
+    const container = shellRef.current;
+    let created: MapboxMap | undefined;
+    const timers: number[] = [];
+    let ro: ResizeObserver | null = null;
+
+    void import('mapbox-gl').then((mod) => {
+      if (cancelled || !container.isConnected) return;
+      const mapboxgl = mod.default;
+      mapboxgl.accessToken = token;
+
+      created = new mapboxgl.Map({
+        container,
+        style: 'mapbox://styles/mapbox/standard',
+        center: [center[1], center[0]],
+        zoom,
+        pitch: PITCH,
+        bearing: BEARING,
+        maxPitch: 85,
+        attributionControl: false,
+        config: {
+          basemap: { ...BASEMAP_VISIBILITY },
+        },
+      });
+
+      created.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+
+      created.on('click', (e) => {
+        setPickedLabel(null);
+        onPickRef.current(e.lngLat.lat, e.lngLat.lng);
+      });
+
+      created.on('style.load', () => {
+        if (created) applyBasemapVisibility(created);
+      });
+
+      mapRef.current = created;
+      setMapReady(true);
+
+      const refresh = () => created?.resize();
+      timers.push(...[50, 150, 350, 700].map((ms) => window.setTimeout(refresh, ms)));
+      ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refresh) : null;
+      ro?.observe(container);
+    });
+
+    return () => {
+      cancelled = true;
+      timers.forEach((id) => window.clearTimeout(id));
+      ro?.disconnect();
+      markerRef.current?.remove();
+      markerRef.current = null;
+      created?.remove();
+      mapRef.current = null;
+      setMapReady(false);
+    };
+    // Map is created once per token/container; later moves happen in the position effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, token, mapId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mounted || !mapReady || !map || !position) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      return;
+    }
+
+    void import('mapbox-gl').then((mod) => {
+      const mapboxgl = mod.default;
+      const next: [number, number] = [position[1], position[0]];
+      let marker = markerRef.current;
+      if (!marker) {
+        marker = new mapboxgl.Marker({ element: pinElement(), draggable: true, anchor: 'bottom' })
+          .setLngLat(next)
+          .addTo(map);
+        marker.on('dragend', () => {
+          const lngLat = marker?.getLngLat();
+          if (!lngLat) return;
+          setPickedLabel(null);
+          onPickRef.current(lngLat.lat, lngLat.lng);
+        });
+        markerRef.current = marker;
+      } else {
+        marker.setLngLat(next);
+      }
+
+      const current = map.getCenter();
+      if (Math.abs(current.lat - position[0]) < 1e-6 && Math.abs(current.lng - position[1]) < 1e-6) return;
+      map.flyTo({
+        center: next,
+        zoom: Math.max(map.getZoom(), PICKED_ZOOM),
+        pitch: PITCH,
+        bearing: BEARING,
+        duration: 800,
+      });
+    });
+  }, [mounted, mapReady, position]);
 
   if (!mounted) {
-    return <div className="location-map location-map--loading">Loading map…</div>;
+    return (
+      <div className={`location-map location-map--loading${compact ? ' location-map--compact' : ''}`}>
+        Loading map…
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div className={`location-map location-map--loading${compact ? ' location-map--compact' : ''}`}>
+        Add NEXT_PUBLIC_MAPBOX_TOKEN to load the 3D basemap.
+      </div>
+    );
   }
 
   return (
-    <div className={`location-map ${position ? 'has-pin' : ''}`}>
+    <div className={`location-map${position ? ' has-pin' : ''}${compact ? ' location-map--compact' : ''}`}>
       <div className="location-map-body">
-        <MapContainer
-          key="project-location-map"
-          center={center}
-          zoom={zoom}
-          scrollWheelZoom
-          zoomControl={false}
-          attributionControl={false}
-          className="location-map-canvas"
-        >
-          <WhenMapReady>
-            <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-              subdomains="abcd"
-            />
-            <ZoomControl position="bottomright" />
-            <MapClick
-              onPick={(nextLat, nextLng) => {
-                setPickedLabel(null);
-                onPick(nextLat, nextLng);
-              }}
-            />
-            <MapLifecycle position={position} />
-            {position ? <Marker position={position} icon={pin} /> : null}
-          </WhenMapReady>
-        </MapContainer>
+        <div ref={shellRef} id={mapId} className="location-map-canvas location-map-canvas--gl" />
       </div>
 
       <div className="location-map-wash" aria-hidden />

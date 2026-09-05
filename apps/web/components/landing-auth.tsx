@@ -7,8 +7,10 @@ import {
   useState,
   type FormEvent,
 } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, ArrowLeft, Building2, HardHat, Info, Lock, Mail, User, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Building2, HardHat, Info } from 'lucide-react';
+import { LordIcon } from './lord-icon';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
 import { homePathForUser, homePathForWorkspace } from '../lib/home';
@@ -28,7 +30,7 @@ function roleFromQuery(raw: string | null): WorkspaceRole | null {
 }
 
 function workspaceLabel(role: WorkspaceRole): string {
-  return role === 'surveyor' ? 'Expert (surveyor)' : 'Client';
+  return role === 'surveyor' ? 'Surveyor' : 'Client';
 }
 
 export function LandingAuthOverlay({
@@ -73,6 +75,7 @@ export function LandingAuthOverlay({
   const [signupPhone, setSignupPhone] = useState(() => defaultPhoneInput());
   const [signupError, setSignupError] = useState<string | null>(null);
   const [signupBusy, setSignupBusy] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -132,19 +135,41 @@ export function LandingAuthOverlay({
     setLoginError(null);
     setLoginBusy(true);
     try {
-      const session = await api.login({
-        email: loginEmail,
-        password: loginPassword,
-        role,
-      });
-      setSession({
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-        expiresAt: Date.now() + session.expiresIn * 1000,
-        activeRole: session.activeRole ?? role,
-      });
-      const onboarding = await api.getOnboarding().catch(() => null);
-      router.push(onboarding && onboarding.step !== 'done' ? '/onboarding' : homePathForWorkspace(session.activeRole ?? role));
+      await finishPasswordLogin(loginEmail, loginPassword, role);
+    } catch (err) {
+      setLoginError(errorMessage(err));
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
+  async function finishPasswordLogin(email: string, password: string, workspace: WorkspaceRole) {
+    const session = await api.login({
+      email,
+      password,
+      role: workspace,
+    });
+    setSession({
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      expiresAt: Date.now() + session.expiresIn * 1000,
+      activeRole: session.activeRole ?? workspace,
+    });
+    const onboarding = await api.getOnboarding().catch(() => null);
+    router.push(
+      onboarding && onboarding.step !== 'done'
+        ? '/onboarding'
+        : homePathForWorkspace(session.activeRole ?? workspace),
+    );
+  }
+
+  /** Local-only: skip Google / forms and land in the surveyor workspace. */
+  async function enterDevSurveyor() {
+    setLoginError(null);
+    setSignupError(null);
+    setLoginBusy(true);
+    try {
+      await finishPasswordLogin(DEV_EMAIL, DEV_PASSWORD, 'surveyor');
     } catch (err) {
       setLoginError(errorMessage(err));
     } finally {
@@ -209,31 +234,31 @@ export function LandingAuthOverlay({
           <header className="mkt-auth-head">
             <div>
               <p className="mkt-auth-kicker">
-                {!roleChosen
-                  ? 'Get started'
-                  : forgotOpen
-                    ? 'Reset access'
+                {forgotOpen
+                  ? 'Reset access'
+                  : !roleChosen
+                    ? 'Get started'
                     : mode === 'login'
                       ? 'Welcome back'
-                      : 'Join BLD'}
+                      : `Join as a ${workspaceLabel(role).toLowerCase()}`}
               </p>
               <h2 id={titleId} className="mkt-auth-title">
-                {!roleChosen
-                  ? 'Who are you?'
-                  : forgotOpen
-                    ? 'Forgot password'
+                {forgotOpen
+                  ? 'Forgot password'
+                  : !roleChosen
+                    ? 'Who are you?'
                     : mode === 'login'
                       ? 'Sign in'
                       : 'Create account'}
               </h2>
             </div>
             <button type="button" className="mkt-auth-close" onClick={onClose} aria-label="Close">
-              <X size={18} strokeWidth={2.2} />
+              <LordIcon name="close" size={22} trigger="hover" />
             </button>
           </header>
 
           {!roleChosen ? (
-            <div className="mkt-auth-body" key="role">
+            <div className="mkt-auth-body">
               <p className="mkt-auth-lede">
                 Pick your workspace first. Then you can sign in or create an account.
               </p>
@@ -260,7 +285,7 @@ export function LandingAuthOverlay({
                     <HardHat size={22} strokeWidth={1.8} />
                   </span>
                   <span className="mkt-auth-role-copy">
-                    <strong>Expert (surveyor)</strong>
+                    <strong>Surveyor</strong>
                     <span>I offer survey services</span>
                   </span>
                 </button>
@@ -268,15 +293,18 @@ export function LandingAuthOverlay({
             </div>
           ) : (
             <>
-              <button
-                type="button"
-                className="mkt-auth-back"
-                onClick={forgotOpen ? closeForgot : onClearRole}
-              >
-                <ArrowLeft size={15} strokeWidth={2.2} />
-                {forgotOpen ? 'Back to sign in' : workspaceLabel(role)}
-                {!forgotOpen ? <span className="mkt-auth-back-change">Change</span> : null}
-              </button>
+              {forgotOpen ? (
+                <button type="button" className="mkt-auth-back" onClick={closeForgot}>
+                  <ArrowLeft size={15} strokeWidth={2.2} />
+                  Back to sign in
+                </button>
+              ) : (
+                <button type="button" className="mkt-auth-back" onClick={onClearRole}>
+                  <ArrowLeft size={15} strokeWidth={2.2} />
+                  {workspaceLabel(role)}
+                  <span className="mkt-auth-back-change">Change</span>
+                </button>
+              )}
 
               {!forgotOpen && (
                 <div className="mkt-auth-tabs" role="tablist" aria-label="Auth mode">
@@ -301,189 +329,214 @@ export function LandingAuthOverlay({
                 </div>
               )}
 
-              <div className="mkt-auth-body" key={forgotOpen ? 'forgot' : mode}>
-                {forgotOpen && role ? (
-                  <>
-                    <p className="mkt-auth-lede">
-                      Enter the email for your {workspaceLabel(role).toLowerCase()} account and
-                      we&apos;ll send a reset link.
-                    </p>
-                    {forgotSent ? (
-                      <div className="alert success" role="status">
-                        <Info size={17} />
-                        <span>
-                          If an account exists for that email, we sent a password reset link. Check
-                          your inbox, then return to sign in.
-                        </span>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  className="mkt-auth-body"
+                  key={forgotOpen ? 'forgot' : `${mode}-${role}`}
+                  initial={reduceMotion ? false : { opacity: 0, y: 14, filter: 'blur(4px)' }}
+                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                  exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                  transition={{ duration: 0.32, ease: [0.22, 0.61, 0.36, 1] }}
+                >
+                  {forgotOpen ? (
+                    <>
+                      <p className="mkt-auth-lede">
+                        Enter the email for your {workspaceLabel(role).toLowerCase()} account and
+                        we&apos;ll send a reset link.
+                      </p>
+                      {forgotSent ? (
+                        <div className="alert success" role="status">
+                          <Info size={17} />
+                          <span>
+                            If an account exists for that email, we sent a password reset link. Check
+                            your inbox, then return to sign in.
+                          </span>
+                        </div>
+                      ) : (
+                        <form onSubmit={onForgot} noValidate>
+                          {forgotError && (
+                            <div className="alert error" role="alert">
+                              <AlertCircle size={17} />
+                              <span>{forgotError}</span>
+                            </div>
+                          )}
+                          <div className="field">
+                            <label htmlFor="mkt-forgot-email">Email</label>
+                            <div className="input-icon">
+                              <LordIcon name="mail" size={18} trigger="hover" />
+                              <input
+                                id="mkt-forgot-email"
+                                type="email"
+                                autoComplete="email"
+                                required
+                                value={forgotEmail}
+                                onChange={(e) => setForgotEmail(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <button className="btn block" type="submit" disabled={forgotBusy}>
+                            {forgotBusy ? <span className="spin" /> : null}
+                            {forgotBusy ? 'Sending…' : 'Send reset link'}
+                          </button>
+                        </form>
+                      )}
+                      {forgotSent && (
+                        <button type="button" className="btn block" onClick={closeForgot}>
+                          Back to sign in
+                        </button>
+                      )}
+                    </>
+                  ) : mode === 'login' ? (
+                    <>
+                      <p className="mkt-auth-lede">
+                        Sign in to your {workspaceLabel(role).toLowerCase()} workspace.
+                      </p>
+                      {DEV_MODE && role === 'surveyor' && (
+                        <button
+                          type="button"
+                          className="btn block"
+                          onClick={() => void enterDevSurveyor()}
+                          disabled={loginBusy}
+                          style={{ marginBottom: 12 }}
+                        >
+                          {loginBusy ? <span className="spin" /> : null}
+                          {loginBusy ? 'Entering surveyor…' : 'Enter as surveyor (local)'}
+                        </button>
+                      )}
+                      <GoogleButton role={role} label="Sign in with Google" />
+                      <div className="auth-or">
+                        <span>or</span>
                       </div>
-                    ) : (
-                      <form onSubmit={onForgot} noValidate>
-                        {forgotError && (
+                      <form onSubmit={onLogin} noValidate>
+                        {DEV_MODE && (
+                          <div className="alert info">
+                            <Info size={17} />
+                            <span>Dev mode: prefilled with the fixed test account.</span>
+                          </div>
+                        )}
+                        {(created || signup.email) && !loginError && (
+                          <div className="alert success">
+                            <Info size={17} />
+                            <span>Account ready — sign in to continue.</span>
+                          </div>
+                        )}
+                        {loginError && (
                           <div className="alert error" role="alert">
                             <AlertCircle size={17} />
-                            <span>{forgotError}</span>
+                            <span>{loginError}</span>
                           </div>
                         )}
                         <div className="field">
-                          <label htmlFor="mkt-forgot-email">Email</label>
+                          <label htmlFor="mkt-login-email">Email</label>
                           <div className="input-icon">
-                            <Mail size={16} />
+                            <LordIcon name="mail" size={18} trigger="hover" />
                             <input
-                              id="mkt-forgot-email"
+                              id="mkt-login-email"
                               type="email"
                               autoComplete="email"
                               required
-                              value={forgotEmail}
-                              onChange={(e) => setForgotEmail(e.target.value)}
+                              value={loginEmail}
+                              onChange={(e) => setLoginEmail(e.target.value)}
                             />
                           </div>
                         </div>
-                        <button className="btn block" type="submit" disabled={forgotBusy}>
-                          {forgotBusy ? <span className="spin" /> : null}
-                          {forgotBusy ? 'Sending…' : 'Send reset link'}
+                        <div className="field">
+                          <div className="mkt-auth-label-row">
+                            <label htmlFor="mkt-login-password">Password</label>
+                            <button
+                              type="button"
+                              className="mkt-auth-forgot"
+                              onClick={openForgot}
+                            >
+                              Forgot password?
+                            </button>
+                          </div>
+                          <div className="input-icon">
+                            <LordIcon name="security" size={18} trigger="hover" />
+                            <input
+                              id="mkt-login-password"
+                              type="password"
+                              autoComplete="current-password"
+                              required
+                              value={loginPassword}
+                              onChange={(e) => setLoginPassword(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <button className="btn block" type="submit" disabled={loginBusy}>
+                          {loginBusy ? <span className="spin" /> : null}
+                          {loginBusy ? 'Signing in…' : 'Sign in'}
                         </button>
                       </form>
-                    )}
-                    {forgotSent && (
-                      <button type="button" className="btn block" onClick={closeForgot}>
-                        Back to sign in
-                      </button>
-                    )}
-                  </>
-                ) : mode === 'login' ? (
-                  <>
-                    <p className="mkt-auth-lede">Sign in to your {workspaceLabel(role).toLowerCase()} workspace.</p>
-                    <GoogleButton role={role} label="Sign in with Google" />
-                    <div className="auth-or">
-                      <span>or</span>
-                    </div>
-                    <form onSubmit={onLogin} noValidate>
-                      {DEV_MODE && (
-                        <div className="alert info">
-                          <Info size={17} />
-                          <span>Dev mode: prefilled with the fixed test account.</span>
-                        </div>
-                      )}
-                      {(created || signup.email) && !loginError && (
-                        <div className="alert success">
-                          <Info size={17} />
-                          <span>Account ready — sign in to continue.</span>
-                        </div>
-                      )}
-                      {loginError && (
-                        <div className="alert error" role="alert">
-                          <AlertCircle size={17} />
-                          <span>{loginError}</span>
-                        </div>
-                      )}
-                      <div className="field">
-                        <label htmlFor="mkt-login-email">Email</label>
-                        <div className="input-icon">
-                          <Mail size={16} />
-                          <input
-                            id="mkt-login-email"
-                            type="email"
-                            autoComplete="email"
-                            required
-                            value={loginEmail}
-                            onChange={(e) => setLoginEmail(e.target.value)}
-                          />
-                        </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mkt-auth-lede">
+                        Create your {workspaceLabel(role).toLowerCase()} account.
+                      </p>
+                      <GoogleButton role={role} label="Sign up with Google" />
+                      <div className="auth-or">
+                        <span>or</span>
                       </div>
-                      <div className="field">
-                        <div className="mkt-auth-label-row">
-                          <label htmlFor="mkt-login-password">Password</label>
-                          <button
-                            type="button"
-                            className="mkt-auth-forgot"
-                            onClick={openForgot}
-                          >
-                            Forgot password?
-                          </button>
+                      <form onSubmit={onSignup} noValidate>
+                        {signupError && (
+                          <div className="alert error" role="alert">
+                            <AlertCircle size={17} />
+                            <span>{signupError}</span>
+                          </div>
+                        )}
+                        <div className="field">
+                          <label htmlFor="mkt-signup-name">Full name</label>
+                          <div className="input-icon">
+                            <LordIcon name="avatar" size={18} trigger="hover" />
+                            <input
+                              id="mkt-signup-name"
+                              type="text"
+                              required
+                              value={signup.fullName}
+                              onChange={(e) => setSignup((s) => ({ ...s, fullName: e.target.value }))}
+                            />
+                          </div>
                         </div>
-                        <div className="input-icon">
-                          <Lock size={16} />
-                          <input
-                            id="mkt-login-password"
-                            type="password"
-                            autoComplete="current-password"
-                            required
-                            value={loginPassword}
-                            onChange={(e) => setLoginPassword(e.target.value)}
-                          />
+                        <div className="field">
+                          <label htmlFor="mkt-signup-email">Email</label>
+                          <div className="input-icon">
+                            <LordIcon name="mail" size={18} trigger="hover" />
+                            <input
+                              id="mkt-signup-email"
+                              type="email"
+                              required
+                              value={signup.email}
+                              onChange={(e) => setSignup((s) => ({ ...s, email: e.target.value }))}
+                            />
+                          </div>
                         </div>
-                      </div>
-                      <button className="btn block" type="submit" disabled={loginBusy}>
-                        {loginBusy ? <span className="spin" /> : null}
-                        {loginBusy ? 'Signing in…' : 'Sign in'}
-                      </button>
-                    </form>
-                  </>
-                ) : (
-                  <>
-                    <p className="mkt-auth-lede">Create your {workspaceLabel(role).toLowerCase()} account.</p>
-                    <GoogleButton role={role} label="Sign up with Google" />
-                    <div className="auth-or">
-                      <span>or</span>
-                    </div>
-                    <form onSubmit={onSignup} noValidate>
-                      {signupError && (
-                        <div className="alert error" role="alert">
-                          <AlertCircle size={17} />
-                          <span>{signupError}</span>
-                        </div>
-                      )}
-                      <div className="field">
-                        <label htmlFor="mkt-signup-name">Full name</label>
-                        <div className="input-icon">
-                          <User size={16} />
-                          <input
-                            id="mkt-signup-name"
-                            type="text"
-                            required
-                            value={signup.fullName}
-                            onChange={(e) => setSignup((s) => ({ ...s, fullName: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                      <div className="field">
-                        <label htmlFor="mkt-signup-email">Email</label>
-                        <div className="input-icon">
-                          <Mail size={16} />
-                          <input
-                            id="mkt-signup-email"
-                            type="email"
-                            required
-                            value={signup.email}
-                            onChange={(e) => setSignup((s) => ({ ...s, email: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                      <PhoneInput
-                        id="mkt-signup-phone"
-                        value={signupPhone}
-                        onChange={setSignupPhone}
-                        required
-                        disabled={signupBusy}
-                      />
-                      <div className="field">
-                        <label htmlFor="mkt-signup-password">Password</label>
-                        <input
-                          id="mkt-signup-password"
-                          type="password"
+                        <PhoneInput
+                          id="mkt-signup-phone"
+                          value={signupPhone}
+                          onChange={setSignupPhone}
                           required
-                          value={signup.password}
-                          onChange={(e) => setSignup((s) => ({ ...s, password: e.target.value }))}
+                          disabled={signupBusy}
                         />
-                      </div>
-                      <button className="btn block" type="submit" disabled={signupBusy}>
-                        {signupBusy ? <span className="spin" /> : null}
-                        {signupBusy ? 'Creating…' : 'Create account'}
-                      </button>
-                    </form>
-                  </>
-                )}
-              </div>
+                        <div className="field">
+                          <label htmlFor="mkt-signup-password">Password</label>
+                          <input
+                            id="mkt-signup-password"
+                            type="password"
+                            required
+                            value={signup.password}
+                            onChange={(e) => setSignup((s) => ({ ...s, password: e.target.value }))}
+                          />
+                        </div>
+                        <button className="btn block" type="submit" disabled={signupBusy}>
+                          {signupBusy ? <span className="spin" /> : null}
+                          {signupBusy ? 'Creating…' : 'Create account'}
+                        </button>
+                      </form>
+                    </>
+                  )}
+                </motion.div>
+              </AnimatePresence>
             </>
           )}
         </div>
@@ -501,6 +554,7 @@ export function useLandingAuth() {
   const mode: AuthMode = modeParam === 'signup' ? 'signup' : 'login';
   const role = roleFromQuery(searchParams.get('role'));
   const created = searchParams.get('created') === '1';
+  const wantDevSurveyor = DEV_MODE && searchParams.get('dev') === 'surveyor';
 
   useEffect(() => {
     if (!isAuthenticated()) return;
@@ -517,6 +571,34 @@ export function useLandingAuth() {
       cancelled = true;
     };
   }, [router]);
+
+  // Local shortcut: /?auth=login&dev=surveyor logs in and opens /surveyor.
+  useEffect(() => {
+    if (!wantDevSurveyor || isAuthenticated()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await api.login({
+          email: DEV_EMAIL,
+          password: DEV_PASSWORD,
+          role: 'surveyor',
+        });
+        if (cancelled) return;
+        setSession({
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          expiresAt: Date.now() + session.expiresIn * 1000,
+          activeRole: 'surveyor',
+        });
+        router.replace('/surveyor');
+      } catch {
+        /* fall through to normal auth UI */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wantDevSurveyor, router]);
 
   const syncUrl = useCallback(
     (next: { auth?: AuthMode | null; role?: WorkspaceRole | null; created?: boolean }) => {

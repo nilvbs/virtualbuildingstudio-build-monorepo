@@ -266,6 +266,8 @@ export const surveyorPortfolioDetailsSchema = z
     minimumProjectCents: z.number().int().nonnegative().nullable().optional(),
     emergencyRateCents: z.number().int().nonnegative().nullable().optional(),
     travelCharges: z.enum(['included', 'extra']).nullable().optional(),
+    yearsRealityCapture: z.number().int().min(0).max(80).nullable().optional(),
+    generalLiabilityInsurance: z.boolean().nullable().optional(),
     languages: z.array(z.string().max(40)).max(20).optional(),
     industries: z.array(z.string().max(40)).max(30).optional(),
     certifications: z.array(z.record(z.string(), z.unknown())).max(40).optional(),

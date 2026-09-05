@@ -451,9 +451,9 @@ export const SURVEYOR_PROFILE_COMPLETION_CHECKS = [
   { key: 'equipment', label: 'Equipment' },
   { key: 'availability', label: 'Availability' },
   { key: 'pricing', label: 'Pricing' },
-  { key: 'languages', label: 'Languages' },
+  { key: 'yearsRealityCapture', label: 'Years of reality capture' },
   { key: 'industries', label: 'Industries' },
-  { key: 'identity', label: 'Identity profile' },
+  { key: 'generalLiabilityInsurance', label: 'General liability insurance' },
 ] as const;
 
 export type SurveyorProfileCompletionKey =
@@ -476,21 +476,6 @@ type ProfileCompletionSource = {
   details?: SurveyorPortfolioDetails | null;
 };
 
-function identityComplete(details: SurveyorPortfolioDetails | null | undefined): boolean {
-  const identity = details?.identity;
-  if (!identity) return false;
-  if (identity.kind === 'individual') {
-    return Boolean(
-      identity.professionalTitle.trim() &&
-        identity.headline.trim() &&
-        identity.aboutMe.trim(),
-    );
-  }
-  return Boolean(
-    identity.companyName.trim() && identity.tagline.trim() && identity.aboutCompany.trim(),
-  );
-}
-
 export function surveyorProfileCompletion(
   profile: ProfileCompletionSource | null | undefined,
 ): SurveyorProfileCompletion {
@@ -510,14 +495,19 @@ export function surveyorProfileCompletion(
 
   const checks: Record<SurveyorProfileCompletionKey, boolean> = {
     services: (profile.services?.length ?? 0) > 0,
-    baseCity: Boolean(profile.baseCity?.trim()),
-    location: Boolean(profile.location),
+    baseCity:
+      Boolean(profile.baseCity?.trim()) ||
+      (details.coverageCounties?.some((c) => c.selected !== false) ?? false),
+    location:
+      Boolean(profile.location) ||
+      (details.coverageCounties?.some((c) => c.selected !== false) ?? false),
     equipment: (profile.equipment?.length ?? 0) > 0,
     availability: Boolean(details.availability),
     pricing: hasPricing,
-    languages: details.languages.length > 0,
+    yearsRealityCapture:
+      details.yearsRealityCapture != null && details.yearsRealityCapture >= 0,
     industries: details.industries.length > 0,
-    identity: identityComplete(details),
+    generalLiabilityInsurance: typeof details.generalLiabilityInsurance === 'boolean',
   };
 
   const done = SURVEYOR_PROFILE_COMPLETION_CHECKS.filter((c) => checks[c.key]).map((c) => c.key);

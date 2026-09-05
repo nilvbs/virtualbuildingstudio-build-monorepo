@@ -130,8 +130,8 @@ export function IncompleteProfileModal({
           Complete your portfolio
         </h2>
         <p className="sheet-modal-copy">
-          Dashboard unlocks when your portfolio is 100% complete. Finish the remaining details so we
-          can match you to projects.
+          Your progress is saved. Dashboard unlocks at 100% — finish the remaining details so we can
+          match you to projects.
         </p>
         <ProfileCompletionBar percent={percent} />
         <div className="sheet-modal-actions">
@@ -141,9 +141,6 @@ export function IncompleteProfileModal({
           <button type="button" className="btn secondary block" onClick={onClose}>
             Remind me later
           </button>
-          <Link href="/surveyor/profile" className="hint" style={{ textAlign: 'center' }} onClick={onClose}>
-            Go to Portfolio tab
-          </Link>
         </div>
       </div>
     </div>

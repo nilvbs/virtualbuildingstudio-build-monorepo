@@ -30,20 +30,20 @@ const STEPS: { num: string; icon: FeatherName; title: string; copy: string }[] =
   {
     num: '01',
     icon: 'edit-3',
-    title: 'Tell us what you need',
-    copy: 'Share the site, services, and timing in a short brief.',
+    title: 'Build your profile',
+    copy: 'Services, coverage radius, rates, and portfolio.',
   },
   {
     num: '02',
     icon: 'users',
-    title: 'We match by hand',
-    copy: 'Our team selects a surveyor who fits location and scope.',
+    title: 'We send you jobs',
+    copy: 'Our team matches projects to surveyors who fit location and scope.',
   },
   {
     num: '03',
     icon: 'check-circle',
-    title: 'Survey delivered',
-    copy: 'Your surveyor coordinates the visit and delivers results.',
+    title: 'You deliver the survey',
+    copy: 'Accept the request, coordinate the visit, and send the results.',
   },
 ];
 
@@ -60,7 +60,7 @@ export function LandingScreen({ navigation }: Props) {
           <Pressable
             hitSlop={8}
             style={styles.signInBtn}
-            onPress={() => navigation.navigate('Auth', { mode: 'login' })}
+            onPress={() => navigation.navigate('Auth', { mode: 'login', role: 'surveyor' })}
           >
             <Text style={styles.signIn}>Sign in</Text>
           </Pressable>
@@ -86,12 +86,12 @@ export function LandingScreen({ navigation }: Props) {
         <View style={styles.content}>
           <FadeInUp delay={40}>
             <Text style={styles.tagline}>
-              Site surveys,{'\n'}
-              <Text style={styles.taglineAccent}>built around you.</Text>
+              Site work for surveyors,{'\n'}
+              <Text style={styles.taglineAccent}>matched by hand.</Text>
             </Text>
             <Text style={styles.lede}>
-              The managed US marketplace connecting clients with vetted, independent surveyors —
-              matched by hand, delivered on time.
+              Build your profile, set coverage, and get vetted projects sent to you — no bidding
+              wars, no cold outreach.
             </Text>
           </FadeInUp>
 
@@ -109,31 +109,10 @@ export function LandingScreen({ navigation }: Props) {
           </FadeInUp>
 
           <FadeInUp delay={160}>
-            <Text style={styles.sectionTitle}>Choose your path</Text>
+            <Text style={styles.sectionTitle}>Join BLD as a surveyor</Text>
           </FadeInUp>
 
           <FadeInUp delay={210}>
-            <PressCard
-              style={styles.path}
-              onPress={() => navigation.navigate('Auth', { mode: 'signup', role: 'client' })}
-            >
-              <View style={[styles.pathIcon, { backgroundColor: colors.accentSoft }]}>
-                <Feather name="home" size={22} color={colors.accent} />
-              </View>
-              <Text style={styles.pathTag}>For clients</Text>
-              <Text style={styles.pathTitle}>Request a survey</Text>
-              <Text style={styles.pathCopy}>
-                Post your project once. We match you to a vetted surveyor near the site and stay with
-                you until the visit is confirmed.
-              </Text>
-              <View style={styles.pathCtaRow}>
-                <Text style={styles.pathCta}>Start as a client</Text>
-                <Feather name="arrow-right" size={16} color={colors.accent} />
-              </View>
-            </PressCard>
-          </FadeInUp>
-
-          <FadeInUp delay={270}>
             <PressCard
               style={styles.path}
               onPress={() => navigation.navigate('Auth', { mode: 'signup', role: 'surveyor' })}
@@ -141,14 +120,14 @@ export function LandingScreen({ navigation }: Props) {
               <View style={[styles.pathIcon, { backgroundColor: colors.accentSoft2 }]}>
                 <Feather name="compass" size={22} color={colors.accent2} />
               </View>
-              <Text style={styles.pathTag}>For surveyors</Text>
+              <Text style={styles.pathTag}>Surveyor workspace</Text>
               <Text style={styles.pathTitle}>Offer your services</Text>
               <Text style={styles.pathCopy}>
-                Set up your profile and coverage. We bring the right projects to you — no bidding wars,
-                no cold outreach.
+                Laser scanning, drone, measured building, land, scan-to-BIM. We match you by hand
+                to jobs that fit your skills and radius.
               </Text>
               <View style={styles.pathCtaRow}>
-                <Text style={styles.pathCta}>Start as a surveyor</Text>
+                <Text style={styles.pathCta}>Create your surveyor account</Text>
                 <Feather name="arrow-right" size={16} color={colors.accent} />
               </View>
             </PressCard>
@@ -175,7 +154,7 @@ export function LandingScreen({ navigation }: Props) {
           <FadeInUp delay={390}>
             <View style={styles.footer}>
               <Text style={styles.footerText}>Already have an account?</Text>
-              <Pressable hitSlop={8} onPress={() => navigation.navigate('Auth', { mode: 'login' })}>
+              <Pressable hitSlop={8} onPress={() => navigation.navigate('Auth', { mode: 'login', role: 'surveyor' })}>
                 <Text style={styles.footerLink}>Sign in</Text>
               </Pressable>
             </View>
