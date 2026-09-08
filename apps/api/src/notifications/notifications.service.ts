@@ -5,6 +5,7 @@ import type { Notification as NotificationRow } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EMAIL_SENDER, type EmailSender } from './delivery/email-sender';
 import { SMS_SENDER, type SmsSender } from './delivery/sms-sender';
+import { TWILIO_TRIAL_NOTIFY_TEMPLATE } from './delivery/twilio.sms-sender';
 
 interface MatchNotificationContext {
   clientUserId: string;
@@ -132,7 +133,13 @@ export class NotificationsService {
       }),
     ];
     if (user.phone?.trim()) {
-      tasks.push(this.sms.send({ to: user.phone, body: msg.smsBody }));
+      tasks.push(
+        this.sms.send({
+          to: user.phone,
+          body: msg.smsBody,
+          trialTemplate: TWILIO_TRIAL_NOTIFY_TEMPLATE,
+        }),
+      );
     }
     await Promise.allSettled(tasks);
   }
