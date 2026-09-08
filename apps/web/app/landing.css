@@ -1568,9 +1568,19 @@
 }
 
 .bld-flow-stage {
+  border-radius: 0;
+  border: 0;
+  background: linear-gradient(180deg, #f3f4f8 0%, #eceef5 100%);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.bld-flow-panel {
+  display: grid;
+  gap: 0;
   border-radius: 22px;
   border: 1px solid rgba(194, 198, 214, 0.45);
-  background: linear-gradient(180deg, #f3f4f8 0%, #eceef5 100%);
+  background: #eceef4;
   box-shadow:
     0 18px 44px rgba(15, 44, 82, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.85);
@@ -1578,7 +1588,7 @@
 }
 
 .bld-flow-stage-chrome {
-  padding: 12px 14px 14px;
+  padding: 12px 14px 12px;
   background: rgba(255, 255, 255, 0.55);
   border-bottom: 1px solid rgba(194, 198, 214, 0.35);
 }
@@ -1600,7 +1610,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   padding: 0 2px;
 }
 
@@ -1635,40 +1645,6 @@
   color: #5b52e0;
   font-size: 11px;
   font-weight: 650;
-}
-
-.bld-flow-stage-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 5px;
-  border-radius: 18px;
-  background: rgba(228, 230, 240, 0.92);
-  border: 1px solid rgba(194, 198, 214, 0.45);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-}
-
-.bld-flow-stage-tab {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--bld-on-surface-variant);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 650;
-  padding: 9px 6px;
-  border-radius: 14px;
-  cursor: pointer;
-  transition:
-    background 0.25s var(--bld-ease),
-    color 0.25s var(--bld-ease),
-    box-shadow 0.25s var(--bld-ease);
-}
-
-.bld-flow-stage-tab.is-active {
-  background: #fff;
-  color: var(--bld-on-surface);
-  box-shadow: 0 6px 14px rgba(15, 44, 82, 0.08);
 }
 
 .bld-flow-stage-body {
@@ -1875,8 +1851,9 @@
 .bld-flow-rail {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-radius: 16px;
-  border: 1px solid rgba(194, 198, 214, 0.5);
+  border-radius: 0;
+  border: 0;
+  border-top: 1px solid rgba(194, 198, 214, 0.45);
   overflow: hidden;
   background: #eceef4;
 }
@@ -2026,10 +2003,6 @@
     width: auto;
     max-width: 16ch;
     font-size: clamp(24px, 7vw, 30px);
-  }
-
-  .bld-flow-stage-tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .bld-flow-rail {

@@ -75,77 +75,65 @@ export function LandingFlow() {
         </ul>
       </div>
 
-      <div className="bld-flow-stage" aria-live="polite">
-        <div className="bld-flow-stage-chrome">
-          <div className="bld-flow-stage-brand">
-            <img src="/brand/bld-logo-dark.png" alt="" width={72} height={28} />
+      <div className="bld-flow-panel">
+        <div className="bld-flow-stage" aria-live="polite">
+          <div className="bld-flow-stage-chrome">
+            <div className="bld-flow-stage-brand">
+              <img src="/brand/bld-logo-dark.png" alt="" width={72} height={28} />
+            </div>
+            <div className="bld-flow-stage-bar">
+              <p className="bld-flow-stage-site">
+                <MapPin size={14} strokeWidth={2.4} aria-hidden />
+                <span>412 Market Street</span>
+                <Check size={14} strokeWidth={2.6} className="bld-flow-stage-ok" aria-hidden />
+              </p>
+              <span className="bld-flow-stage-chip">{step.meta}</span>
+            </div>
           </div>
-          <div className="bld-flow-stage-bar">
-            <p className="bld-flow-stage-site">
-              <MapPin size={14} strokeWidth={2.4} aria-hidden />
-              <span>412 Market Street</span>
-              <Check size={14} strokeWidth={2.6} className="bld-flow-stage-ok" aria-hidden />
-            </p>
-            <span className="bld-flow-stage-chip">{step.meta}</span>
-          </div>
-          <div className="bld-flow-stage-tabs" role="tablist" aria-label="Flow preview">
-            {FLOW_STEPS.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={index === active}
-                className={`bld-flow-stage-tab${index === active ? ' is-active' : ''}`}
-                onClick={() => setActive(index)}
-              >
-                {item.title}
-              </button>
-            ))}
+
+          <div key={step.id} className="bld-flow-stage-body">
+            <div className="bld-flow-stage-copy">
+              <p className="bld-flow-stage-kicker">
+                <span className="bld-flow-stage-index" aria-hidden>
+                  {String(active + 1).padStart(2, '0')}
+                </span>
+                {step.stageLabel}
+              </p>
+              <h3>{step.stageTitle}</h3>
+              <p className="bld-flow-stage-body-text">{step.stageBody}</p>
+              <ul className="bld-flow-stage-points">
+                {step.highlights.map((item) => (
+                  <li key={item}>
+                    <span className="bld-flow-stage-point-check" aria-hidden>
+                      <Check size={11} strokeWidth={3} />
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="bld-flow-stage-media">
+              <img src={step.image} alt="" loading="lazy" />
+              <div className="bld-flow-stage-media-veil" aria-hidden />
+            </div>
           </div>
         </div>
 
-        <div key={step.id} className="bld-flow-stage-body">
-          <div className="bld-flow-stage-copy">
-            <p className="bld-flow-stage-kicker">
-              <span className="bld-flow-stage-index" aria-hidden>
-                {String(active + 1).padStart(2, '0')}
-              </span>
-              {step.stageLabel}
-            </p>
-            <h3>{step.stageTitle}</h3>
-            <p className="bld-flow-stage-body-text">{step.stageBody}</p>
-            <ul className="bld-flow-stage-points">
-              {step.highlights.map((item) => (
-                <li key={item}>
-                  <span className="bld-flow-stage-point-check" aria-hidden>
-                    <Check size={11} strokeWidth={3} />
-                  </span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="bld-flow-stage-media">
-            <img src={step.image} alt="" loading="lazy" />
-            <div className="bld-flow-stage-media-veil" aria-hidden />
-          </div>
+        <div className="bld-flow-rail" role="tablist" aria-label="How BLD works">
+          {FLOW_STEPS.map((item, index) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={index === active}
+              className={`bld-flow-step${index === active ? ' is-active' : ''}`}
+              onClick={() => setActive(index)}
+            >
+              <strong>{item.title}</strong>
+              <span>{item.summary}</span>
+            </button>
+          ))}
         </div>
-      </div>
-
-      <div className="bld-flow-rail" role="tablist" aria-label="How BLD works">
-        {FLOW_STEPS.map((item, index) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={index === active}
-            className={`bld-flow-step${index === active ? ' is-active' : ''}`}
-            onClick={() => setActive(index)}
-          >
-            <strong>{item.title}</strong>
-            <span>{item.summary}</span>
-          </button>
-        ))}
       </div>
     </div>
   );
