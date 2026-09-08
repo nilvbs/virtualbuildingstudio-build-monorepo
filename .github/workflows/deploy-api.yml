@@ -92,10 +92,15 @@ jobs:
 
       - name: Deploy on EC2
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ steps.dirs.outputs.user }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER
           script: |
             set -euo pipefail
             APP_DIR="${{ steps.dirs.outputs.app_dir }}"
@@ -108,6 +113,35 @@ jobs:
               echo "::error::docker-compose.yml on EC2 has no db service — compose sync failed"
               exit 1
             fi
+
+            # Upsert Twilio SMS credentials into host .env (compose env_file).
+            upsert_env() {
+              key="$1"
+              val="$2"
+              file="$APP_DIR/.env"
+              touch "$file"
+              chmod 600 "$file" || true
+              if [ -z "$val" ]; then
+                echo "WARN: $key empty — leave existing value"
+                return 0
+              fi
+              # Escape for sed replacement (& and \).
+              esc=$(printf '%s' "$val" | sed -e 's/[&\\]/\\&/g')
+              if grep -q "^${key}=" "$file"; then
+                sed -i "s|^${key}=.*|${key}=${esc}|" "$file"
+              else
+                printf '\n%s=%s\n' "$key" "$val" >> "$file"
+              fi
+            }
+            upsert_env TWILIO_ACCOUNT_SID "${TWILIO_ACCOUNT_SID:-}"
+            upsert_env TWILIO_AUTH_TOKEN "${TWILIO_AUTH_TOKEN:-}"
+            upsert_env TWILIO_FROM_NUMBER "${TWILIO_FROM_NUMBER:-}"
+            if grep -q '^TWILIO_ACCOUNT_SID=AC' "$APP_DIR/.env"; then
+              echo "Twilio SMS env present on EC2 .env"
+            else
+              echo "WARN: TWILIO_ACCOUNT_SID not set on EC2 .env"
+            fi
+
             # PostGIS DB + migrate on the compose network (@db), then API.
             docker compose up -d db
             echo "Waiting for PostGIS..."
@@ -165,6 +199,7 @@ jobs:
             curl -sSI --max-time 15 https://staging.bld.online/ | head -n 12
             curl -sS --max-time 15 https://staging.bld.online/api/health
             echo
+            docker logs bld-api --tail=40 2>&1 | grep -E 'Twilio|SMS' || true
 
   production-ecs:
     needs: setup
