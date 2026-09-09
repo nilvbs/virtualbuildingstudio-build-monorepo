@@ -45,13 +45,15 @@ describe('ProjectsService', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const media = { createUpload: jest.fn(), getSignedGetUrl: jest.fn() } as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new ProjectsService(prisma as any, media);
+    const autoMatch = { offerForProject: jest.fn().mockResolvedValue(0) } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    service = new ProjectsService(prisma as any, media, autoMatch);
   });
 
   describe('create', () => {
-    it('creates a submitted project and persists the location point', async () => {
+    it('creates a matching project and persists the location point', async () => {
       prisma.project.create.mockResolvedValue({ id: 'proj-1' });
-      prisma.project.findUnique.mockResolvedValue(projectRow());
+      prisma.project.findUnique.mockResolvedValue(projectRow({ status: 'matching' }));
 
       const result = await service.create('auth0|c1', {
         title: 'Warehouse scan, Dallas',
@@ -63,7 +65,7 @@ describe('ProjectsService', () => {
 
       expect(prisma.project.create).toHaveBeenCalled();
       expect(prisma.$executeRaw).toHaveBeenCalled();
-      expect(result.status).toBe('submitted');
+      expect(result.status).toBe('matching');
       expect(result.location).toEqual({ lng: -96.8, lat: 32.78 });
     });
   });
@@ -79,7 +81,7 @@ describe('ProjectsService', () => {
           surveyor: {
             id: 'svy-1',
             baseCity: 'Dallas, TX',
-            user: { fullName: 'Alex Surveyor' },
+            user: { fullName: 'Alex Surveyor', username: 'alex.surveyor' },
           },
         },
       ]);
@@ -92,7 +94,8 @@ describe('ProjectsService', () => {
         status: 'proposed',
         surveyorBaseCity: 'Dallas, TX',
         surveyorProfileId: 'svy-1',
-        surveyorFullName: 'Alex Surveyor',
+        surveyorUsername: 'alex.surveyor',
+        surveyorFullName: null,
       });
     });
 

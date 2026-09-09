@@ -48,7 +48,21 @@ describe('ProfilesService', () => {
       $queryRaw: jest.fn().mockResolvedValue([{ lng: -97.74, lat: 30.27 }]),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new ProfilesService(prisma as any);
+    service = new ProfilesService(
+      prisma as any,
+      {
+        expireStaleOffers: jest.fn().mockResolvedValue(0),
+        cancelSiblingOffers: jest.fn().mockResolvedValue(undefined),
+        getWorkingHoursConfig: () => ({
+          timeZone: 'America/Chicago',
+          startHour: 9,
+          endHour: 18,
+          workdays: [1, 2, 3, 4, 5],
+        }),
+        getResponseWorkingHours: () => 3,
+      } as any,
+      { notifyMatchAccepted: jest.fn().mockResolvedValue(undefined) } as any,
+    );
   });
 
   describe('createProfile', () => {
@@ -119,7 +133,7 @@ describe('ProfilesService', () => {
 
       const status = await service.getStatus('auth0|1');
 
-      expect(status.headline).toBe("You've been matched to a project — we'll reach out.");
+      expect(status.headline).toBe("You've been matched to a project — review it in My Requests.");
       expect(status.matches[0]).toMatchObject({
         matchId: 'match-1',
         status: 'proposed',

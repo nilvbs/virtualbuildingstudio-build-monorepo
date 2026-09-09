@@ -12,6 +12,7 @@ import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
 import { clearSession, isAuthenticated, setActiveRole } from '../lib/session';
 import { IncompleteProfileModal, SidebarProfileMeter } from './profile-completion';
 import { NotificationToasts } from './notification-toasts';
+import { NotificationBell } from './notification-bell';
 
 type Section = 'client' | 'surveyor' | 'admin';
 
@@ -365,7 +366,9 @@ export function AppShell({ section, children }: { section: Section; children: Re
             <div className="topbar-sub">{header.sub}</div>
           </div>
 
-          <div className="usermenu" ref={menuRef}>
+          <div className="topbar-actions">
+            {(section === 'client' || section === 'surveyor') && <NotificationBell />}
+            <div className="usermenu" ref={menuRef}>
             <button
               className="usermenu-trigger"
               type="button"
@@ -426,6 +429,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
                 </button>
               </div>
             )}
+          </div>
           </div>
         </header>
 

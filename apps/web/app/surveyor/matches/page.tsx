@@ -189,7 +189,7 @@ function MatchCard({ match }: { match: SurveyorRequest }) {
     <article className="svy-match-card">
       <div className="svy-match-card-top">
         <span className="svy-match-avatar" aria-hidden>
-          {(client.fullName.trim()[0] ?? 'P').toUpperCase()}
+          {(client.username.trim()[0] ?? 'P').toUpperCase()}
         </span>
         <div className="svy-match-heading-text">
           <div className="svy-match-title-row">
@@ -197,7 +197,7 @@ function MatchCard({ match }: { match: SurveyorRequest }) {
             <StatusBadge status={match.status} />
           </div>
           <p className="svy-match-card-client">
-            With {client.fullName}
+            With @{client.username}
             {client.companyName ? ` · ${client.companyName}` : ''}
             <span className="svy-match-dot" aria-hidden>
               ·

@@ -127,7 +127,7 @@ export function RequestsScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle}>{item.project.title}</Text>
                   <Text style={styles.cardMeta}>
-                    {item.client.fullName}
+                    {item.client.username}
                     {item.client.companyName ? ` · ${item.client.companyName}` : ''}
                   </Text>
                 </View>

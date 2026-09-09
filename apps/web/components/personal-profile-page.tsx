@@ -229,6 +229,8 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
             ) : null}
           </h2>
           <p className="personal-identity-meta">
+            @{user.username}
+            {' · '}
             {fullyVerified ? 'Verified account' : 'Verification incomplete'}
           </p>
         </section>

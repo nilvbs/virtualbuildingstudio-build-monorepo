@@ -1,9 +1,13 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { AutoMatchService } from './auto-match.service';
 
 /**
- * Matching module — the admin-driven manual match action and match lifecycle.
- * Phase 1 matching is done by a human; no automated/algorithmic matching.
- * Feature behavior lands in build step 5. Boundary only for now.
+ * Matching — admin manual matches plus Uber-style auto fan-out after project post.
  */
-@Module({})
+@Module({
+  imports: [NotificationsModule],
+  providers: [AutoMatchService],
+  exports: [AutoMatchService],
+})
 export class MatchingModule {}

@@ -81,6 +81,76 @@ export class NotificationsService {
     ]);
   }
 
+  /** Client: auto-match fan-out started after they posted a project. */
+  async notifyMatchingStarted(ctx: {
+    clientUserId: string;
+    projectId: string;
+    projectTitle: string;
+    offerCount: number;
+  }): Promise<void> {
+    const title =
+      ctx.offerCount > 0
+        ? 'Surveyors are being notified'
+        : 'Looking for available surveyors';
+    const body =
+      ctx.offerCount > 0
+        ? `We notified ${ctx.offerCount} nearby surveyor${ctx.offerCount === 1 ? '' : 's'} about "${ctx.projectTitle}". They have a few working hours to respond.`
+        : `We couldn't find a live surveyor nearby for "${ctx.projectTitle}" yet. We'll keep this job in the matching queue.`;
+
+    await this.createInApp(
+      ctx.clientUserId,
+      'matching_started',
+      title,
+      body,
+      `/client/projects/${ctx.projectId}`,
+    );
+  }
+
+  /** Surveyor: Uber-style ringing offer with working-hours deadline. */
+  async notifyMatchOffer(ctx: MatchNotificationContext & { responseWorkingHours: number }): Promise<void> {
+    const surveyorLink = `${this.webAppUrl}/surveyor/requests?match=${ctx.matchId}`;
+    const hours = ctx.responseWorkingHours;
+    const surveyorBody = `New job request for "${ctx.projectTitle}". You have ${hours} working hour${hours === 1 ? '' : 's'} to accept (timer pauses outside Mon–Fri business hours).`;
+
+    await this.createInApp(
+      ctx.surveyorUserId,
+      'match_offer',
+      'New survey request',
+      surveyorBody,
+      `/surveyor/requests?match=${ctx.matchId}`,
+    );
+
+    await Promise.allSettled([
+      this.dispatchExternal(ctx.surveyorUserId, {
+        emailSubject: `New survey request: ${ctx.projectTitle}`,
+        emailBody: `${surveyorBody}\n\n${surveyorLink}`,
+        emailHtml: `<p>${surveyorBody}</p><p><a href="${surveyorLink}">Open request</a></p>`,
+        smsBody: `BLD: New request for "${ctx.projectTitle}". Respond within ${hours} working hours: ${surveyorLink}`,
+      }),
+    ]);
+  }
+
+  /** Client: a surveyor accepted an auto/admin offer. */
+  async notifyMatchAccepted(ctx: MatchNotificationContext): Promise<void> {
+    const clientLink = `${this.webAppUrl}/client/projects/${ctx.projectId}`;
+    const body = `A surveyor accepted "${ctx.projectTitle}". Open the project for next steps.`;
+    await this.createInApp(
+      ctx.clientUserId,
+      'match_accepted',
+      'Surveyor accepted',
+      body,
+      `/client/projects/${ctx.projectId}`,
+    );
+    await Promise.allSettled([
+      this.dispatchExternal(ctx.clientUserId, {
+        emailSubject: 'A surveyor accepted your project',
+        emailBody: `${body}\n\n${clientLink}`,
+        emailHtml: `<p>${body}</p><p><a href="${clientLink}">View project</a></p>`,
+        smsBody: `BLD: A surveyor accepted "${ctx.projectTitle}". View: ${clientLink}`,
+      }),
+    ]);
+  }
+
   async listForUser(subject: string): Promise<Notification[]> {
     const user = await this.requireUserId(subject);
     const rows = await this.prisma.notification.findMany({

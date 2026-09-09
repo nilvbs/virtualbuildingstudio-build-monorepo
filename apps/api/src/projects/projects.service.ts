@@ -16,6 +16,7 @@ import type { ClientSurveyorBrowseInput, CreateProjectInput } from '@surveylink/
 import { PrismaService } from '../prisma/prisma.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import { haversineKm } from '../common/geo';
+import { AutoMatchService } from '../matching/auto-match.service';
 
 interface GeoRow {
   id: string;
@@ -28,6 +29,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly media: S3MediaStorageService,
+    private readonly autoMatch: AutoMatchService,
   ) {}
 
   async create(subject: string, input: CreateProjectInput): Promise<Project> {
@@ -46,6 +48,7 @@ export class ProjectsService {
         neededWithin: input.neededWithin ?? null,
         notes: input.notes ?? null,
         details: (input.details ?? {}) as Prisma.InputJsonValue,
+        status: 'matching',
       },
     });
 
@@ -56,6 +59,9 @@ export class ProjectsService {
             updated_at = now()
         WHERE id = ${row.id}::uuid`;
     }
+
+    // Uber-style fan-out — never block project creation on matching failures.
+    await this.autoMatch.offerForProject(row.id);
 
     return this.getOwned(user.id, row.id);
   }
@@ -92,30 +98,34 @@ export class ProjectsService {
           select: {
             id: true,
             baseCity: true,
-            user: { select: { fullName: true } },
+            user: { select: { fullName: true, username: true } },
           },
         },
       },
     });
 
+    const isAdmin = roles.includes('admin');
     const matchInfo: ProjectMatchInfo[] = matches.map((m) => ({
       matchId: m.id,
       status: m.status as ProjectMatchInfo['status'],
       surveyorBaseCity: m.surveyor.baseCity,
       surveyorProfileId: m.surveyor.id,
-      surveyorFullName: m.surveyor.user.fullName,
+      surveyorUsername: m.surveyor.user.username,
+      surveyorFullName: isAdmin ? m.surveyor.user.fullName : null,
       createdAt: m.createdAt.toISOString(),
     }));
 
     const client = await this.prisma.user.findUnique({
       where: { id: row.clientId },
-      select: { fullName: true },
+      select: { fullName: true, username: true },
     });
 
     return {
       ...this.toDto(row, this.pointOf(geo[0])),
       matches: matchInfo,
-      clientName: client?.fullName ?? null,
+      ...(isAdmin
+        ? { clientName: client?.fullName ?? null, clientUsername: client?.username ?? null }
+        : { clientUsername: client?.username ?? null }),
     };
   }
 
@@ -159,7 +169,7 @@ export class ProjectsService {
       include: {
         user: {
           select: {
-            fullName: true,
+            username: true,
             avatarKey: true,
             emailVerified: true,
             phoneVerified: true,
@@ -211,7 +221,7 @@ export class ProjectsService {
 
       return {
         profileId: s.id,
-        fullName: s.user.fullName,
+        username: s.user.username,
         avatarUrl: this.media.resolveSignedUrl(s.user.avatarKey),
         bio: s.bio,
         baseCity: s.baseCity,
@@ -238,7 +248,7 @@ export class ProjectsService {
     if (qNorm) {
       items = items.filter(
         (s) =>
-          s.fullName.toLowerCase().includes(qNorm) ||
+          s.username.toLowerCase().includes(qNorm) ||
           (s.baseCity?.toLowerCase().includes(qNorm) ?? false) ||
           (s.bio?.toLowerCase().includes(qNorm) ?? false),
       );

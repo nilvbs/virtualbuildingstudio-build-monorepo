@@ -12,6 +12,9 @@ function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: 'user-uuid',
     fullName: 'Ada Lovelace',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    username: 'ada.lovelace',
     email: 'ada@example.com',
     phone: '+14155552671',
     emailVerified: false,
@@ -33,7 +36,8 @@ function makeUser(overrides: Partial<User> = {}): User {
 }
 
 const signupInput: SignupInput = {
-  fullName: 'Ada Lovelace',
+  firstName: 'Ada',
+  lastName: 'Lovelace',
   email: 'ada@example.com',
   phone: '+14155552671',
   password: 'sup3rsecret',
@@ -67,7 +71,7 @@ describe('AuthService', () => {
     prisma = {
       user: {
         findFirst: jest.fn(),
-        findUnique: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
         update: jest.fn(),
       },
@@ -136,7 +140,7 @@ describe('AuthService', () => {
       const result = await service.signup(signupInput);
 
       expect(identity.createIdentity).toHaveBeenCalledWith({
-        fullName: signupInput.fullName,
+        fullName: 'Ada Lovelace',
         email: signupInput.email,
         phone: signupInput.phone,
         password: signupInput.password,
@@ -144,6 +148,10 @@ describe('AuthService', () => {
       expect(prisma.user.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            fullName: 'Ada Lovelace',
+            username: 'ada.lovelace',
             authProvider: 'auth0',
             authSubject: 'auth0|123',
             emailVerified: false,

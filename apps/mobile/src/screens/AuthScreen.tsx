@@ -34,7 +34,8 @@ export function AuthScreen({ navigation, route }: Props) {
   const [mode, setMode] = useState<Mode>(route.params?.mode === 'signup' ? 'signup' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [phoneInput, setPhoneInput] = useState<PhoneInputValue>(defaultPhoneInput());
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -93,7 +94,8 @@ export function AuthScreen({ navigation, route }: Props) {
     setError(null);
     try {
       const { session } = await api.signup({
-        fullName,
+        firstName,
+        lastName,
         email,
         phone: phoneInputToE164(phoneInput),
         password,
@@ -137,7 +139,9 @@ export function AuthScreen({ navigation, route }: Props) {
       if (outcome.kind === 'authed') {
         await enterApp(outcome.role);
       } else if (outcome.kind === 'needsRegistration') {
-        setFullName(outcome.fullName);
+        const parts = outcome.fullName.trim().split(/\s+/).filter(Boolean);
+        setFirstName(parts[0] ?? '');
+        setLastName(parts.slice(1).join(' '));
         setEmail(outcome.email);
         setInfo('Almost there — add your phone number to finish.');
         setMode('complete');
@@ -159,7 +163,8 @@ export function AuthScreen({ navigation, route }: Props) {
     setError(null);
     try {
       await api.completeRegistration({
-        fullName,
+        firstName,
+        lastName,
         phone: phoneInputToE164(phoneInput),
         roleHint: role,
       });
@@ -215,10 +220,17 @@ export function AuthScreen({ navigation, route }: Props) {
                   {error ? <AlertBox message={error} /> : null}
                   {info ? <AlertBox tone="success" message={info} /> : null}
                   <Field
-                    label="Full name"
+                    label="First name"
                     icon="user"
-                    value={fullName}
-                    onChangeText={setFullName}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    autoCapitalize="words"
+                  />
+                  <Field
+                    label="Last name"
+                    icon="user"
+                    value={lastName}
+                    onChangeText={setLastName}
                     autoCapitalize="words"
                   />
                   <PhoneNumberField value={phoneInput} onChange={setPhoneInput} />
@@ -256,13 +268,22 @@ export function AuthScreen({ navigation, route }: Props) {
                   {info ? <AlertBox tone="success" message={info} /> : null}
 
                   {mode === 'signup' ? (
-                    <Field
-                      label="Full name"
-                      icon="user"
-                      value={fullName}
-                      onChangeText={setFullName}
-                      autoCapitalize="words"
-                    />
+                    <>
+                      <Field
+                        label="First name"
+                        icon="user"
+                        value={firstName}
+                        onChangeText={setFirstName}
+                        autoCapitalize="words"
+                      />
+                      <Field
+                        label="Last name"
+                        icon="user"
+                        value={lastName}
+                        onChangeText={setLastName}
+                        autoCapitalize="words"
+                      />
+                    </>
                   ) : null}
                   <Field
                     label="Email"

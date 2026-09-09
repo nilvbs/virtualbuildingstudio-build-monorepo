@@ -58,6 +58,9 @@ import {
 } from '../auth/dev-auth';
 import { ensureMembership } from '../auth/memberships';
 import { StaffContextService } from '../auth/staff-context.service';
+import { buildPersonNameFields } from '../auth/username';
+import { AutoMatchService } from '../matching/auto-match.service';
+import { addWorkingHours } from '../matching/working-hours';
 
 interface GeoRow {
   id: string;
@@ -75,6 +78,7 @@ export class AdminService {
     private readonly projects: ProjectsService,
     private readonly config: ConfigService,
     private readonly staffContext: StaffContextService,
+    private readonly autoMatch: AutoMatchService,
     @Inject(IDENTITY_PROVIDER) private readonly identity: IdentityProvider,
   ) {}
 
@@ -442,6 +446,11 @@ export class AdminService {
     if (!surveyor) throw new NotFoundException('Surveyor profile not found');
 
     // Match creation + project advance are atomic; notifications fire after.
+    const expiresAt = addWorkingHours(
+      new Date(),
+      this.autoMatch.getResponseWorkingHours(),
+      this.autoMatch.getWorkingHoursConfig(),
+    );
     const [match] = await this.prisma.$transaction([
       this.prisma.match.create({
         data: {
@@ -450,6 +459,8 @@ export class AdminService {
           matchedBy: adminUserId,
           status: 'proposed',
           adminNotes: input.notes ?? null,
+          offerSource: 'admin',
+          expiresAt,
         },
       }),
       this.prisma.project.update({
@@ -457,6 +468,8 @@ export class AdminService {
         data: { status: 'matched' },
       }),
     ]);
+
+    await this.autoMatch.cancelSiblingOffers(input.projectId, match.id);
 
     await this.notifications.notifyMatchCreated({
       clientUserId: project.clientId,
@@ -556,9 +569,13 @@ export class AdminService {
     if (devAuthEnabled(this.config)) {
       const subject = devSubjectForEmail(email);
       rememberDevSignup(email, input.password, subject);
+      const names = await buildPersonNameFields(this.prisma, {
+        firstName: input.firstName,
+        lastName: input.lastName,
+      });
       user = await this.prisma.user.create({
         data: {
-          fullName: input.fullName,
+          ...names,
           email,
           phone: input.phone,
           emailVerified: true,
@@ -569,15 +586,19 @@ export class AdminService {
         },
       });
     } else {
+      const names = await buildPersonNameFields(this.prisma, {
+        firstName: input.firstName,
+        lastName: input.lastName,
+      });
       const identity = await this.identity.createIdentity({
-        fullName: input.fullName,
+        fullName: names.fullName,
         email,
         phone: input.phone,
         password: input.password,
       });
       user = await this.prisma.user.create({
         data: {
-          fullName: input.fullName,
+          ...names,
           email,
           phone: input.phone,
           emailVerified: identity.emailVerified,

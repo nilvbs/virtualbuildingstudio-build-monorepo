@@ -68,7 +68,8 @@ export function LandingAuthOverlay({
   const [forgotBusy, setForgotBusy] = useState(false);
 
   const [signup, setSignup] = useState({
-    fullName: '',
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
   });
@@ -485,17 +486,34 @@ export function LandingAuthOverlay({
                             <span>{signupError}</span>
                           </div>
                         )}
-                        <div className="field">
-                          <label htmlFor="mkt-signup-name">Full name</label>
-                          <div className="input-icon">
-                            <LordIcon name="avatar" size={18} trigger="hover" />
-                            <input
-                              id="mkt-signup-name"
-                              type="text"
-                              required
-                              value={signup.fullName}
-                              onChange={(e) => setSignup((s) => ({ ...s, fullName: e.target.value }))}
-                            />
+                        <div className="field-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div className="field">
+                            <label htmlFor="mkt-signup-first">First name</label>
+                            <div className="input-icon">
+                              <LordIcon name="avatar" size={18} trigger="hover" />
+                              <input
+                                id="mkt-signup-first"
+                                type="text"
+                                autoComplete="given-name"
+                                required
+                                value={signup.firstName}
+                                onChange={(e) => setSignup((s) => ({ ...s, firstName: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                          <div className="field">
+                            <label htmlFor="mkt-signup-last">Last name</label>
+                            <div className="input-icon">
+                              <LordIcon name="avatar" size={18} trigger="hover" />
+                              <input
+                                id="mkt-signup-last"
+                                type="text"
+                                autoComplete="family-name"
+                                required
+                                value={signup.lastName}
+                                onChange={(e) => setSignup((s) => ({ ...s, lastName: e.target.value }))}
+                              />
+                            </div>
                           </div>
                         </div>
                         <div className="field">

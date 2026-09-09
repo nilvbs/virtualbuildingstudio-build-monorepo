@@ -295,12 +295,12 @@ export default function ProjectSurveyorsPage({ params }: { params: Promise<{ id:
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={s.avatarUrl} alt="" />
                   ) : (
-                    <span>{s.fullName.slice(0, 1)}</span>
+                    <span>{s.username.slice(0, 1).toUpperCase()}</span>
                   )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="discover-name-row">
-                    <strong>{s.fullName}</strong>
+                    <strong>@{s.username}</strong>
                     {s.bldVerified ? (
                       <span className="discover-verified" title="BLD verified">
                         <BadgeCheck size={15} />

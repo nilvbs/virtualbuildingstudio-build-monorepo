@@ -9,11 +9,20 @@ import { api, errorMessage } from '../../lib/api';
 import { getSession, isAuthenticated, setSession } from '../../lib/session';
 import { defaultPhoneInput, PhoneInput, phoneInputIsValid, phoneInputToE164 } from '../../components/phone-input';
 
+function splitPrefillName(raw: string): { firstName: string; lastName: string } {
+  const parts = raw.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0]!, lastName: '' };
+  return { firstName: parts[0]!, lastName: parts.slice(1).join(' ') };
+}
+
 function CompleteProfileForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const prefill = splitPrefillName(params.get('name') ?? '');
 
-  const [fullName, setFullName] = useState(params.get('name') ?? '');
+  const [firstName, setFirstName] = useState(prefill.firstName);
+  const [lastName, setLastName] = useState(prefill.lastName);
   const [phone, setPhone] = useState(defaultPhoneInput);
   const roleHint: WorkspaceRole = 'surveyor';
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +44,8 @@ function CompleteProfileForm() {
     setBusy(true);
     try {
       await api.completeRegistration({
-        fullName,
+        firstName,
+        lastName,
         email,
         phone: phoneInputToE164(phone),
         roleHint,
@@ -87,19 +97,39 @@ function CompleteProfileForm() {
             </div>
           )}
 
-          <div className="field">
-            <label htmlFor="fullName">Full name</label>
-            <div className="input-icon">
-              <User size={16} />
-              <input
-                id="fullName"
-                type="text"
-                required
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
+          <div className="field-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="field">
+              <label htmlFor="firstName">First name</label>
+              <div className="input-icon">
+                <User size={16} />
+                <input
+                  id="firstName"
+                  type="text"
+                  autoComplete="given-name"
+                  required
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="lastName">Last name</label>
+              <div className="input-icon">
+                <User size={16} />
+                <input
+                  id="lastName"
+                  type="text"
+                  autoComplete="family-name"
+                  required
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
             </div>
           </div>
+          <p className="hint" style={{ marginTop: -8, marginBottom: 12 }}>
+            We&apos;ll create a unique username from your name for other users to see.
+          </p>
 
           <PhoneInput id="phone" value={phone} onChange={setPhone} required disabled={busy} />
           <p className="hint" style={{ marginTop: -8, marginBottom: 12 }}>
@@ -118,10 +148,8 @@ function CompleteProfileForm() {
 
 export default function CompleteProfilePage() {
   return (
-    <main className="auth-shell">
-      <Suspense fallback={<div className="auth-card">Loading…</div>}>
-        <CompleteProfileForm />
-      </Suspense>
-    </main>
+    <Suspense fallback={<div className="auth-card" />}>
+      <CompleteProfileForm />
+    </Suspense>
   );
 }

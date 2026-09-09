@@ -244,6 +244,7 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
                 </View>
                 <View style={styles.nameRow}>
                   <Text style={styles.name}>{user.fullName}</Text>
+                  <Text style={styles.meta}>@{user.username}</Text>
                   {user.emailVerified && user.phoneVerified ? (
                     <Feather name="check-circle" size={18} color="#2563eb" />
                   ) : null}
@@ -479,6 +480,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   name: { fontSize: 18, fontWeight: '800', color: colors.text },
+  meta: { fontSize: 13, color: colors.muted, marginTop: 4, textAlign: 'center' },
   card: {
     padding: spacing.xl,
     borderRadius: radius.lg,

@@ -48,6 +48,7 @@ import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.ident
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import { EmailOtpService } from './email/email-otp.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
+import { buildPersonNameFields, composeFullName, splitFullName } from './username';
 import { AvatarStorageService } from './avatar-storage.service';
 import {
   DEV_ACCESS_TOKEN,
@@ -129,12 +130,17 @@ export class AuthService {
       return { session, user };
     }
 
+    const names = await buildPersonNameFields(this.prisma, {
+      firstName: input.firstName,
+      lastName: input.lastName,
+    });
+
     if (devAuthEnabled(this.config)) {
       const subject = devSubjectForEmail(email);
       rememberDevSignup(email, input.password, subject);
       const user = await this.prisma.user.create({
         data: {
-          fullName: input.fullName,
+          ...names,
           email,
           phone: input.phone,
           roleHint: legacyHint,
@@ -158,7 +164,7 @@ export class AuthService {
     }
 
     const identity = await this.identity.createIdentity({
-      fullName: input.fullName,
+      fullName: names.fullName,
       email,
       phone: input.phone,
       password: input.password,
@@ -167,7 +173,7 @@ export class AuthService {
     const emailAlreadyVerified = identity.emailVerified;
     const user = await this.prisma.user.create({
       data: {
-        fullName: input.fullName,
+        ...names,
         email,
         phone: input.phone,
         roleHint: legacyHint,
@@ -407,7 +413,10 @@ export class AuthService {
       where: { authSubject: DEV_SUBJECT },
       update: {},
       create: {
+        firstName: 'Dev',
+        lastName: 'Tester',
         fullName: 'Dev Tester',
+        username: 'dev.tester',
         email: DEV_EMAIL,
         phone: '+10000000001',
         emailVerified: true,
@@ -729,9 +738,13 @@ export class AuthService {
 
     const workspaceRole = input.roleHint as WorkspaceRole;
     const emailVerified = principal.emailVerified ?? true;
+    const names = await buildPersonNameFields(this.prisma, {
+      firstName: input.firstName,
+      lastName: input.lastName,
+    });
     const user = await this.prisma.user.create({
       data: {
-        fullName: input.fullName,
+        ...names,
         email,
         phone: input.phone,
         roleHint: workspaceRole,
@@ -937,11 +950,13 @@ export class AuthService {
   /** Update personal profile fields (name, avatar, company, address). */
   async updateMe(principal: AuthPrincipal, input: UpdateMeInput): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
+    const namePatch =
+      input.fullName !== undefined ? this.nameFieldsFromFullName(input.fullName) : {};
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+        ...namePatch,
         ...(input.avatarKey !== undefined ? { avatarKey: input.avatarKey } : {}),
       },
     });
@@ -1050,7 +1065,7 @@ export class AuthService {
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+        ...(input.fullName !== undefined ? this.nameFieldsFromFullName(input.fullName) : {}),
         ...(input.avatarKey !== undefined ? { avatarKey: input.avatarKey } : {}),
         onboardingStep: nextStep,
       },
@@ -1149,6 +1164,19 @@ export class AuthService {
     };
   }
 
+  private nameFieldsFromFullName(fullName: string): {
+    firstName: string;
+    lastName: string;
+    fullName: string;
+  } {
+    const { firstName, lastName } = splitFullName(fullName);
+    return {
+      firstName: firstName || 'User',
+      lastName,
+      fullName: composeFullName(firstName || 'User', lastName),
+    };
+  }
+
   private async requireUser(subject: string): Promise<User> {
     const user = await this.prisma.user.findUnique({ where: { authSubject: subject } });
     if (!user) {
@@ -1204,6 +1232,9 @@ export class AuthService {
     return {
       id: user.id,
       fullName: user.fullName,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      username: user.username,
       email: user.email,
       phone: user.phone,
       emailVerified: user.emailVerified,

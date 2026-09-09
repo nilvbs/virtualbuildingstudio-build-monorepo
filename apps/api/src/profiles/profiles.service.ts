@@ -25,6 +25,12 @@ import type {
 } from '@surveylink/validation';
 import { haversineKm } from '../common/geo';
 import { PrismaService } from '../prisma/prisma.service';
+import { AutoMatchService } from '../matching/auto-match.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  isWithinWorkingHours,
+  remainingWorkingMs,
+} from '../matching/working-hours';
 
 interface GeoRow {
   lng: number | null;
@@ -48,7 +54,11 @@ function identityBio(details: SurveyorPortfolioDetails): string | null {
 
 @Injectable()
 export class ProfilesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly autoMatch: AutoMatchService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async createProfile(
     subject: string,
@@ -278,6 +288,8 @@ export class ProfilesService {
     subject: string,
     statuses: MatchStatus[],
   ): Promise<SurveyorRequest[]> {
+    await this.autoMatch.expireStaleOffers();
+
     const user = await this.requireUser(subject);
     const profile = await this.prisma.surveyorProfile.findUnique({
       where: { userId: user.id },
@@ -301,7 +313,7 @@ export class ProfilesService {
           include: {
             client: {
               select: {
-                fullName: true,
+                username: true,
                 accountProfile: { select: { companyName: true } },
               },
             },
@@ -335,10 +347,24 @@ export class ProfilesService {
         basePoint && location
           ? Math.round(haversineKm(basePoint, location) * 10) / 10
           : null;
+      const expiresAt = (m as { expiresAt?: Date | null }).expiresAt ?? null;
+      const now = new Date();
+      const wh = this.autoMatch.getWorkingHoursConfig();
+      const remainingMs =
+        expiresAt && m.status === 'proposed'
+          ? remainingWorkingMs(now, expiresAt, wh)
+          : null;
       return {
         matchId: m.id,
         status: m.status as MatchStatus,
         createdAt: m.createdAt.toISOString(),
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        remainingWorkingMs: remainingMs,
+        responseWindowPaused:
+          m.status === 'proposed' && expiresAt ? !isWithinWorkingHours(now, wh) : false,
+        offerSource: ((m as { offerSource?: string }).offerSource ?? 'admin') as
+          | 'admin'
+          | 'auto',
         project: {
           id: m.project.id,
           title: m.project.title,
@@ -356,7 +382,7 @@ export class ProfilesService {
           createdAt: m.project.createdAt.toISOString(),
         },
         client: {
-          fullName: m.project.client.fullName,
+          username: m.project.client.username,
           companyName: m.project.client.accountProfile?.companyName ?? null,
         },
       };
@@ -382,6 +408,8 @@ export class ProfilesService {
     matchId: string,
     target: MatchStatus,
   ): Promise<{ matchId: string; status: string }> {
+    await this.autoMatch.expireStaleOffers();
+
     const user = await this.requireUser(subject);
     const profile = await this.prisma.surveyorProfile.findUnique({
       where: { userId: user.id },
@@ -389,9 +417,20 @@ export class ProfilesService {
     });
     if (!profile) throw new NotFoundException('No surveyor profile');
 
-    const match = await this.prisma.match.findUnique({ where: { id: matchId } });
+    const match = await this.prisma.match.findUnique({
+      where: { id: matchId },
+      include: { project: { select: { id: true, clientId: true, title: true } } },
+    });
     if (!match || match.surveyorId !== profile.id) {
       throw new NotFoundException('Match not found');
+    }
+
+    if (match.status === 'proposed' && match.expiresAt && match.expiresAt.getTime() <= Date.now()) {
+      await this.prisma.match.update({
+        where: { id: matchId },
+        data: { status: 'cancelled' },
+      });
+      throw new ConflictException('This request expired (working-hours window ended)');
     }
 
     if (!isValidTransition(MATCH_STATUS_TRANSITIONS, match.status as MatchStatus, target)) {
@@ -402,6 +441,21 @@ export class ProfilesService {
       where: { id: matchId },
       data: { status: target },
     });
+
+    if (target === 'accepted') {
+      await this.autoMatch.cancelSiblingOffers(match.projectId, matchId);
+      await this.prisma.project.update({
+        where: { id: match.projectId },
+        data: { status: 'matched' },
+      });
+      await this.notifications.notifyMatchAccepted({
+        clientUserId: match.project.clientId,
+        surveyorUserId: user.id,
+        projectId: match.project.id,
+        matchId,
+        projectTitle: match.project.title,
+      });
+    }
 
     return { matchId: updated.id, status: updated.status };
   }

@@ -52,6 +52,56 @@ function formatDistance(km: number): string {
   return `${rounded} km from your base`;
 }
 
+function formatWorkingCountdown(ms: number | null): string {
+  if (ms == null) return '—';
+  const totalMin = Math.max(0, Math.ceil(ms / 60_000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+function WorkingHoursTimer({
+  remainingWorkingMs,
+  paused,
+  expiresAt,
+}: {
+  remainingWorkingMs: number | null;
+  paused: boolean;
+  expiresAt: string | null;
+}) {
+  const [remaining, setRemaining] = useState(remainingWorkingMs);
+
+  useEffect(() => {
+    setRemaining(remainingWorkingMs);
+  }, [remainingWorkingMs]);
+
+  useEffect(() => {
+    if (paused || remaining == null || remaining <= 0) return;
+    const id = window.setInterval(() => {
+      setRemaining((prev) => (prev == null ? prev : Math.max(0, prev - 60_000)));
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [paused, remaining]);
+
+  if (!expiresAt) return null;
+
+  return (
+    <div className={`svy-req-timer${paused ? ' is-paused' : ''}${remaining === 0 ? ' is-expired' : ''}`}>
+      <Clock size={14} aria-hidden />
+      <div>
+        <strong>{remaining === 0 ? 'Window ended' : formatWorkingCountdown(remaining)}</strong>
+        <span>
+          {paused
+            ? 'Timer paused outside official working hours (Mon–Fri)'
+            : 'Working hours left to accept'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function SurveyorRequestsPage() {
   const router = useRouter();
   const [requests, setRequests] = useState<SurveyorRequest[]>([]);
@@ -62,7 +112,7 @@ export default function SurveyorRequestsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    async function load() {
       try {
         const [rows, me] = await Promise.all([api.getSurveyorRequests(), api.me()]);
         if (cancelled) return;
@@ -75,9 +125,19 @@ export default function SurveyorRequestsPage() {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    }
+    void load();
+    const id = window.setInterval(() => {
+      void api
+        .getSurveyorRequests()
+        .then((rows) => {
+          if (!cancelled) setRequests(rows);
+        })
+        .catch(() => undefined);
+    }, 20_000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, [router]);
 
@@ -196,18 +256,18 @@ function RequestCard({
   ].filter(Boolean) as { icon: ReactNode; text: string }[];
 
   return (
-    <article className={`svy-req-card${busy ? ' is-busy' : ''}`}>
+    <article className={`svy-req-card svy-req-card--ringing${busy ? ' is-busy' : ''}`}>
       <div className="svy-req-card-top">
         <span className="svy-req-avatar" aria-hidden>
-          {(client.fullName.trim()[0] ?? 'P').toUpperCase()}
+          {(client.username.trim()[0] ?? 'P').toUpperCase()}
         </span>
         <div className="svy-req-heading-text">
           <div className="svy-req-title-row">
             <h2 className="svy-req-card-title">{project.title}</h2>
-            <span className="svy-req-pill">New</span>
+            <span className="svy-req-pill">Incoming</span>
           </div>
           <p className="svy-req-card-client">
-            From {client.fullName}
+            From @{client.username}
             {client.companyName ? ` · ${client.companyName}` : ''}
             <span className="svy-req-dot" aria-hidden>
               ·
@@ -221,6 +281,12 @@ function RequestCard({
           </p>
         </div>
       </div>
+
+      <WorkingHoursTimer
+        remainingWorkingMs={request.remainingWorkingMs}
+        paused={request.responseWindowPaused}
+        expiresAt={request.expiresAt}
+      />
 
       {meta.length > 0 ? (
         <ul className="svy-req-meta">

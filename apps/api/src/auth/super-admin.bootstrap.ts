@@ -14,6 +14,7 @@ import {
 } from './dev-auth';
 import { ensureMembership } from './memberships';
 import { normalizeEmail } from '@surveylink/validation';
+import { buildPersonNameFields } from './username';
 
 /**
  * Ensures the configured SUPER_ADMIN_EMAIL account exists as staffLevel=super_admin.
@@ -72,12 +73,13 @@ export class SuperAdminBootstrapService implements OnModuleInit {
     }
 
     if (!user) {
+      const names = await buildPersonNameFields(this.prisma, { fullName: input.fullName });
       if (devAuthEnabled(this.config)) {
         const subject = devSubjectForEmail(email);
         rememberDevSignup(email, input.password, subject);
         user = await this.prisma.user.create({
           data: {
-            fullName: input.fullName,
+            ...names,
             email,
             phone: input.phone,
             emailVerified: true,
@@ -90,14 +92,14 @@ export class SuperAdminBootstrapService implements OnModuleInit {
         this.logger.log(`Created super admin user (dev) ${email}`);
       } else {
         const identity = await this.identity.createIdentity({
-          fullName: input.fullName,
+          fullName: names.fullName,
           email,
           phone: input.phone,
           password: input.password,
         });
         user = await this.prisma.user.create({
           data: {
-            fullName: input.fullName,
+            ...names,
             email,
             phone: input.phone,
             emailVerified: identity.emailVerified,

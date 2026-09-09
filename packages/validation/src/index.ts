@@ -76,8 +76,16 @@ export const passwordSchema = z
   .min(8, 'Password must be at least 8 characters')
   .max(128);
 
+export const namePartSchema = z
+  .string()
+  .trim()
+  .min(1, 'Required')
+  .max(100)
+  .regex(/^[\p{L}\p{M}\s'-]+$/u, 'Use letters only');
+
 export const signupSchema = z.object({
-  fullName: z.string().min(1).max(200),
+  firstName: namePartSchema,
+  lastName: namePartSchema,
   email: emailSchema,
   phone: phoneSchema,
   password: passwordSchema,
@@ -225,7 +233,8 @@ export type GoogleExchangeInput = z.infer<typeof googleExchangeSchema>;
  * provider, we just need the details the provider can't give us (phone + role).
  */
 export const completeRegistrationSchema = z.object({
-  fullName: z.string().min(1).max(200),
+  firstName: namePartSchema,
+  lastName: namePartSchema,
   email: emailSchema.optional(),
   phone: phoneSchema,
   roleHint: workspaceRoleSchema.default('client'),
@@ -381,7 +390,8 @@ export const clientSurveyorBrowseSchema = z.object({
 export type ClientSurveyorBrowseInput = z.infer<typeof clientSurveyorBrowseSchema>;
 
 export const createStaffAdminSchema = z.object({
-  fullName: z.string().min(1).max(200),
+  firstName: namePartSchema,
+  lastName: namePartSchema,
   email: emailSchema,
   phone: phoneSchema,
   password: passwordSchema,

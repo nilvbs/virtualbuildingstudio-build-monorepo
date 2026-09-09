@@ -27,7 +27,12 @@ datasource db {
 /** Login identity. Hats live in UserRole; do not use roleHint for access. */
 model User {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /** Legal / display name for self + admin. Marketplace peers see `username` instead. */
   fullName       String   @map("full_name")
+  firstName      String   @map("first_name")
+  lastName       String   @map("last_name")
+  /** Unique public handle, generated from first + last name at signup. */
+  username       String   @unique @map("username")
   email          String   @unique
   phone          String   @unique
   emailVerified  Boolean  @default(false) @map("email_verified")
@@ -206,6 +211,10 @@ model Match {
   matchedBy  String   @map("matched_by") @db.Uuid
   status     String   @default("proposed")
   adminNotes String?  @map("admin_notes")
+  /** Wall-clock instant when the surveyor's working-hours response window ends. */
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(6)
+  /** admin = staff match; auto = Uber-style fan-out after project post. */
+  offerSource String  @default("admin") @map("offer_source")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

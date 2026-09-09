@@ -196,11 +196,11 @@ export function ProjectSurveyorsScreen({ route, navigation }: Props) {
             <View style={styles.card}>
               <View style={styles.rowTop}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{item.fullName.slice(0, 1)}</Text>
+                  <Text style={styles.avatarText}>{item.username.slice(0, 1).toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={styles.nameRow}>
-                    <Text style={styles.name}>{item.fullName}</Text>
+                    <Text style={styles.name}>@{item.username}</Text>
                     {item.bldVerified ? <Feather name="check-circle" size={16} color="#2563eb" /> : null}
                   </View>
                   <Text style={styles.meta}>

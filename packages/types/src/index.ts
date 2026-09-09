@@ -235,6 +235,10 @@ export interface AuthPrincipal {
 export interface AuthenticatedUser {
   id: string;
   fullName: string;
+  firstName: string;
+  lastName: string;
+  /** Unique public handle shown to other marketplace users. */
+  username: string;
   email: string;
   phone: string;
   emailVerified: boolean;
@@ -624,6 +628,13 @@ export interface SurveyorRequest {
   matchId: string;
   status: MatchStatus;
   createdAt: string;
+  /** Absolute end of the working-hours response window. */
+  expiresAt: string | null;
+  /** Remaining business-time ms until expiresAt (pauses outside official hours). */
+  remainingWorkingMs: number | null;
+  /** True when the accept timer is paused (outside Mon–Fri work hours). */
+  responseWindowPaused: boolean;
+  offerSource: 'admin' | 'auto';
   project: {
     id: string;
     title: string;
@@ -642,7 +653,8 @@ export interface SurveyorRequest {
     createdAt: string;
   };
   client: {
-    fullName: string;
+    /** Public handle — never the client's legal name. */
+    username: string;
     companyName: string | null;
   };
 }
@@ -690,12 +702,15 @@ export interface Project {
   updatedAt: string;
 }
 
-/** Match summary on a project. Admin UIs may also show surveyor identity fields. */
+/** Match summary on a project. Admin UIs may also show surveyor legal name. */
 export interface ProjectMatchInfo {
   matchId: string;
   status: MatchStatus;
   surveyorBaseCity: string | null;
   surveyorProfileId: string | null;
+  /** Public handle for marketplace peers. */
+  surveyorUsername: string | null;
+  /** Legal name — only populated for admin callers. */
   surveyorFullName: string | null;
   createdAt: string;
 }
@@ -704,12 +719,15 @@ export interface ProjectDetail extends Project {
   matches: ProjectMatchInfo[];
   /** Present on admin project workspace responses. */
   clientName?: string | null;
+  /** Public client handle when available. */
+  clientUsername?: string | null;
 }
 
 /** Client-facing surveyor card when browsing talent for a project. */
 export interface ClientSurveyorSummary {
   profileId: string;
-  fullName: string;
+  /** Public handle — never the surveyor's legal name. */
+  username: string;
   avatarUrl: string | null;
   bio: string | null;
   baseCity: string | null;

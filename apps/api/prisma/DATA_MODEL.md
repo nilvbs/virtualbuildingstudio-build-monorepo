@@ -23,7 +23,7 @@ Plumbing
 
 | Table | One sentence |
 |---|---|
-| `users` | Login identity: name, email, phone, onboarding step, Auth0/Google ids. |
+| `users` | Login identity: first/last name, unique username, email, phone, onboarding step, Auth0/Google ids. |
 | `user_roles` | Hats: `client`, `surveyor`, `admin`. One person can have several rows. |
 
 `users.role_hint` is a leftover display field. **Do not use it for access.** Use `user_roles`.

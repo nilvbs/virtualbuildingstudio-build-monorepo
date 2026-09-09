@@ -62,7 +62,8 @@ export interface SurveyorProfileBody {
 }
 
 export interface SignupBody {
-  fullName: string;
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
   password: string;
@@ -114,7 +115,8 @@ export interface GoogleExchangeBody {
 }
 
 export interface CompleteRegistrationBody {
-  fullName: string;
+  firstName: string;
+  lastName: string;
   email?: string;
   phone: string;
   roleHint?: RoleHint;
@@ -150,7 +152,8 @@ export interface UpdateMatchBody {
 }
 
 export interface CreateStaffAdminBody {
-  fullName: string;
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
   password: string;
