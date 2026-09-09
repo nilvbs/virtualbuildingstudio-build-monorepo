@@ -112,7 +112,7 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
       return { label: 'Account', sub: 'Your personal details' };
     }
     if (pathname.startsWith('/client/projects/new')) {
-      return { label: 'Post a project', sub: 'Brief, site, and timing' };
+      return { label: 'New brief', sub: 'Guided steps to match surveyors' };
     }
     if (/^\/client\/projects\/[^/]+/.test(pathname)) {
       return { label: 'Project details', sub: 'Status, progress, and brief' };

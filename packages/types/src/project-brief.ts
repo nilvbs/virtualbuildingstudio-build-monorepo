@@ -544,10 +544,20 @@ export function projectPostProgress(brief: BriefSource): ProjectPostProgress {
   const needsBim = projectNeedsBimDetails(brief.services ?? []);
   const laserOk = !needsLaser || d.scanTypes.length > 0 || d.accuracy != null;
   const bimOk = !needsBim || d.bimSoftware != null || d.lod != null || d.bimElements.length > 0;
-  const services = statusFrom(
-    servicesOk && laserOk && bimOk,
-    servicesOk || d.scanTypes.length > 0 || d.bimElements.length > 0,
-  );
+  // Services step is for laser/BIM refinements only. Picking services on Overview
+  // must not turn this step amber/green.
+  const servicesStarted =
+    d.scanTypes.length > 0 ||
+    d.accuracy != null ||
+    d.scanOutputs.length > 0 ||
+    d.bimSoftware != null ||
+    d.lod != null ||
+    d.bimElements.length > 0 ||
+    d.bimDeliverables.length > 0;
+  const refinementsNeeded = needsLaser || needsBim;
+  const services: ProjectStepStatus = refinementsNeeded
+    ? statusFrom(laserOk && bimOk, servicesStarted)
+    : 'pending';
 
   const scope = statusFrom(d.scopeDeliverables.length > 0, d.scopeDeliverables.length > 0);
 
@@ -561,7 +571,8 @@ export function projectPostProgress(brief: BriefSource): ProjectPostProgress {
         (d.budgetMaxCents ?? 0) >= (d.budgetMinCents ?? 0)));
   const budget = statusFrom(
     budgetOk,
-    Boolean(d.timeline || brief.neededWithin || d.pricingMode || d.priority),
+    // Default priority ('standard') alone must not mark Budget as started.
+    Boolean(d.timeline || brief.neededWithin || d.pricingMode),
   );
 
   const files = statusFrom(
@@ -572,8 +583,12 @@ export function projectPostProgress(brief: BriefSource): ProjectPostProgress {
       d.existingAssets.length > 0,
   );
 
+  const servicesDone = !refinementsNeeded || services === 'complete';
   const coreComplete =
-    overview === 'complete' && location === 'complete' && property === 'complete' && services === 'complete';
+    overview === 'complete' &&
+    location === 'complete' &&
+    property === 'complete' &&
+    servicesDone;
   const review = statusFrom(coreComplete && budget === 'complete', coreComplete);
 
   const steps: Record<ProjectPostStepId, ProjectStepStatus> = {

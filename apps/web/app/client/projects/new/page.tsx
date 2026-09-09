@@ -467,69 +467,49 @@ export default function NewProjectPage() {
   return (
     <BldMuiProvider>
     <div className="project-post">
-      <Link href="/client" className="project-post-back plain">
-        <ArrowLeft size={15} /> Your projects
-      </Link>
-
-      <header className="project-post-hero">
-        <div>
-          <p className="kicker">Client brief</p>
-          <h1 className="page-title">Post a project</h1>
-          <p className="page-sub">
-            Guided brief with clear progress — saved fields stay green, pending stay open.
-          </p>
-        </div>
-        <div className="project-post-ring" aria-label={`Brief ${progress.percent}% complete`}>
-          <svg viewBox="0 0 72 72" width="72" height="72">
-            <circle cx="36" cy="36" r="30" className="project-post-ring-track" />
-            <circle
-              cx="36"
-              cy="36"
-              r="30"
-              className="project-post-ring-value"
-              style={{ strokeDashoffset: `${188.4 - (188.4 * progress.percent) / 100}` }}
-            />
-          </svg>
+      <div className="project-post-top">
+        <Link href="/client" className="project-post-back plain">
+          <ArrowLeft size={15} /> Your projects
+        </Link>
+        <p className="project-post-sub">
+          A clear brief gets you matched with surveyors who show up — scope, timing, and trust in one place.
+        </p>
+        <p className="project-post-meter" aria-label={`Brief ${progress.percent}% complete`}>
+          <span className="project-post-meter-bar" aria-hidden>
+            <span style={{ width: `${progress.percent}%` }} />
+          </span>
           <strong>{progress.percent}%</strong>
-          <span>complete</span>
-        </div>
-      </header>
+        </p>
+      </div>
 
-      <ol className="project-post-rail" aria-label="Project steps">
-        {STEPS.map((s, i) => {
-          const st = progress.steps[s.id];
-          const active = i === step;
-          return (
-            <li key={s.id}>
-              <button
-                type="button"
-                className={`project-post-rail-item ${statusClass(st)} ${active ? 'is-active' : ''}`}
-                onClick={() => jumpTo(i)}
-              >
-                <span className="project-post-rail-mark" aria-hidden>
-                  {st === 'complete' ? <Check size={14} strokeWidth={2.5} /> : i + 1}
-                </span>
-                <span className="project-post-rail-copy">
-                  <strong>{s.label}</strong>
-                  <span>
-                    {st === 'complete' ? 'Saved' : st === 'partial' ? 'In progress' : 'Pending'}
+      <nav className="project-post-steps" aria-label="Project steps">
+        <ol>
+          {STEPS.map((s, i) => {
+            const st = progress.steps[s.id];
+            const active = i === step;
+            return (
+              <li key={s.id} className={`${statusClass(st)} ${active ? 'is-active' : ''}`}>
+                <button type="button" onClick={() => jumpTo(i)}>
+                  <span className="project-post-steps-dot" aria-hidden>
+                    {st === 'complete' ? <Check size={12} strokeWidth={2.75} /> : i + 1}
                   </span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+                  <span className="project-post-steps-label">{s.label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
-      <form className="card card-pad-lg project-post-card" onSubmit={onFormSubmit} noValidate>
-        <div className="wizard-panel-head">
-          <p className="kicker">
-            Step {step + 1} of {STEPS.length}
-          </p>
-          <h2 className="wizard-panel-title">{current.label}</h2>
-          <p className="page-sub" style={{ margin: 0 }}>
-            {current.blurb}
-          </p>
+      <form className="project-post-card" onSubmit={onFormSubmit} noValidate>
+        <div className="project-post-card-head">
+          <div>
+            <p className="ops-kicker">
+              Step {step + 1} of {STEPS.length}
+            </p>
+            <h2 className="project-post-card-title">{current.label}</h2>
+            <p className="project-post-card-blurb">{current.blurb}</p>
+          </div>
         </div>
 
         {error && (
@@ -537,21 +517,6 @@ export default function NewProjectPage() {
             {error}
           </Alert>
         )}
-
-        <Stack direction="row" spacing={1.5} sx={{ mb: 2.5, flexWrap: 'wrap' }} useFlexGap>
-          <Button
-            type="button"
-            variant="outlined"
-            startIcon={<ArrowBackIcon />}
-            onClick={goBack}
-            disabled={step === 0 || busy}
-          >
-            Back
-          </Button>
-          <Button type="button" variant="outlined" onClick={clearDraft} disabled={busy}>
-            Clear draft
-          </Button>
-        </Stack>
 
         {current.id === 'overview' && (
           <Stack className="wizard-panel" key="overview" spacing={2.5}>
@@ -569,21 +534,19 @@ export default function NewProjectPage() {
               <FieldLabel required hint="Pick one or more service groups, then refine.">
                 What do you need?
               </FieldLabel>
-              <Stack spacing={2}>
+              <div className="project-post-groups">
                 {SURVEY_SERVICE_GROUPS.map((group) => (
-                  <div key={group.id}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {group.label}
-                    </Typography>
+                  <section key={group.id} className="project-post-group">
+                    <h3>{group.label}</h3>
                     <OptionCards
                       options={group.services}
                       labels={SURVEY_SERVICE_LABELS}
                       value={services}
                       onToggle={(s) => setServices((prev) => toggleIn(prev, s))}
                     />
-                  </div>
+                  </section>
                 ))}
-              </Stack>
+              </div>
             </div>
 
             <TextField
@@ -595,10 +558,17 @@ export default function NewProjectPage() {
               placeholder="We need an existing-condition survey and laser scan of a three-story commercial building…"
               value={details.description}
               onChange={(e) => patchDetails({ description: e.target.value })}
-              helperText={`${details.description.trim().length}/50 minimum · recommended 100–500`}
+              helperText={
+                details.description.trim().length >= 50
+                  ? `${details.description.trim().length} characters · looking good`
+                  : `${details.description.trim().length}/50 minimum to continue · recommended 100–500`
+              }
+              color={details.description.trim().length >= 50 ? 'success' : 'primary'}
               slotProps={{
                 formHelperText: {
-                  sx: { color: details.description.trim().length >= 50 ? 'success.main' : undefined },
+                  sx: {
+                    color: details.description.trim().length >= 50 ? 'success.main' : 'text.secondary',
+                  },
                 },
               }}
             />
@@ -1288,13 +1258,13 @@ export default function NewProjectPage() {
                           py: 1.25,
                           textAlign: 'left',
                           cursor: 'pointer',
-                          bgcolor: complete ? 'rgba(0, 36, 107, 0.04)' : 'background.paper',
+                          bgcolor: complete ? 'rgba(113, 104, 246, 0.06)' : 'background.paper',
                           borderColor: complete
                             ? 'primary.main'
                             : partial
                               ? 'warning.main'
                               : 'divider',
-                          '&:hover': { bgcolor: 'rgba(0, 36, 107, 0.06)' },
+                          '&:hover': { bgcolor: 'rgba(113, 104, 246, 0.08)' },
                         }}
                       >
                         {complete ? (
@@ -1330,8 +1300,31 @@ export default function NewProjectPage() {
         <Stack
           direction="row"
           spacing={1.5}
-          sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider', justifyContent: 'flex-end' }}
+          sx={{
+            mt: 3,
+            pt: 2.5,
+            borderTop: 1,
+            borderColor: 'divider',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1.5,
+          }}
+          useFlexGap
         >
+          <Stack direction="row" spacing={1.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
+            <Button
+              type="button"
+              variant="outlined"
+              startIcon={<ArrowBackIcon />}
+              onClick={goBack}
+              disabled={step === 0 || busy}
+            >
+              Back
+            </Button>
+            <Button type="button" variant="text" onClick={clearDraft} disabled={busy} sx={{ color: 'text.secondary' }}>
+              Clear draft
+            </Button>
+          </Stack>
           {isLast ? (
             <Button variant="contained" type="button" onClick={publishProject} disabled={busy}>
               {busy ? 'Publishing…' : 'Publish project'}
@@ -1343,6 +1336,11 @@ export default function NewProjectPage() {
               onClick={goNext}
               disabled={!stepValid}
               endIcon={<ArrowForwardIcon />}
+              title={
+                !stepValid && current.id === 'overview'
+                  ? 'Add a title, pick services, and write at least 50 characters in the description'
+                  : undefined
+              }
             >
               Continue
             </Button>

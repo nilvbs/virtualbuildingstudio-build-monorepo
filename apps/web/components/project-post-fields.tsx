@@ -3,7 +3,6 @@
 import type { ReactNode } from 'react';
 import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import Grid from '@mui/material/Grid';
 import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import Stack from '@mui/material/Stack';
@@ -13,14 +12,35 @@ import Typography from '@mui/material/Typography';
 const cardSx = (selected: boolean) => ({
   m: 0,
   width: '100%',
-  px: 1.5,
+  height: '100%',
+  minHeight: 48,
+  px: 1.25,
   py: 1,
-  borderRadius: 1.25,
+  borderRadius: '10px',
   border: '1px solid',
-  borderColor: selected ? 'primary.main' : 'divider',
-  bgcolor: selected ? 'rgba(0, 36, 107, 0.06)' : 'background.paper',
-  alignItems: 'flex-start',
-  '& .MuiFormControlLabel-label': { fontSize: 14, fontWeight: selected ? 600 : 500 },
+  borderColor: selected ? 'primary.main' : 'rgba(113, 104, 246, 0.14)',
+  bgcolor: selected ? 'rgba(113, 104, 246, 0.08)' : '#fff',
+  alignItems: 'center',
+  mx: 0,
+  transition: 'border-color 0.15s ease, background-color 0.15s ease',
+  '&:hover': {
+    borderColor: selected ? 'primary.main' : 'rgba(91, 82, 224, 0.32)',
+    bgcolor: selected ? 'rgba(113, 104, 246, 0.1)' : '#faf9ff',
+  },
+  '& .MuiCheckbox-root, & .MuiRadio-root': {
+    p: 0.5,
+    mr: 0.75,
+  },
+  '& .MuiFormControlLabel-label': {
+    fontSize: 13.25,
+    lineHeight: 1.25,
+    fontWeight: selected ? 650 : 500,
+    color: '#2a2558',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
 });
 
 export function FieldLabel({
@@ -122,45 +142,42 @@ export function OptionCards<T extends string>({
   if (exclusive) {
     return (
       <RadioGroup
+        className="project-post-options"
         value={value || ''}
         onChange={(_e, next) => onToggle(next as T)}
       >
-        <Grid container spacing={1.25}>
-          {options.map((opt) => {
-            const selected = value === opt;
-            return (
-              <Grid key={opt} size={{ xs: 12, sm: 6 }}>
-                <FormControlLabel
-                  value={opt}
-                  control={<Radio size="small" />}
-                  label={labels[opt]}
-                  sx={cardSx(selected)}
-                />
-              </Grid>
-            );
-          })}
-        </Grid>
+        {options.map((opt) => {
+          const selected = value === opt;
+          return (
+            <FormControlLabel
+              key={opt}
+              value={opt}
+              control={<Radio size="small" />}
+              label={labels[opt]}
+              sx={cardSx(selected)}
+            />
+          );
+        })}
       </RadioGroup>
     );
   }
 
   const selectedList = Array.isArray(value) ? value : [];
   return (
-    <Grid container spacing={1.25}>
+    <div className="project-post-options">
       {options.map((opt) => {
         const selected = selectedList.includes(opt);
         return (
-          <Grid key={opt} size={{ xs: 12, sm: 6 }}>
-            <FormControlLabel
-              control={
-                <Checkbox size="small" checked={selected} onChange={() => onToggle(opt)} />
-              }
-              label={labels[opt]}
-              sx={cardSx(selected)}
-            />
-          </Grid>
+          <FormControlLabel
+            key={opt}
+            control={
+              <Checkbox size="small" checked={selected} onChange={() => onToggle(opt)} />
+            }
+            label={labels[opt]}
+            sx={cardSx(selected)}
+          />
         );
       })}
-    </Grid>
+    </div>
   );
 }
