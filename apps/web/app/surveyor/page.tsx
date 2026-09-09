@@ -7,12 +7,9 @@ import Link from 'next/link';
 import {
   ArrowRight,
   Check,
-  CheckCircle,
-  Inbox,
   MapPin,
   Radar,
   TriangleAlert,
-  XCircle,
 } from 'lucide-react';
 import {
   COVERAGE_COUNTRY_LABELS,
@@ -21,11 +18,9 @@ import {
   type CoverageCountryId,
   type SurveyorProfile,
   type SurveyorProfileCompletionKey,
-  type SurveyorRequest,
   type SurveyorStatus,
 } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../lib/api';
-import { StatusBadge } from '../../components/status';
 
 const CoverageMapPreview = dynamic(
   () => import('../../components/coverage-map-preview').then((m) => m.CoverageMapPreview),
@@ -71,41 +66,6 @@ const CHECK_LABEL = Object.fromEntries(
   SURVEYOR_PROFILE_COMPLETION_CHECKS.map((c) => [c.key, c.label]),
 ) as Record<SurveyorProfileCompletionKey, string>;
 
-function LiveBucket({
-  kind,
-  locked,
-}: {
-  kind: 'requests' | 'matches';
-  locked?: boolean;
-}) {
-  const isRequests = kind === 'requests';
-  return (
-    <div className={`svy-dash-live-bucket${locked ? ' is-locked' : ''}`}>
-      <div className="svy-dash-live-radar" aria-hidden>
-        <span />
-        <span />
-        <span />
-        {isRequests ? <Inbox size={18} /> : <Radar size={18} />}
-      </div>
-      <div className="svy-dash-live-copy">
-        <p className="svy-dash-live-status">
-          <span className="svy-dash-live-dot" aria-hidden />
-          {locked ? 'Waiting to unlock' : isRequests ? 'Open for requests' : 'Open for matches'}
-        </p>
-        <p>
-          {locked
-            ? isRequests
-              ? 'Finish your portfolio to start receiving project requests here.'
-              : 'Finish your portfolio to see matched projects here.'
-            : isRequests
-              ? 'Nothing in your inbox yet — new fitted requests will appear here.'
-              : 'No matches yet — we’ll show fitted projects here as they come in.'}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function CompletionRing({ percent }: { percent: number }) {
   const clamped = Math.max(0, Math.min(100, percent));
   const r = 42;
@@ -149,10 +109,9 @@ export default function SurveyorDashboardPage() {
   const [status, setStatus] = useState<SurveyorStatus | null>(null);
   const [profile, setProfile] = useState<SurveyorProfile | null>(null);
   const [completionMissing, setCompletionMissing] = useState<SurveyorProfileCompletionKey[]>([]);
-  const [requests, setRequests] = useState<SurveyorRequest[]>([]);
+  const [requestCount, setRequestCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [acting, setActing] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -192,11 +151,11 @@ export default function SurveyorDashboardPage() {
         setCompletionMissing(completion.missing);
 
         if (nextStatus.profileComplete) {
-          const nextRequests = await api.getSurveyorRequests().catch(() => [] as SurveyorRequest[]);
+          const nextRequests = await api.getSurveyorRequests().catch(() => []);
           if (cancelled) return;
-          setRequests(nextRequests);
+          setRequestCount(nextRequests.length);
         } else {
-          setRequests([]);
+          setRequestCount(0);
         }
       } catch (err) {
         if (cancelled) return;
@@ -218,11 +177,11 @@ export default function SurveyorDashboardPage() {
       try {
         const [nextStatus, nextRequests] = await Promise.all([
           api.getSurveyorStatus(),
-          api.getSurveyorRequests().catch(() => [] as SurveyorRequest[]),
+          api.getSurveyorRequests().catch(() => []),
         ]);
         if (cancelled) return;
         setStatus(nextStatus);
-        setRequests(nextRequests);
+        setRequestCount(nextRequests.length);
       } catch {
         /* keep last good snapshot while live-checking */
       }
@@ -280,37 +239,10 @@ export default function SurveyorDashboardPage() {
     return Array.from(new Set(coverageCounties.map((c) => c.state))).sort();
   }, [coverageCounties]);
 
-  async function handleAccept(matchId: string) {
-    setActing(matchId);
-    try {
-      await api.acceptMatch(matchId);
-      setRequests((prev) => prev.filter((r) => r.matchId !== matchId));
-      setStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              matches: prev.matches.filter((m) => m.matchId !== matchId),
-            }
-          : prev,
-      );
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setActing(null);
-    }
-  }
-
-  async function handleDecline(matchId: string) {
-    setActing(matchId);
-    try {
-      await api.declineMatch(matchId);
-      setRequests((prev) => prev.filter((r) => r.matchId !== matchId));
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setActing(null);
-    }
-  }
+  const acceptedMatches = useMemo(
+    () => (status?.matches ?? []).filter((m) => m.status === 'accepted' || m.status === 'completed'),
+    [status?.matches],
+  );
 
   if (loading) {
     return (
@@ -348,7 +280,7 @@ export default function SurveyorDashboardPage() {
               {incomplete
                 ? `${pendingGates.length} stage${pendingGates.length === 1 ? '' : 's'} still need details before matching unlocks.`
                 : coverageCounties.length > 0
-                  ? `Covering ${coverageCounties.length} count${coverageCounties.length === 1 ? 'y' : 'ies'}${coverageStates.length ? ` across ${coverageStates.length} state${coverageStates.length === 1 ? '' : 's'}` : ''}. When a project fits, we’ll match you.`
+                  ? `Covering ${coverageCounties.length} count${coverageCounties.length === 1 ? 'y' : 'ies'}${coverageStates.length ? ` across ${coverageStates.length} state${coverageStates.length === 1 ? '' : 's'}` : ''}. Open My Requests when a project fits.`
                   : status.subtext}
             </p>
 
@@ -389,11 +321,11 @@ export default function SurveyorDashboardPage() {
               </div>
               <div className="svy-dash-hero-fact">
                 <span>Requests</span>
-                <strong>{incomplete ? 'Locked' : requests.length}</strong>
+                <strong>{incomplete ? 'Locked' : requestCount}</strong>
               </div>
               <div className="svy-dash-hero-fact">
                 <span>Matches</span>
-                <strong>{incomplete ? 'Locked' : status.matches.length}</strong>
+                <strong>{incomplete ? 'Locked' : acceptedMatches.length}</strong>
               </div>
             </div>
 
@@ -418,164 +350,56 @@ export default function SurveyorDashboardPage() {
       </header>
 
       {incomplete ? (
-        <div className="svy-dash-grid">
-          <section className="svy-dash-panel svy-dash-panel--fill" aria-labelledby="svy-pending-title">
-            <div className="svy-dash-panel-head">
-              <div>
-                <p className="svy-dash-kicker">Still needed</p>
-                <h2 id="svy-pending-title" className="svy-dash-panel-title">
-                  Pending portfolio items
-                </h2>
-              </div>
-              <span className="svy-dash-count">{pendingGates.length}</span>
+        <section className="svy-dash-panel svy-dash-panel--fill" aria-labelledby="svy-pending-title">
+          <div className="svy-dash-panel-head">
+            <div>
+              <p className="svy-dash-kicker">Still needed</p>
+              <h2 id="svy-pending-title" className="svy-dash-panel-title">
+                Pending portfolio items
+              </h2>
             </div>
+            <span className="svy-dash-count">{pendingGates.length}</span>
+          </div>
 
-            {doneGateCount > 0 ? (
-              <div className="svy-dash-done-row" aria-label="Completed stages">
-                {gates
-                  .filter((g) => g.complete)
-                  .map((gate) => (
-                    <span key={gate.id} className="svy-dash-done-chip">
-                      <Check size={12} strokeWidth={3} />
-                      {gate.label}
-                    </span>
-                  ))}
-              </div>
-            ) : null}
+          {doneGateCount > 0 ? (
+            <div className="svy-dash-done-row" aria-label="Completed stages">
+              {gates
+                .filter((g) => g.complete)
+                .map((gate) => (
+                  <span key={gate.id} className="svy-dash-done-chip">
+                    <Check size={12} strokeWidth={3} />
+                    {gate.label}
+                  </span>
+                ))}
+            </div>
+          ) : null}
 
-            <div className="svy-dash-gates">
-              {pendingGates.map((gate) => (
-                <article key={gate.id} className="svy-dash-gate is-pending">
-                  <div className="svy-dash-gate-top">
-                    <span className="svy-dash-gate-index" aria-hidden>
-                      <TriangleAlert size={13} strokeWidth={2.5} />
-                    </span>
-                    <div className="svy-dash-gate-copy">
-                      <strong>{gate.label}</strong>
-                      <span>{gate.blurb}</span>
-                    </div>
-                    <Link className="btn svy-dash-gate-btn" href={`/surveyor/profile?step=${gate.id}`}>
-                      Fill
-                      <ArrowRight size={14} />
-                    </Link>
+          <div className="svy-dash-gates">
+            {pendingGates.map((gate) => (
+              <article key={gate.id} className="svy-dash-gate is-pending">
+                <div className="svy-dash-gate-top">
+                  <span className="svy-dash-gate-index" aria-hidden>
+                    <TriangleAlert size={13} strokeWidth={2.5} />
+                  </span>
+                  <div className="svy-dash-gate-copy">
+                    <strong>{gate.label}</strong>
+                    <span>{gate.blurb}</span>
                   </div>
-                  <ul className="svy-dash-missing">
-                    {gate.pending.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <aside className="svy-dash-panel svy-dash-panel--fill svy-dash-side-card">
-            <div className="svy-dash-side-block">
-              <div className="svy-dash-panel-head">
-                <div>
-                  <p className="svy-dash-kicker">Inbox</p>
-                  <h2 className="svy-dash-panel-title">Requests</h2>
+                  <Link className="btn svy-dash-gate-btn" href={`/surveyor/profile?step=${gate.id}`}>
+                    Fill
+                    <ArrowRight size={14} />
+                  </Link>
                 </div>
-              </div>
-              <LiveBucket kind="requests" locked />
-            </div>
-            <div className="svy-dash-side-block">
-              <div className="svy-dash-panel-head">
-                <div>
-                  <p className="svy-dash-kicker">Activity</p>
-                  <h2 className="svy-dash-panel-title">Matches</h2>
-                </div>
-              </div>
-              <LiveBucket kind="matches" locked />
-            </div>
-          </aside>
-        </div>
-      ) : (
-        <div className="svy-dash-grid">
-          <section className="svy-dash-panel svy-dash-panel--fill" aria-labelledby="svy-requests-title">
-            <div className="svy-dash-panel-head">
-              <div>
-                <p className="svy-dash-kicker">Inbox</p>
-                <h2 id="svy-requests-title" className="svy-dash-panel-title">
-                  Project requests
-                </h2>
-              </div>
-              <span className="svy-dash-count">{requests.length}</span>
-            </div>
-
-            {requests.length === 0 ? (
-              <LiveBucket kind="requests" />
-            ) : (
-              <div className="svy-dash-requests">
-                {requests.map((req) => (
-                  <article key={req.matchId} className="svy-dash-request">
-                    <div className="svy-dash-request-head">
-                      <div>
-                        <h3>{req.project.title}</h3>
-                        <p>
-                          {req.client.fullName}
-                          {req.client.companyName ? ` · ${req.client.companyName}` : ''}
-                        </p>
-                      </div>
-                      <StatusBadge status={req.status} />
-                    </div>
-                    <div className="svy-dash-request-meta">
-                      {req.project.locationText ? (
-                        <span>
-                          <MapPin size={13} /> {req.project.locationText}
-                        </span>
-                      ) : null}
-                      {req.project.neededWithin ? <span>{req.project.neededWithin}</span> : null}
-                    </div>
-                    <div className="svy-dash-request-actions">
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={acting === req.matchId}
-                        onClick={() => handleAccept(req.matchId)}
-                      >
-                        <CheckCircle size={16} /> Accept
-                      </button>
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        disabled={acting === req.matchId}
-                        onClick={() => handleDecline(req.matchId)}
-                      >
-                        <XCircle size={16} /> Decline
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="svy-dash-panel svy-dash-panel--fill" aria-labelledby="svy-matches-title">
-            <div className="svy-dash-panel-head">
-              <div>
-                <p className="svy-dash-kicker">Activity</p>
-                <h2 id="svy-matches-title" className="svy-dash-panel-title">
-                  Recent matches
-                </h2>
-              </div>
-              <span className="svy-dash-count">{status.matches.length}</span>
-            </div>
-            {status.matches.length === 0 ? (
-              <LiveBucket kind="matches" />
-            ) : (
-              <ul className="svy-dash-matches">
-                {status.matches.map((match) => (
-                  <li key={match.matchId}>
-                    <strong>{match.projectTitle}</strong>
-                    <StatusBadge status={match.status} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
-      )}
+                <ul className="svy-dash-missing">
+                  {gate.pending.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

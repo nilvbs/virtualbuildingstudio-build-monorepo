@@ -45,6 +45,11 @@ export class ProfilesController {
     return this.profiles.getRequests(principal.sub);
   }
 
+  @Get('matches')
+  getMatches(@CurrentUser() principal: AuthPrincipal): Promise<SurveyorRequest[]> {
+    return this.profiles.getMatches(principal.sub);
+  }
+
   @Post('requests/:matchId/accept')
   acceptMatch(
     @CurrentUser() principal: AuthPrincipal,

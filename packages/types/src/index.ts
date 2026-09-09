@@ -319,31 +319,107 @@ export interface Match {
 }
 
 /** Client directory row for the admin Clients module. */
+export interface AdminClientProjectSummary {
+  id: string;
+  title: string;
+  status: ProjectStatus;
+  createdAt: string;
+  assignedSurveyor: {
+    profileId: string;
+    fullName: string;
+  } | null;
+}
+
 export interface AdminClient {
   id: string;
   fullName: string;
   email: string;
   phone: string;
   companyName: string | null;
+  city: string | null;
   emailVerified: boolean;
   phoneVerified: boolean;
   projectCount: number;
+  /** Latest projects for the listing card (limited). */
+  recentProjects: AdminClientProjectSummary[];
+  createdAt: string;
+}
+
+/** Full client dossier for admin detail view. */
+export interface AdminClientDetail {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  accountType: string;
+  companyName: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
+  workEmail: string | null;
+  workEmailVerified: boolean;
+  registrationNumber: string | null;
+  website: string | null;
+  projectCount: number;
+  projects: AdminClientProjectSummary[];
   createdAt: string;
 }
 
 export interface AdminQueueProject {
   id: string;
   title: string;
+  clientId: string;
   clientName: string;
   services: SurveyService[];
   locationText: string | null;
   status: ProjectStatus;
+  assignedSurveyor: {
+    profileId: string;
+    fullName: string;
+  } | null;
   createdAt: string;
 }
 
 /** Lightweight, permission-free snapshot shown on the Operations overview. */
 export interface AdminQueues {
   counts: { users: number; surveyors: number; openProjects: number };
+}
+
+/** Filtered operations overview analytics (still permission-free counts only). */
+export interface AdminOverviewStats {
+  filters: {
+    from: string | null;
+    to: string | null;
+    location: string | null;
+  };
+  /** Current system totals (optionally narrowed by location). */
+  totals: {
+    clients: number;
+    surveyors: number;
+    matchableSurveyors: number;
+    projects: number;
+    openProjects: number;
+  };
+  /** New records created inside the selected date window. */
+  period: {
+    clientsAdded: number;
+    surveyorsAdded: number;
+    projectsPosted: number;
+  };
+  /** Ranked location buckets for the filtered set. */
+  locations: Array<{
+    label: string;
+    clients: number;
+    surveyors: number;
+    projects: number;
+  }>;
+  /** Distinct location labels available for the filter dropdown. */
+  availableLocations: string[];
 }
 
 /** A surveyor as seen in the admin browser, with optional distance to a point. */
@@ -417,6 +493,17 @@ import type {
 } from './surveyor-portfolio';
 import { emptyPortfolioDetails } from './surveyor-portfolio';
 import { type ProjectDetails } from './project-brief';
+
+/** Full surveyor dossier for admin detail view. */
+export interface AdminSurveyorDetail extends AdminSurveyor {
+  bio: string | null;
+  details: SurveyorPortfolioDetails;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  bldVerified: boolean;
+  ratingAvg: number | null;
+  ratingCount: number;
+}
 
 /** A portfolio image; DB stores the public S3 HTTPS URL in `key`. */
 export interface PortfolioItem {
@@ -541,7 +628,10 @@ export interface SurveyorRequest {
     id: string;
     title: string;
     services: SurveyService[];
+    location: GeoPoint | null;
     locationText: string | null;
+    /** Great-circle km from the surveyor's base pin to the project site. */
+    distanceKm: number | null;
     buildingType: string | null;
     buildingAge: string | null;
     floors: number | null;
@@ -600,16 +690,20 @@ export interface Project {
   updatedAt: string;
 }
 
-/** Non-PII match summary shown to the client on their project. */
+/** Match summary on a project. Admin UIs may also show surveyor identity fields. */
 export interface ProjectMatchInfo {
   matchId: string;
   status: MatchStatus;
   surveyorBaseCity: string | null;
+  surveyorProfileId: string | null;
+  surveyorFullName: string | null;
   createdAt: string;
 }
 
 export interface ProjectDetail extends Project {
   matches: ProjectMatchInfo[];
+  /** Present on admin project workspace responses. */
+  clientName?: string | null;
 }
 
 /** Client-facing surveyor card when browsing talent for a project. */

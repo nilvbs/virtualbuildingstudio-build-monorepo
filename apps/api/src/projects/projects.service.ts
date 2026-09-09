@@ -87,17 +87,36 @@ export class ProjectsService {
     const matches = await this.prisma.match.findMany({
       where: { projectId },
       orderBy: { createdAt: 'desc' },
-      include: { surveyor: { select: { baseCity: true } } },
+      include: {
+        surveyor: {
+          select: {
+            id: true,
+            baseCity: true,
+            user: { select: { fullName: true } },
+          },
+        },
+      },
     });
 
     const matchInfo: ProjectMatchInfo[] = matches.map((m) => ({
       matchId: m.id,
       status: m.status as ProjectMatchInfo['status'],
       surveyorBaseCity: m.surveyor.baseCity,
+      surveyorProfileId: m.surveyor.id,
+      surveyorFullName: m.surveyor.user.fullName,
       createdAt: m.createdAt.toISOString(),
     }));
 
-    return { ...this.toDto(row, this.pointOf(geo[0])), matches: matchInfo };
+    const client = await this.prisma.user.findUnique({
+      where: { id: row.clientId },
+      select: { fullName: true },
+    });
+
+    return {
+      ...this.toDto(row, this.pointOf(geo[0])),
+      matches: matchInfo,
+      clientName: client?.fullName ?? null,
+    };
   }
 
   /**

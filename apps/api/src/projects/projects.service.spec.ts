@@ -76,7 +76,11 @@ describe('ProjectsService', () => {
           id: 'match-1',
           status: 'proposed',
           createdAt: new Date('2026-02-02T00:00:00Z'),
-          surveyor: { baseCity: 'Dallas, TX' },
+          surveyor: {
+            id: 'svy-1',
+            baseCity: 'Dallas, TX',
+            user: { fullName: 'Alex Surveyor' },
+          },
         },
       ]);
 
@@ -87,6 +91,8 @@ describe('ProjectsService', () => {
         matchId: 'match-1',
         status: 'proposed',
         surveyorBaseCity: 'Dallas, TX',
+        surveyorProfileId: 'svy-1',
+        surveyorFullName: 'Alex Surveyor',
       });
     });
 

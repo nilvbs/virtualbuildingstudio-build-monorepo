@@ -12,11 +12,16 @@ import {
   MATCH_STATUS_TRANSITIONS,
   PROJECT_STATUS_TRANSITIONS,
   isValidTransition,
+  normalizePortfolioDetails,
   resolveStaffPermissions,
   type AdminClient,
+  type AdminClientDetail,
+  type AdminClientProjectSummary,
+  type AdminOverviewStats,
   type AdminQueues,
   type AdminQueueProject,
   type AdminSurveyor,
+  type AdminSurveyorDetail,
   type Match,
   type MatchStatus,
   type ProjectDetail,
@@ -29,6 +34,8 @@ import {
   type UserStatus,
 } from '@surveylink/types';
 import type {
+  AdminOverviewQuery,
+  AdminProjectsQuery,
   AdminSurveyorQuery,
   CreateMatchInput,
   CreateStaffAdminInput,
@@ -89,12 +96,137 @@ export class AdminService {
     };
   }
 
+  /**
+   * Filtered overview analytics for the operations home — totals, period adds,
+   * and a location breakdown. Still aggregate-only (no row PII beyond city labels).
+   */
+  async getOverview(query: AdminOverviewQuery): Promise<AdminOverviewStats> {
+    const from = query.from ? startOfUtcDay(query.from) : null;
+    const to = query.to ? endOfUtcDay(query.to) : null;
+    const locationFilter = query.location?.trim() || null;
+    const locationNeedle = locationFilter?.toLowerCase() ?? null;
+
+    const [clients, surveyors, projects] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { roles: { some: { role: 'client' } } },
+        select: {
+          id: true,
+          createdAt: true,
+          accountProfile: { select: { city: true, state: true, country: true } },
+        },
+      }),
+      this.prisma.surveyorProfile.findMany({
+        select: { id: true, createdAt: true, baseCity: true, isMatchable: true },
+      }),
+      this.prisma.project.findMany({
+        select: { id: true, createdAt: true, locationText: true, status: true },
+      }),
+    ]);
+
+    const clientRows = clients.map((c) => ({
+      createdAt: c.createdAt,
+      label: locationLabel([
+        c.accountProfile?.city,
+        c.accountProfile?.state,
+        c.accountProfile?.country,
+      ]),
+    }));
+    const surveyorRows = surveyors.map((s) => ({
+      createdAt: s.createdAt,
+      isMatchable: s.isMatchable,
+      label: locationLabel([s.baseCity]),
+    }));
+    const projectRows = projects.map((p) => ({
+      createdAt: p.createdAt,
+      status: p.status,
+      label: locationLabelFromText(p.locationText),
+    }));
+
+    const allLabels = new Set<string>();
+    for (const row of [...clientRows, ...surveyorRows, ...projectRows]) {
+      if (row.label !== 'Unknown') allLabels.add(row.label);
+    }
+    const availableLocations = [...allLabels].sort((a, b) => a.localeCompare(b));
+
+    const matchLoc = (label: string) =>
+      !locationNeedle || label.toLowerCase().includes(locationNeedle);
+
+    const clientsScoped = clientRows.filter((r) => matchLoc(r.label));
+    const surveyorsScoped = surveyorRows.filter((r) => matchLoc(r.label));
+    const projectsScoped = projectRows.filter((r) => matchLoc(r.label));
+
+    const inPeriod = (d: Date) => {
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    };
+
+    const locationMap = new Map<
+      string,
+      { clients: number; surveyors: number; projects: number }
+    >();
+    const bump = (label: string, key: 'clients' | 'surveyors' | 'projects') => {
+      const cur = locationMap.get(label) ?? { clients: 0, surveyors: 0, projects: 0 };
+      cur[key] += 1;
+      locationMap.set(label, cur);
+    };
+    for (const r of clientsScoped) bump(r.label, 'clients');
+    for (const r of surveyorsScoped) bump(r.label, 'surveyors');
+    for (const r of projectsScoped) bump(r.label, 'projects');
+
+    const locations = [...locationMap.entries()]
+      .map(([label, counts]) => ({ label, ...counts }))
+      .sort((a, b) => {
+        const ta = a.clients + a.surveyors + a.projects;
+        const tb = b.clients + b.surveyors + b.projects;
+        return tb - ta || a.label.localeCompare(b.label);
+      })
+      .slice(0, 12);
+
+    return {
+      filters: {
+        from: query.from ?? null,
+        to: query.to ?? null,
+        location: locationFilter,
+      },
+      totals: {
+        clients: clientsScoped.length,
+        surveyors: surveyorsScoped.length,
+        matchableSurveyors: surveyorsScoped.filter((s) => s.isMatchable).length,
+        projects: projectsScoped.length,
+        openProjects: projectsScoped.filter((p) =>
+          OPEN_PROJECT_STATUSES.includes(p.status as ProjectStatus),
+        ).length,
+      },
+      period: {
+        clientsAdded: clientsScoped.filter((r) => inPeriod(r.createdAt)).length,
+        surveyorsAdded: surveyorsScoped.filter((r) => inPeriod(r.createdAt)).length,
+        projectsPosted: projectsScoped.filter((r) => inPeriod(r.createdAt)).length,
+      },
+      locations,
+      availableLocations,
+    };
+  }
+
   async listClients(): Promise<AdminClient[]> {
     const rows = await this.prisma.user.findMany({
       where: { roles: { some: { role: 'client' } } },
       orderBy: { createdAt: 'desc' },
       include: {
-        accountProfile: { select: { companyName: true } },
+        accountProfile: { select: { companyName: true, city: true } },
+        projects: {
+          orderBy: { createdAt: 'desc' },
+          take: 3,
+          include: {
+            matches: {
+              where: { status: { in: ['accepted', 'completed', 'proposed'] } },
+              orderBy: { createdAt: 'desc' },
+              include: {
+                surveyor: { include: { user: { select: { fullName: true } } } },
+              },
+            },
+          },
+        },
         _count: { select: { projects: true } },
       },
     });
@@ -104,28 +236,138 @@ export class AdminService {
       email: u.email,
       phone: u.phone,
       companyName: u.accountProfile?.companyName ?? null,
+      city: u.accountProfile?.city ?? null,
       emailVerified: u.emailVerified,
       phoneVerified: u.phoneVerified,
       projectCount: u._count.projects,
+      recentProjects: u.projects.map((p) => toClientProjectSummary(p)),
       createdAt: u.createdAt.toISOString(),
     }));
   }
 
-  async listOpenProjects(): Promise<AdminQueueProject[]> {
+  async getClient(clientId: string): Promise<AdminClientDetail> {
+    const u = await this.prisma.user.findFirst({
+      where: { id: clientId, roles: { some: { role: 'client' } } },
+      include: {
+        accountProfile: true,
+        projects: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            matches: {
+              where: { status: { in: ['accepted', 'completed', 'proposed'] } },
+              orderBy: { createdAt: 'desc' },
+              include: {
+                surveyor: { include: { user: { select: { fullName: true } } } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!u) throw new NotFoundException('Client not found');
+    const ap = u.accountProfile;
+    return {
+      id: u.id,
+      fullName: u.fullName,
+      email: u.email,
+      phone: u.phone,
+      emailVerified: u.emailVerified,
+      phoneVerified: u.phoneVerified,
+      accountType: u.accountType,
+      companyName: ap?.companyName ?? null,
+      addressLine1: ap?.addressLine1 ?? null,
+      addressLine2: ap?.addressLine2 ?? null,
+      city: ap?.city ?? null,
+      state: ap?.state ?? null,
+      postalCode: ap?.postalCode ?? null,
+      country: ap?.country ?? null,
+      workEmail: ap?.workEmail ?? null,
+      workEmailVerified: ap?.workEmailVerified ?? false,
+      registrationNumber: ap?.registrationNumber ?? null,
+      website: ap?.website ?? null,
+      projectCount: u.projects.length,
+      projects: u.projects.map((p) => toClientProjectSummary(p)),
+      createdAt: u.createdAt.toISOString(),
+    };
+  }
+
+  async listOpenProjects(query: AdminProjectsQuery = {}): Promise<AdminQueueProject[]> {
     const openProjects = await this.prisma.project.findMany({
-      where: { status: { in: OPEN_PROJECT_STATUSES } },
+      where: query.clientId
+        ? { clientId: query.clientId }
+        : { status: { in: OPEN_PROJECT_STATUSES } },
       orderBy: { createdAt: 'desc' },
-      include: { client: { select: { fullName: true } } },
+      include: {
+        client: { select: { id: true, fullName: true } },
+        matches: {
+          where: { status: { in: ['accepted', 'completed', 'proposed'] } },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            surveyor: { include: { user: { select: { fullName: true } } } },
+          },
+        },
+      },
     });
     return openProjects.map((p) => ({
       id: p.id,
       title: p.title,
+      clientId: p.client.id,
       clientName: p.client.fullName,
       services: (p.services as unknown as SurveyService[]) ?? [],
       locationText: p.locationText,
       status: p.status as ProjectStatus,
+      assignedSurveyor: pickAssignedSurveyor(p.matches),
       createdAt: p.createdAt.toISOString(),
     }));
+  }
+
+  async getSurveyor(profileId: string): Promise<AdminSurveyorDetail> {
+    const s = await this.prisma.surveyorProfile.findUnique({
+      where: { id: profileId },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            phone: true,
+            emailVerified: true,
+            phoneVerified: true,
+          },
+        },
+      },
+    });
+    if (!s) throw new NotFoundException('Surveyor not found');
+
+    const geo = await this.prisma.$queryRaw<GeoRow[]>`
+      SELECT id::text AS id, ST_X(base_location::geometry) AS lng, ST_Y(base_location::geometry) AS lat
+      FROM surveyor_profiles WHERE id = ${profileId}::uuid`;
+    const g = geo[0];
+    const location =
+      g && g.lng != null && g.lat != null ? { lng: Number(g.lng), lat: Number(g.lat) } : null;
+
+    return {
+      profileId: s.id,
+      userId: s.userId,
+      fullName: s.user.fullName,
+      email: s.user.email,
+      phone: s.user.phone,
+      emailVerified: s.user.emailVerified,
+      phoneVerified: s.user.phoneVerified,
+      baseCity: s.baseCity,
+      services: (s.services as unknown as SurveyService[]) ?? [],
+      equipment: (s.equipment as unknown as string[]) ?? [],
+      radiusKm: s.radiusKm,
+      dayRateCents: s.dayRateCents != null ? Number(s.dayRateCents) : null,
+      isMatchable: s.isMatchable,
+      location,
+      distanceKm: null,
+      bio: s.bio,
+      details: normalizePortfolioDetails((s as { details?: unknown }).details ?? {}),
+      bldVerified: s.bldVerified,
+      ratingAvg: s.ratingAvg != null ? Number(s.ratingAvg) : null,
+      ratingCount: s.ratingCount,
+      createdAt: s.createdAt.toISOString(),
+    };
   }
 
   async browseSurveyors(query: AdminSurveyorQuery): Promise<AdminSurveyor[]> {
@@ -492,6 +734,42 @@ export class AdminService {
   }
 }
 
+function toClientProjectSummary(p: {
+  id: string;
+  title: string;
+  status: string;
+  createdAt: Date;
+  matches: Array<{
+    status: string;
+    surveyor: { id: string; user: { fullName: string } };
+  }>;
+}): AdminClientProjectSummary {
+  return {
+    id: p.id,
+    title: p.title,
+    status: p.status as ProjectStatus,
+    createdAt: p.createdAt.toISOString(),
+    assignedSurveyor: pickAssignedSurveyor(p.matches),
+  };
+}
+
+function pickAssignedSurveyor(
+  matches: Array<{ status: string; surveyor: { id: string; user: { fullName: string } } }>,
+): AdminClientProjectSummary['assignedSurveyor'] {
+  if (!matches.length) return null;
+  const rank: Record<string, number> = {
+    accepted: 0,
+    completed: 1,
+    proposed: 2,
+  };
+  const sorted = [...matches].sort(
+    (a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9),
+  );
+  const top = sorted[0];
+  if (!top) return null;
+  return { profileId: top.surveyor.id, fullName: top.surveyor.user.fullName };
+}
+
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371;
   const dLat = toRad(b.lat - a.lat);
@@ -505,4 +783,24 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 
 function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
+}
+
+function locationLabel(parts: Array<string | null | undefined>): string {
+  const cleaned = parts.map((p) => p?.trim()).filter((p): p is string => Boolean(p));
+  return cleaned.length > 0 ? cleaned.join(', ') : 'Unknown';
+}
+
+function locationLabelFromText(text: string | null | undefined): string {
+  const raw = text?.trim();
+  if (!raw) return 'Unknown';
+  const first = raw.split(',').map((p) => p.trim()).filter(Boolean)[0];
+  return first || raw;
+}
+
+function startOfUtcDay(yyyyMmDd: string): Date {
+  return new Date(`${yyyyMmDd}T00:00:00.000Z`);
+}
+
+function endOfUtcDay(yyyyMmDd: string): Date {
+  return new Date(`${yyyyMmDd}T23:59:59.999Z`);
 }

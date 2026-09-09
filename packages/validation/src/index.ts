@@ -329,6 +329,27 @@ export const adminSurveyorQuerySchema = z.object({
 });
 export type AdminSurveyorQuery = z.infer<typeof adminSurveyorQuerySchema>;
 
+export const adminProjectsQuerySchema = z.object({
+  clientId: z.string().uuid().optional(),
+});
+export type AdminProjectsQuery = z.infer<typeof adminProjectsQuerySchema>;
+
+/** Date / location filters for the admin operations overview. */
+export const adminOverviewQuerySchema = z.object({
+  from: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+    .optional(),
+  to: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+    .optional(),
+  location: z.string().trim().max(120).optional(),
+});
+export type AdminOverviewQuery = z.infer<typeof adminOverviewQuerySchema>;
+
 /** Client discovery of matchable surveyors for a posted project. */
 export const clientSurveyorBrowseSchema = z.object({
   cursor: z.coerce.number().int().min(0).optional().default(0),

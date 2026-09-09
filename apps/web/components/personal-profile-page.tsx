@@ -30,7 +30,7 @@ function initials(name: string) {
 function VerificationBadge({ verified }: { verified: boolean }) {
   return (
     <span className={`personal-verify${verified ? ' is-verified' : ' is-pending'}`}>
-      {verified ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+      {verified ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
       {verified ? 'Verified' : 'Not verified'}
     </span>
   );
@@ -168,15 +168,17 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   const isCompany = accountType === 'company';
   const showCompanyName = role === 'client' || isCompany;
   const fullyVerified = user.emailVerified && user.phoneVerified;
+  const firstName = user.fullName.trim().split(/\s+/)[0] || 'there';
 
   return (
     <div className="personal-profile">
-      <header className="personal-profile-head">
-        <div>
-          <p className="kicker">Account</p>
-          <h1>Personal profile</h1>
-          <p>Your identity, contact details, and verification status.</p>
-        </div>
+      <header className="personal-profile-hello">
+        <h1 className="personal-profile-hello-title">Hi {firstName}</h1>
+        <p className="personal-profile-hello-copy">
+          {fullyVerified
+            ? 'Your account looks great — keep your photo and address up to date.'
+            : 'Finish verifying email and phone so clients and matches can reach you reliably.'}
+        </p>
       </header>
 
       {error && <div className="alert error">{error}</div>}
@@ -221,35 +223,42 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
             {fullyVerified ? (
               <BadgeCheck
                 className="personal-identity-verified"
-                size={22}
+                size={20}
                 aria-label="Email and mobile verified"
               />
             ) : null}
           </h2>
+          <p className="personal-identity-meta">
+            {fullyVerified ? 'Verified account' : 'Verification incomplete'}
+          </p>
         </section>
 
         <section className="personal-profile-card">
-          <h2>Contact details</h2>
+          <h2>Contact</h2>
           <div className="personal-contact-list">
             <div className="personal-contact-row">
-              <span className="personal-contact-icon"><AtSign size={18} /></span>
+              <span className="personal-contact-icon">
+                <AtSign size={17} />
+              </span>
               <span className="personal-contact-copy">
-                <small>Email address</small>
+                <small>Email</small>
                 <strong>{user.email}</strong>
               </span>
               <VerificationBadge verified={user.emailVerified} />
             </div>
             <div className="personal-contact-row">
-              <span className="personal-contact-icon"><Phone size={18} /></span>
+              <span className="personal-contact-icon">
+                <Phone size={17} />
+              </span>
               <span className="personal-contact-copy">
-                <small>Phone number</small>
+                <small>Phone</small>
                 <strong>{user.phone}</strong>
               </span>
               <VerificationBadge verified={user.phoneVerified} />
             </div>
           </div>
           {(!user.emailVerified || !user.phoneVerified) && (
-            <a className="btn secondary" href="/onboarding">
+            <a className="btn secondary personal-verify-cta" href="/onboarding">
               Complete verification
             </a>
           )}
@@ -257,10 +266,10 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
 
         <section className="personal-profile-card personal-profile-edit">
           <div className="personal-details-heading">
-            <h2>Personal details</h2>
+            <h2>Details</h2>
             {!editing && (
               <button type="button" className="personal-details-edit-button" onClick={startEditing}>
-                <Pencil size={15} />
+                <Pencil size={14} />
                 Edit
               </button>
             )}
@@ -380,7 +389,12 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
                 <button type="submit" className="btn" disabled={busy}>
                   {busy ? 'Saving…' : 'Save changes'}
                 </button>
-                <button type="button" className="btn secondary" disabled={busy} onClick={() => void cancelEditing()}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={busy}
+                  onClick={() => void cancelEditing()}
+                >
                   Cancel
                 </button>
               </div>

@@ -12,21 +12,28 @@ import {
 } from '@nestjs/common';
 import type {
   AdminClient,
+  AdminClientDetail,
+  AdminOverviewStats,
   AdminQueues,
   AdminQueueProject,
   AdminSurveyor,
+  AdminSurveyorDetail,
   AuthPrincipal,
   Match,
   ProjectDetail,
   StaffAdmin,
 } from '@surveylink/types';
 import {
+  adminOverviewQuerySchema,
+  adminProjectsQuerySchema,
   adminSurveyorQuerySchema,
   createMatchSchema,
   createStaffAdminSchema,
   updateMatchSchema,
   updateProjectStatusSchema,
   updateStaffAdminSchema,
+  type AdminOverviewQuery,
+  type AdminProjectsQuery,
   type AdminSurveyorQuery,
   type CreateMatchInput,
   type CreateStaffAdminInput,
@@ -51,16 +58,32 @@ export class AdminController {
     return this.admin.getQueues();
   }
 
+  /** Filtered overview analytics (date + location). */
+  @Get('overview')
+  overview(
+    @Query(new ZodValidationPipe(adminOverviewQuerySchema)) query: AdminOverviewQuery,
+  ): Promise<AdminOverviewStats> {
+    return this.admin.getOverview(query);
+  }
+
   @Get('clients')
   @RequirePermissions('clients:view')
   listClients(): Promise<AdminClient[]> {
     return this.admin.listClients();
   }
 
+  @Get('clients/:id')
+  @RequirePermissions('clients:view')
+  getClient(@Param('id', ParseUUIDPipe) id: string): Promise<AdminClientDetail> {
+    return this.admin.getClient(id);
+  }
+
   @Get('projects/open')
   @RequirePermissions('projects:view')
-  listOpenProjects(): Promise<AdminQueueProject[]> {
-    return this.admin.listOpenProjects();
+  listOpenProjects(
+    @Query(new ZodValidationPipe(adminProjectsQuerySchema)) query: AdminProjectsQuery,
+  ): Promise<AdminQueueProject[]> {
+    return this.admin.listOpenProjects(query);
   }
 
   @Get('surveyors')
@@ -69,6 +92,12 @@ export class AdminController {
     @Query(new ZodValidationPipe(adminSurveyorQuerySchema)) query: AdminSurveyorQuery,
   ): Promise<AdminSurveyor[]> {
     return this.admin.browseSurveyors(query);
+  }
+
+  @Get('surveyors/:id')
+  @RequirePermissions('surveyors:view')
+  getSurveyor(@Param('id', ParseUUIDPipe) id: string): Promise<AdminSurveyorDetail> {
+    return this.admin.getSurveyor(id);
   }
 
   @Post('matches')

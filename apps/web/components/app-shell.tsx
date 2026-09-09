@@ -44,6 +44,20 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
     sub: 'Dashboard and portfolio',
     items: [
       { href: '/surveyor', label: 'Dashboard', icon: 'chart', exact: true },
+      {
+        href: '/surveyor/requests',
+        label: 'My Requests',
+        shortLabel: 'Requests',
+        icon: 'mail',
+        requiresCompleteProfile: true,
+      },
+      {
+        href: '/surveyor/matches',
+        label: 'My Matches',
+        shortLabel: 'Matches',
+        icon: 'check',
+        requiresCompleteProfile: true,
+      },
       { href: '/surveyor/profile', label: 'Portfolio', icon: 'briefcase' },
     ],
   },
@@ -94,7 +108,7 @@ function avatarUrl(value: string | null | undefined): string | null {
 function topbarCopy(section: Section, pathname: string): { label: string; sub: string } {
   if (section === 'client') {
     if (pathname.startsWith('/client/personal-profile')) {
-      return { label: 'Personal profile', sub: 'Contact details and verification' };
+      return { label: 'Account', sub: 'Your personal details' };
     }
     if (pathname.startsWith('/client/projects/new')) {
       return { label: 'Post a project', sub: 'Brief, site, and timing' };
@@ -106,25 +120,34 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
   }
   if (section === 'surveyor') {
     if (pathname.startsWith('/surveyor/personal-profile')) {
-      return { label: 'Personal profile', sub: 'Contact details and verification' };
+      return { label: 'Account', sub: 'Your personal details' };
     }
     if (pathname.startsWith('/surveyor/profile')) {
       return { label: 'Portfolio', sub: 'Services, coverage, and rates' };
     }
-    if (pathname.startsWith('/surveyor/requests') || pathname.startsWith('/surveyor/matches')) {
-      return { label: 'Dashboard', sub: 'Requests and matches' };
+    if (pathname.startsWith('/surveyor/requests')) {
+      return { label: 'My Requests', sub: 'Incoming project requests to accept or decline' };
     }
-    return { label: 'Dashboard', sub: 'Live matching status' };
+    if (pathname.startsWith('/surveyor/matches')) {
+      return { label: 'My Matches', sub: 'Projects you’ve accepted' };
+    }
+    return { label: 'Dashboard', sub: 'Portfolio status and coverage' };
   }
   if (section === 'admin') {
+    if (pathname.startsWith('/build/admin/clients/') && pathname !== '/build/admin/clients') {
+      return { label: 'Client profile', sub: 'Personal details and projects' };
+    }
     if (pathname.startsWith('/build/admin/clients')) {
       return { label: 'Clients', sub: 'Everyone posting survey work' };
     }
+    if (pathname.startsWith('/build/admin/surveyors/') && pathname !== '/build/admin/surveyors') {
+      return { label: 'Surveyor profile', sub: 'Portfolio, contact, and map location' };
+    }
     if (pathname.startsWith('/build/admin/surveyors')) {
-      return { label: 'Surveyors', sub: 'Browse the expert network' };
+      return { label: 'Surveyors', sub: 'Expert network' };
     }
     if (/^\/build\/admin\/projects\/[^/]+/.test(pathname)) {
-      return { label: 'Project details', sub: 'Review, match, and update status' };
+      return { label: 'Project workspace', sub: 'Status, matches, and assignment' };
     }
     if (pathname.startsWith('/build/admin/projects')) {
       return { label: 'Projects', sub: 'Demand awaiting a surveyor' };

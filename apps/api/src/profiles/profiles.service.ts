@@ -23,9 +23,16 @@ import type {
   CreateSurveyorProfileInput,
   UpdateSurveyorProfileInput,
 } from '@surveylink/validation';
+import { haversineKm } from '../common/geo';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface GeoRow {
+  lng: number | null;
+  lat: number | null;
+}
+
+interface ProjectGeoRow {
+  id: string;
   lng: number | null;
   lat: number | null;
 }
@@ -169,7 +176,11 @@ export class ProfilesService {
     });
 
     const matches = await this.prisma.match.findMany({
-      where: { surveyorId: profile.id },
+      where: {
+        surveyorId: profile.id,
+        // Surveyors never see declined (or cancelled) matches in their status feed.
+        status: { notIn: ['declined', 'cancelled'] },
+      },
       orderBy: { createdAt: 'desc' },
       include: { project: { select: { title: true } } },
     });
@@ -178,13 +189,13 @@ export class ProfilesService {
     const headline = !completion.complete
       ? 'Finish your profile to go live'
       : hasProposed
-        ? "You've been matched to a project — we'll reach out."
+        ? "You've been matched to a project — review it in My Requests."
         : "We're mapping projects to you.";
     const subtext = !completion.complete
-      ? `Your profile is ${completion.percent}% complete. Dashboard unlocks at 100%.`
+      ? `Your profile is ${completion.percent}% complete. Matching unlocks at 100%.`
       : hasProposed
-        ? 'Keep an eye on your phone and email; our team will confirm the details with you directly.'
-        : "Your profile is live. When a project fits, we'll match you and get in touch.";
+        ? 'Open My Requests to accept or decline. Accepted work moves to My Matches.'
+        : "Your profile is live. When a project fits, we'll send it to My Requests.";
 
     return {
       hasProfile: true,
@@ -253,6 +264,20 @@ export class ProfilesService {
    * Return all proposed matches for this surveyor with full project + client info.
    */
   async getRequests(subject: string): Promise<SurveyorRequest[]> {
+    return this.listSurveyorMatches(subject, ['proposed']);
+  }
+
+  /**
+   * Accepted / completed matches with full project details for My Matches.
+   */
+  async getMatches(subject: string): Promise<SurveyorRequest[]> {
+    return this.listSurveyorMatches(subject, ['accepted', 'completed']);
+  }
+
+  private async listSurveyorMatches(
+    subject: string,
+    statuses: MatchStatus[],
+  ): Promise<SurveyorRequest[]> {
     const user = await this.requireUser(subject);
     const profile = await this.prisma.surveyorProfile.findUnique({
       where: { userId: user.id },
@@ -260,8 +285,16 @@ export class ProfilesService {
     });
     if (!profile) return [];
 
+    const baseGeo = await this.prisma.$queryRaw<GeoRow[]>`
+      SELECT ST_X(base_location::geometry) AS lng, ST_Y(base_location::geometry) AS lat
+      FROM surveyor_profiles WHERE id = ${profile.id}::uuid`;
+    const basePoint =
+      baseGeo[0]?.lng != null && baseGeo[0]?.lat != null
+        ? { lng: Number(baseGeo[0].lng), lat: Number(baseGeo[0].lat) }
+        : null;
+
     const matches = await this.prisma.match.findMany({
-      where: { surveyorId: profile.id, status: 'proposed' },
+      where: { surveyorId: profile.id, status: { in: statuses } },
       orderBy: { createdAt: 'desc' },
       include: {
         project: {
@@ -277,29 +310,57 @@ export class ProfilesService {
       },
     });
 
-    return matches.map((m) => ({
-      matchId: m.id,
-      status: m.status as MatchStatus,
-      createdAt: m.createdAt.toISOString(),
-      project: {
-        id: m.project.id,
-        title: m.project.title,
-        services: (m.project.services as unknown as SurveyService[]) ?? [],
-        locationText: m.project.locationText,
-        buildingType: m.project.buildingType,
-        buildingAge: m.project.buildingAge,
-        floors: m.project.floors,
-        areaSqft: m.project.areaSqft,
-        neededWithin: m.project.neededWithin,
-        notes: m.project.notes,
-        status: m.project.status as SurveyorRequest['project']['status'],
-        createdAt: m.project.createdAt.toISOString(),
-      },
-      client: {
-        fullName: m.project.client.fullName,
-        companyName: m.project.client.accountProfile?.companyName ?? null,
-      },
-    }));
+    if (matches.length === 0) return [];
+
+    const projectIds = matches.map((m) => m.project.id);
+    const projectGeo =
+      projectIds.length === 0
+        ? []
+        : await this.prisma.$queryRawUnsafe<ProjectGeoRow[]>(
+            `SELECT id::text AS id, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
+             FROM projects
+             WHERE id = ANY($1::uuid[])`,
+            projectIds,
+          );
+    const geoById = new Map(
+      projectGeo.map((g) => [
+        g.id,
+        g.lng != null && g.lat != null ? { lng: Number(g.lng), lat: Number(g.lat) } : null,
+      ]),
+    );
+
+    return matches.map((m) => {
+      const location = geoById.get(m.project.id) ?? null;
+      const distanceKm =
+        basePoint && location
+          ? Math.round(haversineKm(basePoint, location) * 10) / 10
+          : null;
+      return {
+        matchId: m.id,
+        status: m.status as MatchStatus,
+        createdAt: m.createdAt.toISOString(),
+        project: {
+          id: m.project.id,
+          title: m.project.title,
+          services: (m.project.services as unknown as SurveyService[]) ?? [],
+          location,
+          locationText: m.project.locationText,
+          distanceKm,
+          buildingType: m.project.buildingType,
+          buildingAge: m.project.buildingAge,
+          floors: m.project.floors,
+          areaSqft: m.project.areaSqft,
+          neededWithin: m.project.neededWithin,
+          notes: m.project.notes,
+          status: m.project.status as SurveyorRequest['project']['status'],
+          createdAt: m.project.createdAt.toISOString(),
+        },
+        client: {
+          fullName: m.project.client.fullName,
+          companyName: m.project.client.accountProfile?.companyName ?? null,
+        },
+      };
+    });
   }
 
   /**

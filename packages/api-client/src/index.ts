@@ -18,7 +18,10 @@ import type {
   ClientSurveyorPage,
   ClientSurveyorSort,
   AdminQueues,
+  AdminOverviewStats,
   AdminSurveyor,
+  AdminSurveyorDetail,
+  AdminClientDetail,
   Match,
   MatchStatus,
   ProjectStatus,
@@ -123,6 +126,16 @@ export interface AdminSurveyorQueryBody {
   nearLat?: number;
   nearLng?: number;
   radiusKm?: number;
+}
+
+export interface AdminOverviewQueryBody {
+  from?: string;
+  to?: string;
+  location?: string;
+}
+
+export interface AdminProjectsQueryBody {
+  clientId?: string;
 }
 
 export interface CreateMatchBody {
@@ -379,6 +392,10 @@ export class SurveyLinkClient {
     return this.request<SurveyorRequest[]>('GET', '/surveyor/requests');
   }
 
+  async getSurveyorMatches(): Promise<SurveyorRequest[]> {
+    return this.request<SurveyorRequest[]>('GET', '/surveyor/matches');
+  }
+
   async acceptMatch(matchId: string): Promise<{ matchId: string; status: string }> {
     return this.request<{ matchId: string; status: string }>('POST', `/surveyor/requests/${matchId}/accept`);
   }
@@ -447,12 +464,28 @@ export class SurveyLinkClient {
     return this.request<AdminQueues>('GET', '/admin/queues');
   }
 
+  async getAdminOverview(query: AdminOverviewQueryBody = {}): Promise<AdminOverviewStats> {
+    const qs = new URLSearchParams();
+    if (query.from) qs.set('from', query.from);
+    if (query.to) qs.set('to', query.to);
+    if (query.location) qs.set('location', query.location);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request<AdminOverviewStats>('GET', `/admin/overview${suffix}`);
+  }
+
   async listAdminClients(): Promise<AdminClient[]> {
     return this.request<AdminClient[]>('GET', '/admin/clients');
   }
 
-  async listAdminOpenProjects(): Promise<AdminQueueProject[]> {
-    return this.request<AdminQueueProject[]>('GET', '/admin/projects/open');
+  async getAdminClient(id: string): Promise<AdminClientDetail> {
+    return this.request<AdminClientDetail>('GET', `/admin/clients/${id}`);
+  }
+
+  async listAdminOpenProjects(query: AdminProjectsQueryBody = {}): Promise<AdminQueueProject[]> {
+    const qs = new URLSearchParams();
+    if (query.clientId) qs.set('clientId', query.clientId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request<AdminQueueProject[]>('GET', `/admin/projects/open${suffix}`);
   }
 
   async browseAdminSurveyors(query: AdminSurveyorQueryBody = {}): Promise<AdminSurveyor[]> {
@@ -463,6 +496,10 @@ export class SurveyLinkClient {
     if (query.radiusKm != null) qs.set('radiusKm', String(query.radiusKm));
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
     return this.request<AdminSurveyor[]>('GET', `/admin/surveyors${suffix}`);
+  }
+
+  async getAdminSurveyor(id: string): Promise<AdminSurveyorDetail> {
+    return this.request<AdminSurveyorDetail>('GET', `/admin/surveyors/${id}`);
   }
 
   async createMatch(body: CreateMatchBody): Promise<Match> {
