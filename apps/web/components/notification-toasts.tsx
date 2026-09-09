@@ -6,6 +6,11 @@ import { X } from 'lucide-react';
 import type { Notification } from '@surveylink/types';
 import { api } from '../lib/api';
 import { isAuthenticated } from '../lib/session';
+import {
+  notificationBelongsToWorkspace,
+  resolveWorkspaceNotificationLink,
+  type MarketplaceSection,
+} from '../lib/notification-scope';
 
 const POLL_MS = 20_000;
 const AUTO_DISMISS_MS = 12_000;
@@ -30,10 +35,9 @@ function persistSeen(ids: Set<string>) {
 }
 
 /**
- * Bottom-right toast stack for in-app match (and other) notifications.
- * Seeds existing unread as "seen" on first load so only newly arrived items toast.
+ * Bottom-right toast stack — only toasts for the active workspace role.
  */
-export function NotificationToasts() {
+export function NotificationToasts({ section }: { section: MarketplaceSection }) {
   const router = useRouter();
   const [toasts, setToasts] = useState<Notification[]>([]);
   const seenRef = useRef<Set<string>>(loadSeen());
@@ -50,7 +54,12 @@ export function NotificationToasts() {
         const rows = await api.getNotifications();
         if (cancelled) return;
 
-        const fresh = rows.filter((n) => !n.readAt && !seenRef.current.has(n.id));
+        const fresh = rows.filter(
+          (n) =>
+            !n.readAt &&
+            !seenRef.current.has(n.id) &&
+            notificationBelongsToWorkspace(n, section),
+        );
         if (fresh.length === 0) return;
 
         for (const n of fresh) seenRef.current.add(n.id);
@@ -74,7 +83,7 @@ export function NotificationToasts() {
       for (const t of timersRef.current.values()) clearTimeout(t);
       timersRef.current.clear();
     };
-  }, []);
+  }, [section]);
 
   useEffect(() => {
     for (const toast of toasts) {
@@ -101,12 +110,7 @@ export function NotificationToasts() {
 
   function openToast(n: Notification) {
     dismiss(n.id, true);
-    if (!n.linkUrl) return;
-    if (/^https?:\/\//i.test(n.linkUrl)) {
-      window.location.assign(n.linkUrl);
-      return;
-    }
-    router.push(n.linkUrl);
+    router.push(resolveWorkspaceNotificationLink(n.linkUrl, section));
   }
 
   if (toasts.length === 0) return null;
@@ -118,7 +122,7 @@ export function NotificationToasts() {
           <button type="button" className="bld-toast-body" onClick={() => openToast(n)}>
             <span className="bld-toast-title">{n.title}</span>
             {n.body ? <span className="bld-toast-copy">{n.body}</span> : null}
-            {n.linkUrl ? <span className="bld-toast-cta">View</span> : null}
+            <span className="bld-toast-cta">View</span>
           </button>
           <button
             type="button"

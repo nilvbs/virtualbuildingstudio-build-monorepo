@@ -6,6 +6,11 @@ import { Bell } from 'lucide-react';
 import type { Notification } from '@surveylink/types';
 import { api } from '../lib/api';
 import { isAuthenticated } from '../lib/session';
+import {
+  notificationBelongsToWorkspace,
+  resolveWorkspaceNotificationLink,
+  type MarketplaceSection,
+} from '../lib/notification-scope';
 
 const POLL_MS = 15_000;
 
@@ -21,9 +26,10 @@ function relativeTime(iso: string): string {
 }
 
 /**
- * Header inbox for client + surveyor. Polls the same notification feed as toasts.
+ * Header inbox for client + surveyor.
+ * Only shows / opens notifications for the active workspace role.
  */
-export function NotificationBell() {
+export function NotificationBell({ section }: { section: MarketplaceSection }) {
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -37,7 +43,8 @@ export function NotificationBell() {
       if (!isAuthenticated()) return;
       try {
         const rows = await api.getNotifications();
-        if (!cancelled) setItems(rows);
+        if (cancelled) return;
+        setItems(rows.filter((n) => notificationBelongsToWorkspace(n, section)));
       } catch {
         /* ignore */
       }
@@ -49,7 +56,7 @@ export function NotificationBell() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [section]);
 
   useEffect(() => {
     if (!open) return;
@@ -73,17 +80,15 @@ export function NotificationBell() {
         /* ignore */
       }
     }
-    if (n.linkUrl) {
-      if (n.linkUrl.startsWith('http')) window.location.href = n.linkUrl;
-      else router.push(n.linkUrl);
-    }
+    router.push(resolveWorkspaceNotificationLink(n.linkUrl, section));
   }
 
   async function markAllRead() {
     const pending = unread.slice(0, 20);
     await Promise.allSettled(pending.map((n) => api.markNotificationRead(n.id)));
     try {
-      setItems(await api.getNotifications());
+      const rows = await api.getNotifications();
+      setItems(rows.filter((n) => notificationBelongsToWorkspace(n, section)));
     } catch {
       /* ignore */
     }
@@ -115,7 +120,7 @@ export function NotificationBell() {
             ) : null}
           </div>
           {items.length === 0 ? (
-            <p className="notif-bell-empty">No notifications yet.</p>
+            <p className="notif-bell-empty">No notifications for this workspace yet.</p>
           ) : (
             <ul className="notif-bell-list">
               {items.slice(0, 12).map((n) => (

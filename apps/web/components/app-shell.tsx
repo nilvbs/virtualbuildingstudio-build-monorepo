@@ -367,7 +367,9 @@ export function AppShell({ section, children }: { section: Section; children: Re
           </div>
 
           <div className="topbar-actions">
-            {(section === 'client' || section === 'surveyor') && <NotificationBell />}
+            {(section === 'client' || section === 'surveyor') && (
+              <NotificationBell section={section} />
+            )}
             <div className="usermenu" ref={menuRef}>
             <button
               className="usermenu-trigger"
@@ -475,7 +477,9 @@ export function AppShell({ section, children }: { section: Section; children: Re
         />
       )}
 
-      {(section === 'client' || section === 'surveyor') && <NotificationToasts />}
+      {(section === 'client' || section === 'surveyor') && (
+        <NotificationToasts section={section} />
+      )}
     </div>
   );
 }

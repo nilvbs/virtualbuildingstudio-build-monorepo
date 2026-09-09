@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Building2, FolderPlus, MapPin, Plus } from 'lucide-react';
-import { SURVEY_SERVICE_LABELS, clientProjectHeadline, type Project } from '@surveylink/types';
+import { ArrowRight, Building2, FolderPlus, MapPin, Plus, Sparkles } from 'lucide-react';
+import { SURVEY_SERVICE_LABELS, clientProjectHeadline, type Project, type ProjectStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../lib/api';
 import { StatusBadge } from '../../components/status';
 
@@ -14,46 +14,91 @@ function formatPosted(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function countByBucket(projects: Project[]) {
+  const open: ProjectStatus[] = ['submitted', 'matching', 'matched', 'confirmed'];
+  return {
+    total: projects.length,
+    active: projects.filter((p) => open.includes(p.status)).length,
+    completed: projects.filter((p) => p.status === 'completed').length,
+  };
+}
+
 export default function ClientDashboardPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [userName, setUserName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .getProjects()
-      .then(setProjects)
-      .catch((err) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rows, me] = await Promise.all([api.getProjects(), api.me()]);
+        if (cancelled) return;
+        setProjects(rows);
+        setUserName(me.firstName || me.fullName.split(/\s+/)[0] || 'there');
+      } catch (err) {
+        if (cancelled) return;
         if (err instanceof ApiError && err.status === 401) router.replace('/sign-in');
         else setError(errorMessage(err));
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  const count = projects?.length ?? 0;
+  const stats = useMemo(() => countByBucket(projects ?? []), [projects]);
 
   return (
-    <div className="projects-stage">
+    <div className="cli-home">
       {error && <div className="alert error">{error}</div>}
 
-      <section className="projects-panel">
-        <div className="projects-panel-head">
-          <div>
-            <h1 className="projects-panel-title">Your projects</h1>
-            <p className="projects-panel-count">
-              {loading ? 'Loading…' : count === 0 ? 'No projects yet' : `${count} project${count === 1 ? '' : 's'}`}
-            </p>
-          </div>
-          <Link className="btn" href="/client/projects/new">
-            <Plus size={17} /> Post a project
-          </Link>
+      <header className="cli-home-hero">
+        <div className="cli-home-hero-copy">
+          <p className="ops-kicker">Client workspace</p>
+          <h1 className="cli-home-title">
+            {loading ? 'Your projects' : `Hi ${userName}`}
+          </h1>
+          <p className="cli-home-sub">
+            Post a brief and we&apos;ll notify nearby surveyors automatically.
+          </p>
+        </div>
+        <Link className="btn" href="/client/projects/new">
+          <Plus size={17} /> Post a project
+        </Link>
+      </header>
+
+      <div className="cli-home-stats">
+        <div className="cli-home-stat">
+          <span className="cli-home-stat-label">All projects</span>
+          <strong>{loading ? '—' : stats.total}</strong>
+        </div>
+        <div className="cli-home-stat">
+          <span className="cli-home-stat-label">In progress</span>
+          <strong>{loading ? '—' : stats.active}</strong>
+        </div>
+        <div className="cli-home-stat">
+          <span className="cli-home-stat-label">Completed</span>
+          <strong>{loading ? '—' : stats.completed}</strong>
+        </div>
+      </div>
+
+      <section className="cli-home-panel">
+        <div className="cli-home-panel-head">
+          <h2 className="cli-home-panel-title">
+            Your projects
+            {!loading ? <span className="cli-home-count">{stats.total}</span> : null}
+          </h2>
         </div>
 
         {loading && (
-          <div className="project-card-grid">
+          <div className="cli-project-grid">
             {[0, 1, 2].map((i) => (
-              <div className="project-card" key={i}>
+              <div className="cli-project-card" key={i}>
                 <div className="skeleton" style={{ width: 42, height: 42, borderRadius: 12 }} />
                 <div className="skeleton sk-line" style={{ width: '50%', marginTop: 18 }} />
                 <div className="skeleton sk-line" style={{ width: '78%' }} />
@@ -64,45 +109,54 @@ export default function ClientDashboardPage() {
         )}
 
         {projects && projects.length === 0 && (
-          <div className="empty projects-empty">
-            <div className="empty-ico">
-              <FolderPlus size={24} />
+          <div className="cli-home-empty">
+            <div className="cli-home-empty-ico" aria-hidden>
+              <FolderPlus size={22} />
             </div>
-            <h3 style={{ fontSize: 18 }}>Nothing here yet</h3>
-            <p style={{ color: 'var(--muted)', margin: '6px 0 0', maxWidth: 360 }}>
-              Start with a short brief — title, site, and services — and we&apos;ll take matching from there.
+            <h3>Nothing here yet</h3>
+            <p>
+              Start with a short brief — title, site, and services — and nearby surveyors get notified
+              with a working-hours response window.
             </p>
+            <Link className="btn" href="/client/projects/new">
+              <Plus size={16} /> Post your first project
+            </Link>
           </div>
         )}
 
         {projects && projects.length > 0 && (
-          <div className="project-card-grid stagger">
+          <div className="cli-project-grid stagger">
             {projects.map((p) => {
               const { headline } = clientProjectHeadline(p.status);
               const services = p.services.slice(0, 2).map((s) => SURVEY_SERVICE_LABELS[s]);
               const extra = p.services.length - services.length;
+              const matching = p.status === 'matching' || p.status === 'submitted';
               return (
-                <Link key={p.id} href={`/client/projects/${p.id}`} className="project-card plain">
-                  <div className="project-card-top">
-                    <span className="project-card-ico" aria-hidden>
-                      <Building2 size={18} />
+                <Link
+                  key={p.id}
+                  href={`/client/projects/${p.id}`}
+                  className={`cli-project-card plain${matching ? ' is-live' : ''}`}
+                >
+                  <div className="cli-project-card-top">
+                    <span className="cli-project-card-ico" aria-hidden>
+                      {matching ? <Sparkles size={17} /> : <Building2 size={17} />}
                     </span>
                     <StatusBadge status={p.status} />
                   </div>
 
-                  <div className="project-card-title">{p.title}</div>
-                  <p className="project-card-meta">{headline}</p>
+                  <div className="cli-project-card-title">{p.title}</div>
+                  <p className="cli-project-card-meta">{headline}</p>
 
                   {(p.locationText || services.length > 0) && (
-                    <div className="project-card-facts">
+                    <div className="cli-project-card-facts">
                       {p.locationText ? (
-                        <span className="project-card-fact">
+                        <span className="cli-project-card-fact">
                           <MapPin size={13} aria-hidden />
                           <span>{p.locationText}</span>
                         </span>
                       ) : null}
                       {services.length > 0 ? (
-                        <span className="project-card-fact project-card-fact--services">
+                        <span className="cli-project-card-fact">
                           {services.join(' · ')}
                           {extra > 0 ? ` +${extra}` : ''}
                         </span>
@@ -110,9 +164,9 @@ export default function ClientDashboardPage() {
                     </div>
                   )}
 
-                  <div className="project-card-foot">
-                    <span className="project-card-date">{formatPosted(p.createdAt)}</span>
-                    <span className="project-card-cta">
+                  <div className="cli-project-card-foot">
+                    <span>{formatPosted(p.createdAt)}</span>
+                    <span className="cli-project-card-cta">
                       Open <ArrowRight size={14} />
                     </span>
                   </div>
