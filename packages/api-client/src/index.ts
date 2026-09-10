@@ -316,7 +316,13 @@ export class SurveyLinkClient {
       | 'cover'
       | 'certificate' = 'portfolio',
     filename = 'upload',
-  ): Promise<{ url: string; key: string; contentType: string; fileName: string }> {
+  ): Promise<{
+    url: string;
+    signedUrl?: string;
+    key: string;
+    contentType: string;
+    fileName: string;
+  }> {
     const form = new FormData();
     form.append('kind', kind);
     if (typeof Blob !== 'undefined' && file instanceof Blob) {
@@ -330,6 +336,11 @@ export class SurveyLinkClient {
       } as unknown as Blob);
     }
     return this.request('POST', '/media/upload', form);
+  }
+
+  /** Best-effort delete of a previously uploaded S3 object (by stable URL or key). */
+  async deleteMedia(target: { url?: string; key?: string }): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>('DELETE', '/media', target);
   }
 
   async getOnboarding(): Promise<OnboardingStatus> {
@@ -531,8 +542,11 @@ export class SurveyLinkClient {
     matchId: string;
     rating: number;
     comment: string;
-    aspects?: Partial<Record<'communication' | 'quality' | 'professionalism' | 'timeliness', number>>;
+    aspects?: Partial<
+      Record<'product' | 'partnership' | 'matching' | 'reliability', number>
+    >;
     recommend?: boolean | null;
+    asRole?: 'client' | 'surveyor';
   }): Promise<FeedbackSubmitResult> {
     return this.request<FeedbackSubmitResult>('POST', '/feedback', body);
   }
@@ -552,6 +566,7 @@ export class SurveyLinkClient {
     subject: string;
     body: string;
     projectId?: string | null;
+    attachments?: Array<{ url: string; fileName: string; contentType?: string | null }>;
   }): Promise<HelpTicketDetail> {
     return this.request<HelpTicketDetail>('POST', '/helpdesk/tickets', body);
   }
@@ -564,8 +579,17 @@ export class SurveyLinkClient {
     return this.request<HelpTicketDetail>('GET', `/helpdesk/tickets/${id}`);
   }
 
-  async replyHelpTicket(id: string, body: string): Promise<HelpTicketDetail> {
-    return this.request<HelpTicketDetail>('POST', `/helpdesk/tickets/${id}/messages`, { body });
+  async replyHelpTicket(
+    id: string,
+    body:
+      | string
+      | {
+          body: string;
+          attachments?: Array<{ url: string; fileName: string; contentType?: string | null }>;
+        },
+  ): Promise<HelpTicketDetail> {
+    const payload = typeof body === 'string' ? { body } : body;
+    return this.request<HelpTicketDetail>('POST', `/helpdesk/tickets/${id}/messages`, payload);
   }
 
   async listAdminHelpTickets(): Promise<HelpTicket[]> {
@@ -583,10 +607,21 @@ export class SurveyLinkClient {
     return this.request<HelpTicketDetail>('PATCH', `/admin/helpdesk/tickets/${id}`, body);
   }
 
-  async replyAdminHelpTicket(id: string, body: string): Promise<HelpTicketDetail> {
-    return this.request<HelpTicketDetail>('POST', `/admin/helpdesk/tickets/${id}/messages`, {
-      body,
-    });
+  async replyAdminHelpTicket(
+    id: string,
+    body:
+      | string
+      | {
+          body: string;
+          attachments?: Array<{ url: string; fileName: string; contentType?: string | null }>;
+        },
+  ): Promise<HelpTicketDetail> {
+    const payload = typeof body === 'string' ? { body } : body;
+    return this.request<HelpTicketDetail>(
+      'POST',
+      `/admin/helpdesk/tickets/${id}/messages`,
+      payload,
+    );
   }
 
   async getProjectActivity(projectId: string): Promise<ActivityLogEntry[]> {

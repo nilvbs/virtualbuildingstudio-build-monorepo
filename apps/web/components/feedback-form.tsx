@@ -4,17 +4,19 @@ import { useState } from 'react';
 import { Check, Star } from 'lucide-react';
 import {
   FEEDBACK_ASPECT_KEYS,
-  FEEDBACK_ASPECT_LABELS,
+  feedbackAspectLabel,
   FEEDBACK_RATING_EMOJIS,
   type FeedbackAspectKey,
   type FeedbackAspects,
 } from '@surveylink/types';
+import { toastError, toastLoading, toastSuccess } from '../lib/action-toast';
 import { api, errorMessage } from '../lib/api';
+import { HdSubmitButton } from './hd-submit-button';
 
 type Props = {
   matchId: string;
-  /** Who they're rating — display only. */
-  counterpartLabel: string;
+  /** Kept for callers; feedback is about BLD product/services, not the counterpart. */
+  counterpartLabel?: string;
   projectTitle: string;
   role: 'client' | 'surveyor';
   onSubmitted?: () => void;
@@ -24,7 +26,6 @@ type Props = {
 
 export function FeedbackForm({
   matchId,
-  counterpartLabel,
   projectTitle,
   role,
   onSubmitted,
@@ -40,15 +41,13 @@ export function FeedbackForm({
   const [done, setDone] = useState(false);
 
   const idle = Boolean(idleMessage);
-  const counterpart =
-    role === 'client' ? `surveyor ${counterpartLabel}` : `client ${counterpartLabel}`;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (idle) return;
     setError(null);
     if (rating < 1) {
-      setError('Please choose an overall rating (emoji or stars).');
+      setError('Please choose an overall emoji rating.');
       return;
     }
     if (comment.trim().length < 10) {
@@ -56,6 +55,7 @@ export function FeedbackForm({
       return;
     }
     setBusy(true);
+    const toastId = toastLoading('Sending feedback…', 'Softly packing your rating.');
     try {
       await api.submitFeedback({
         matchId,
@@ -63,11 +63,15 @@ export function FeedbackForm({
         comment: comment.trim(),
         aspects,
         recommend,
+        asRole: role,
       });
+      toastSuccess('Feedback sent', 'Thanks — your product feedback is in.', toastId);
       setDone(true);
       onSubmitted?.();
     } catch (err) {
-      setError(errorMessage(err));
+      const msg = errorMessage(err);
+      setError(msg);
+      toastError('Couldn’t send feedback', msg, toastId);
     } finally {
       setBusy(false);
     }
@@ -80,14 +84,14 @@ export function FeedbackForm({
 
   if (done) {
     return (
-      <div className="fb-card fb-card--done">
+      <div className="fb-card fb-card--done fb-card--sheet">
         <div className="fb-done-ico" aria-hidden>
           <Check size={22} strokeWidth={2.5} />
         </div>
         <h3>Thank you</h3>
         <p>
-          Your rating for <strong>{projectTitle}</strong> was sent. We emailed you a confirmation,
-          and our team can see it in admin.
+          Your product feedback for <strong>{projectTitle}</strong> was sent. We emailed you a
+          confirmation, and our team can see it in admin.
         </p>
       </div>
     );
@@ -96,20 +100,24 @@ export function FeedbackForm({
   const activeHint = hover || rating;
 
   return (
-    <form className={`fb-card${idle ? ' fb-card--idle' : ''}`} onSubmit={submit} noValidate>
+    <form
+      className={`fb-card fb-card--sheet${idle ? ' fb-card--idle' : ''}${busy ? ' is-sending' : ''}`}
+      onSubmit={submit}
+      noValidate
+    >
       <header className="fb-head">
-        <p className="fb-kicker">Feedback &amp; rating</p>
-        <h3>How was working with {counterpart}?</h3>
+        <p className="fb-kicker">Product feedback</p>
+        <h3>How is BLD working for you?</h3>
         <p className="fb-sub">
           {idle
             ? idleMessage
-            : 'Honest ratings keep BLD trustworthy for the next job. Takes under a minute.'}
+            : `Rate the product and services around “${projectTitle}” — matching, tools, and support. Takes under a minute.`}
         </p>
       </header>
 
-      <fieldset className="fb-stars" disabled={idle}>
-        <legend>Overall experience *</legend>
-        <div className="fb-emoji-row" role="radiogroup" aria-label="Overall rating with emoji">
+      <fieldset className="fb-stars fb-section" disabled={idle}>
+        <legend>Overall product experience *</legend>
+        <div className="fb-emoji-row" role="radiogroup" aria-label="Overall product rating with emoji">
           {([1, 2, 3, 4, 5] as const).map((n) => {
             const meta = FEEDBACK_RATING_EMOJIS[n];
             const on = rating === n;
@@ -119,6 +127,7 @@ export function FeedbackForm({
                 key={n}
                 type="button"
                 className={`fb-emoji${on ? ' is-on' : ''}${soft && !on ? ' is-soft' : ''}`}
+                style={{ animationDelay: `${n * 40}ms` }}
                 aria-label={`${n} — ${meta.label}`}
                 aria-checked={rating === n}
                 role="radio"
@@ -135,73 +144,54 @@ export function FeedbackForm({
             );
           })}
         </div>
-
-        <div className="fb-stars-row" role="radiogroup" aria-label="Overall star rating">
-          {[1, 2, 3, 4, 5].map((n) => {
-            const on = (hover || rating) >= n;
-            return (
-              <button
-                key={n}
-                type="button"
-                className={`fb-star ${on ? 'is-on' : ''}`}
-                aria-label={`${n} star${n === 1 ? '' : 's'}`}
-                aria-checked={rating === n}
-                role="radio"
-                disabled={idle}
-                onMouseEnter={() => !idle && setHover(n)}
-                onMouseLeave={() => setHover(0)}
-                onClick={() => !idle && setRating(n)}
-              >
-                <Star size={22} fill={on ? 'currentColor' : 'none'} strokeWidth={1.75} />
-              </button>
-            );
-          })}
-        </div>
         <p className="fb-stars-hint">
           {idle
             ? 'Form unlocks when a completed job is ready to rate'
             : rating === 0
-              ? 'Tap an emoji or stars to rate'
+              ? 'Tap an emoji to rate BLD'
               : rating <= 2
-                ? 'Sorry it fell short — tell us what happened'
+                ? 'Sorry the product fell short — tell us what happened'
                 : rating === 3
-                  ? 'Okay — room to improve'
+                  ? 'Okay — room to improve the product'
                   : rating === 4
-                    ? 'Great — almost perfect'
-                    : 'Excellent — would hire again'}
+                    ? 'Great — almost there'
+                    : 'Excellent — the product delivered'}
         </p>
       </fieldset>
 
-      <div className="fb-aspects">
-        <p className="fb-aspects-label">Rate a few specifics (optional)</p>
+      <div className="fb-aspects fb-section">
+        <p className="fb-aspects-label">Rate our services (optional)</p>
         <ul>
-          {FEEDBACK_ASPECT_KEYS.map((key) => (
-            <li key={key}>
-              <span>{FEEDBACK_ASPECT_LABELS[key]}</span>
-              <div className="fb-aspect-stars" role="group" aria-label={FEEDBACK_ASPECT_LABELS[key]}>
-                {[1, 2, 3, 4, 5].map((n) => {
-                  const on = (aspects[key] ?? 0) >= n;
-                  return (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`fb-star fb-star--sm ${on ? 'is-on' : ''}`}
-                      aria-label={`${n}`}
-                      disabled={idle}
-                      onClick={() => setAspect(key, n)}
-                    >
-                      <Star size={16} fill={on ? 'currentColor' : 'none'} strokeWidth={1.75} />
-                    </button>
-                  );
-                })}
-              </div>
-            </li>
-          ))}
+          {FEEDBACK_ASPECT_KEYS.map((key) => {
+            const label = feedbackAspectLabel(key, role);
+            return (
+              <li key={key}>
+                <span>{label}</span>
+                <div className="fb-aspect-stars" role="group" aria-label={label}>
+                  {[1, 2, 3, 4, 5].map((n) => {
+                    const on = (aspects[key] ?? 0) >= n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`fb-star fb-star--sm ${on ? 'is-on' : ''}`}
+                        aria-label={`${n}`}
+                        disabled={idle}
+                        onClick={() => setAspect(key, n)}
+                      >
+                        <Star size={16} fill={on ? 'currentColor' : 'none'} strokeWidth={1.75} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
-      <fieldset className="fb-recommend" disabled={idle}>
-        <legend>Would you work together again?</legend>
+      <fieldset className="fb-recommend fb-section" disabled={idle}>
+        <legend>Would you recommend BLD?</legend>
         <div className="fb-recommend-row">
           <button
             type="button"
@@ -222,16 +212,12 @@ export function FeedbackForm({
         </div>
       </fieldset>
 
-      <label className="fb-comment">
-        <span>What stood out? *</span>
+      <label className="fb-comment fb-section">
+        <span>What stood out about the product? *</span>
         <textarea
           rows={4}
           maxLength={2000}
-          placeholder={
-            role === 'client'
-              ? 'Accuracy, communication, site professionalism…'
-              : 'Clear brief, site access, timely decisions…'
-          }
+          placeholder="Product flow, matching, job tools, support…"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           required={!idle}
@@ -242,9 +228,14 @@ export function FeedbackForm({
 
       {error && <div className="alert error">{error}</div>}
 
-      <button type="submit" className="btn primary fb-submit" disabled={busy || idle}>
-        {idle ? 'Waiting for a completed job' : busy ? 'Sending…' : 'Submit feedback'}
-      </button>
+      <HdSubmitButton
+        className="fb-submit"
+        variant="feedback"
+        busy={busy}
+        disabled={idle}
+        idleLabel={idle ? 'Waiting for a completed job' : 'Submit feedback'}
+        busyLabel="Sharing"
+      />
     </form>
   );
 }

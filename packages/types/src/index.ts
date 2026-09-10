@@ -820,19 +820,34 @@ export const FEEDBACK_ROLES = ['client', 'surveyor'] as const;
 export type FeedbackRole = (typeof FEEDBACK_ROLES)[number];
 
 export const FEEDBACK_ASPECT_KEYS = [
-  'communication',
-  'quality',
-  'professionalism',
-  'timeliness',
+  'product',
+  'partnership',
+  'matching',
+  'reliability',
 ] as const;
 export type FeedbackAspectKey = (typeof FEEDBACK_ASPECT_KEYS)[number];
 
+/** Default / admin labels — product & service quality, not person-to-person. */
 export const FEEDBACK_ASPECT_LABELS: Record<FeedbackAspectKey, string> = {
-  communication: 'Communication',
-  quality: 'Quality of work',
-  professionalism: 'Professionalism',
-  timeliness: 'Timeliness',
+  product: 'Overall product',
+  partnership: 'Job tools & workflow',
+  matching: 'Matching & assignment',
+  reliability: 'Support & reliability',
 };
+
+/** Role-aware service labels (same product, different lens). */
+export function feedbackAspectLabel(
+  key: FeedbackAspectKey,
+  role: FeedbackRole,
+): string {
+  if (key === 'partnership') {
+    return role === 'client' ? 'Posting & managing jobs' : 'Finding & managing jobs';
+  }
+  if (key === 'matching') {
+    return role === 'client' ? 'Getting matched to surveyors' : 'Getting matched to work';
+  }
+  return FEEDBACK_ASPECT_LABELS[key];
+}
 
 export type FeedbackAspects = Partial<Record<FeedbackAspectKey, number>>;
 
@@ -959,9 +974,16 @@ export const HELP_TICKET_STATUS_LABELS: Record<HelpTicketStatus, string> = {
   closed: 'Closed',
 };
 
+export interface HelpTicketAttachment {
+  url: string;
+  fileName: string;
+  contentType?: string | null;
+}
+
 export interface HelpTicketMessage {
   id: string;
   body: string;
+  attachments: HelpTicketAttachment[];
   isStaff: boolean;
   authorUsername: string | null;
   authorFullName: string | null;

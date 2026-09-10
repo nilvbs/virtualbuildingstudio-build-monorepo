@@ -11,6 +11,7 @@ import { api, ApiError } from '../lib/api';
 import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
 import { clearSession, isAuthenticated, setActiveRole } from '../lib/session';
 import { IncompleteProfileModal, SidebarProfileMeter } from './profile-completion';
+import { ActionToasts } from './action-toasts';
 import { NotificationToasts } from './notification-toasts';
 import { NotificationBell } from './notification-bell';
 
@@ -504,6 +505,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
       )}
 
       <NotificationToasts section={section} />
+      <ActionToasts />
     </div>
   );
 }

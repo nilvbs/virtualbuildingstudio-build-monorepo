@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -42,5 +43,21 @@ export class MediaController {
       );
     }
     return this.storage.upload(principal.sub, file, kind);
+  }
+
+  /**
+   * Delete a previously uploaded object from S3 (by stable URL or object key).
+   */
+  @Delete()
+  async remove(
+    @CurrentUser() _principal: AuthPrincipal,
+    @Body() body: { url?: string; key?: string },
+  ): Promise<{ ok: true }> {
+    const target = body?.url?.trim() || body?.key?.trim();
+    if (!target) {
+      throw new BadRequestException('Provide url or key of the object to delete.');
+    }
+    await this.storage.deleteStoredObject(target);
+    return { ok: true };
   }
 }

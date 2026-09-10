@@ -43,8 +43,12 @@ export class FeedbackService {
       );
     }
 
-    const fromRole: FeedbackRole = isClient ? 'client' : 'surveyor';
-    const toUserId = isClient ? match.surveyor.userId : match.project.clientId;
+    const fromRole = this.resolveFromRole({
+      isClient,
+      isSurveyor,
+      asRole: input.asRole,
+    });
+    const toUserId = fromRole === 'client' ? match.surveyor.userId : match.project.clientId;
 
     const existing = await this.prisma.feedback.findUnique({
       where: {
@@ -130,6 +134,28 @@ export class FeedbackService {
 
   engagementAllowsFeedback(matchStatus: string, projectStatus: string): boolean {
     return matchStatus === 'completed' || projectStatus === 'completed';
+  }
+
+  private resolveFromRole(input: {
+    isClient: boolean;
+    isSurveyor: boolean;
+    asRole?: FeedbackRole;
+  }): FeedbackRole {
+    const { isClient, isSurveyor, asRole } = input;
+    if (isClient && isSurveyor) {
+      if (asRole === 'client' || asRole === 'surveyor') return asRole;
+      throw new BadRequestException(
+        'Specify asRole (client or surveyor) when you belong to both sides of this match.',
+      );
+    }
+    if (asRole === 'client' && !isClient) {
+      throw new ForbiddenException('You are not the client on this match');
+    }
+    if (asRole === 'surveyor' && !isSurveyor) {
+      throw new ForbiddenException('You are not the surveyor on this match');
+    }
+    if (asRole === 'client' || asRole === 'surveyor') return asRole;
+    return isClient ? 'client' : 'surveyor';
   }
 
   private async recomputeSurveyorRating(

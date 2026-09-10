@@ -325,6 +325,8 @@ model HelpTicketMessage {
   ticketId     String   @map("ticket_id") @db.Uuid
   authorUserId String   @map("author_user_id") @db.Uuid
   body         String
+  /** Uploaded images/files: [{ url, fileName, contentType? }] */
+  attachments  Json     @default("[]")
   isStaff      Boolean  @default(false) @map("is_staff")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 

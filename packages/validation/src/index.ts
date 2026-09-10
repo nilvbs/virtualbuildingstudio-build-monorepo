@@ -447,10 +447,10 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 export const feedbackAspectsSchema = z
   .object({
-    communication: z.number().int().min(1).max(5).optional(),
-    quality: z.number().int().min(1).max(5).optional(),
-    professionalism: z.number().int().min(1).max(5).optional(),
-    timeliness: z.number().int().min(1).max(5).optional(),
+    product: z.number().int().min(1).max(5).optional(),
+    partnership: z.number().int().min(1).max(5).optional(),
+    matching: z.number().int().min(1).max(5).optional(),
+    reliability: z.number().int().min(1).max(5).optional(),
   })
   .default({});
 
@@ -464,6 +464,8 @@ export const submitFeedbackSchema = z.object({
     .max(2000),
   aspects: feedbackAspectsSchema.optional(),
   recommend: z.boolean().nullable().optional(),
+  /** Which workspace the reviewer is submitting from (required when user is both sides). */
+  asRole: z.enum(['client', 'surveyor']).optional(),
 });
 export type SubmitFeedbackInput = z.infer<typeof submitFeedbackSchema>;
 
@@ -495,12 +497,38 @@ export const createHelpTicketSchema = z.object({
   subject: z.string().trim().min(4).max(160),
   body: z.string().trim().min(10).max(4000),
   projectId: z.string().uuid().nullable().optional(),
+  attachments: z
+    .array(
+      z.object({
+        url: z.string().url().max(2000),
+        fileName: z.string().trim().min(1).max(255),
+        contentType: z.string().trim().max(120).nullable().optional(),
+      }),
+    )
+    .max(5)
+    .optional()
+    .default([]),
 });
 export type CreateHelpTicketInput = z.infer<typeof createHelpTicketSchema>;
 
-export const helpTicketMessageSchema = z.object({
-  body: z.string().trim().min(2).max(4000),
-});
+export const helpTicketMessageSchema = z
+  .object({
+    body: z.string().trim().max(4000).default(''),
+    attachments: z
+      .array(
+        z.object({
+          url: z.string().url().max(2000),
+          fileName: z.string().trim().min(1).max(255),
+          contentType: z.string().trim().max(120).nullable().optional(),
+        }),
+      )
+      .max(5)
+      .optional()
+      .default([]),
+  })
+  .refine((v) => v.body.trim().length >= 2 || (v.attachments?.length ?? 0) > 0, {
+    message: 'Add a message or at least one image',
+  });
 export type HelpTicketMessageInput = z.infer<typeof helpTicketMessageSchema>;
 
 export const updateHelpTicketSchema = z

@@ -9,8 +9,10 @@ import { createHash, createHmac, randomUUID } from 'node:crypto';
 export type MediaKind = 'avatar' | 'portfolio' | 'document' | 'logo' | 'cover' | 'certificate';
 
 export interface StoredMedia {
-  /** Public HTTPS URL stored in the DB and used directly in <img src>. */
+  /** Stable HTTPS URL (or key-derived URL) to persist in the DB. */
   url: string;
+  /** Short-lived signed URL for immediate <img> / download when the bucket is private. */
+  signedUrl: string;
   /** Object key inside the bucket (for ops / deletion later). */
   key: string;
   contentType: string;
@@ -296,11 +298,13 @@ export class S3MediaStorageService {
     });
 
     const url = this.toPublicUrl(key);
+    const signedUrl = this.resolveSignedUrl(url) ?? url;
     const fileName = file.originalname?.trim() || `${kind}.${extension}`;
     this.logger.log(`Uploaded s3://${this.bucket}/${key}`);
 
     return {
       url,
+      signedUrl,
       key,
       contentType: file.mimetype,
       fileName,

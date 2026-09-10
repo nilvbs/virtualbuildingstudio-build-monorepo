@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type {
   HelpTicket,
+  HelpTicketAttachment,
   HelpTicketCategory,
   HelpTicketDetail,
   HelpTicketMessage,
@@ -18,9 +19,11 @@ import type {
   HelpTicketMessageInput,
   UpdateHelpTicketInput,
 } from '@surveylink/validation';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ActivityService } from '../activity/activity.service';
+import { S3MediaStorageService } from '../media/s3-media.storage';
 
 @Injectable()
 export class HelpdeskService {
@@ -28,6 +31,7 @@ export class HelpdeskService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly activity: ActivityService,
+    private readonly media: S3MediaStorageService,
   ) {}
 
   async create(subject: string, input: CreateHelpTicketInput): Promise<HelpTicketDetail> {
@@ -61,6 +65,7 @@ export class HelpdeskService {
           create: {
             authorUserId: user.id,
             body: input.body.trim(),
+            attachments: (input.attachments ?? []) as Prisma.InputJsonValue,
             isStaff: false,
           },
         },
@@ -123,8 +128,12 @@ export class HelpdeskService {
     const ticket = await this.prisma.helpTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
     if (ticket.userId !== user.id) throw new ForbiddenException('Not your ticket');
-    if (ticket.status === 'closed') {
-      throw new BadRequestException('This ticket is closed');
+    if (ticket.status === 'closed' || ticket.status === 'resolved') {
+      throw new BadRequestException(
+        ticket.status === 'resolved'
+          ? 'This ticket is resolved — messaging is locked.'
+          : 'This ticket is closed — messaging is locked.',
+      );
     }
 
     await this.prisma.helpTicketMessage.create({
@@ -132,6 +141,7 @@ export class HelpdeskService {
         ticketId: id,
         authorUserId: user.id,
         body: input.body.trim(),
+        attachments: (input.attachments ?? []) as Prisma.InputJsonValue,
         isStaff: false,
       },
     });
@@ -250,12 +260,20 @@ export class HelpdeskService {
     const staff = await this.requireUser(subject);
     const ticket = await this.prisma.helpTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
+    if (ticket.status === 'closed' || ticket.status === 'resolved') {
+      throw new BadRequestException(
+        ticket.status === 'resolved'
+          ? 'This ticket is resolved — messaging is locked.'
+          : 'This ticket is closed — messaging is locked.',
+      );
+    }
 
     await this.prisma.helpTicketMessage.create({
       data: {
         ticketId: id,
         authorUserId: staff.id,
         body: input.body.trim(),
+        attachments: (input.attachments ?? []) as Prisma.InputJsonValue,
         isStaff: true,
       },
     });
@@ -346,12 +364,30 @@ export class HelpdeskService {
     const mapped: HelpTicketMessage[] = messages.map((m) => ({
       id: m.id,
       body: m.body,
+      attachments: this.parseAttachments(m.attachments),
       isStaff: m.isStaff,
       authorUsername: m.author.username,
       authorFullName: m.author.fullName,
       createdAt: m.createdAt.toISOString(),
     }));
     return { ...summary, messages: mapped };
+  }
+
+  private parseAttachments(raw: unknown): HelpTicketAttachment[] {
+    if (!Array.isArray(raw)) return [];
+    const out: HelpTicketAttachment[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      if (typeof row.url !== 'string' || typeof row.fileName !== 'string') continue;
+      const stableUrl = row.url;
+      out.push({
+        url: this.media.resolveSignedUrl(stableUrl) ?? stableUrl,
+        fileName: row.fileName,
+        contentType: typeof row.contentType === 'string' ? row.contentType : null,
+      });
+    }
+    return out;
   }
 
   private async requireUser(subject: string): Promise<{ id: string }> {

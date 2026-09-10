@@ -172,11 +172,11 @@ export class NotificationsService {
         : `${this.webAppUrl}/surveyor/matches`;
     const adminLink = `${this.webAppUrl}/build/admin/feedback`;
 
-    const confirmBody = `Thanks for rating "${ctx.projectTitle}" (${stars}). Your feedback helps keep BLD trusted.`;
+    const confirmBody = `Thanks for rating BLD on "${ctx.projectTitle}" (${stars}). Your product feedback helps us improve matching, tools, and support.`;
     await this.createInApp(
       ctx.fromUserId,
       'feedback_submitted',
-      'Thanks for your feedback',
+      'Thanks for your product feedback',
       confirmBody,
       ctx.fromRole === 'client'
         ? `/client/projects/${ctx.projectId}`
@@ -185,14 +185,14 @@ export class NotificationsService {
 
     await Promise.allSettled([
       this.dispatchExternal(ctx.fromUserId, {
-        emailSubject: `Thanks for your feedback on "${ctx.projectTitle}"`,
+        emailSubject: `Thanks for your BLD feedback on "${ctx.projectTitle}"`,
         emailBody: `${confirmBody}\n\n${reviewerLink}`,
         emailHtml: `<p>${confirmBody}</p><p><a href="${reviewerLink}">Open BLD</a></p>`,
-        smsBody: `BLD: Thanks for your ${stars} feedback on "${ctx.projectTitle}".`,
+        smsBody: `BLD: Thanks for your ${stars} product feedback on "${ctx.projectTitle}".`,
       }),
     ]);
 
-    const adminBody = `New ${ctx.fromRole} feedback on "${ctx.projectTitle}": ${stars}.\n\n${ctx.comment}`;
+    const adminBody = `New ${ctx.fromRole} product feedback on "${ctx.projectTitle}": ${stars}.\n\n${ctx.comment}`;
     const notifyEmail =
       this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
       this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
@@ -208,8 +208,8 @@ export class NotificationsService {
         this.createInApp(
           admin.id,
           'feedback_received',
-          'New marketplace feedback',
-          `A ${ctx.fromRole} rated "${ctx.projectTitle}" ${stars}.`,
+          'New product feedback',
+          `A ${ctx.fromRole} rated BLD on "${ctx.projectTitle}" ${stars}.`,
           '/build/admin/feedback',
         ),
       ),
@@ -219,9 +219,9 @@ export class NotificationsService {
       await Promise.allSettled([
         this.email.send({
           to: notifyEmail,
-          subject: `BLD feedback: ${stars} on "${ctx.projectTitle}"`,
+          subject: `BLD product feedback: ${stars} on "${ctx.projectTitle}"`,
           text: `${adminBody}\n\nReview: ${adminLink}`,
-          html: `<p>A <strong>${ctx.fromRole}</strong> left <strong>${stars}</strong> feedback on <em>${ctx.projectTitle}</em>.</p><blockquote>${ctx.comment.replace(/</g, '&lt;')}</blockquote><p><a href="${adminLink}">Open feedback in admin</a></p>`,
+          html: `<p>A <strong>${ctx.fromRole}</strong> left <strong>${stars}</strong> product feedback on <em>${ctx.projectTitle}</em>.</p><blockquote>${ctx.comment.replace(/</g, '&lt;')}</blockquote><p><a href="${adminLink}">Open feedback in admin</a></p>`,
         }),
       ]);
     }
