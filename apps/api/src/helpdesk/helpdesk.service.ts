@@ -100,10 +100,10 @@ export class HelpdeskService {
     return detail;
   }
 
-  async listMine(subject: string): Promise<HelpTicket[]> {
+  async listMine(subject: string, workspace: HelpTicketWorkspace): Promise<HelpTicket[]> {
     const user = await this.requireUser(subject);
     const rows = await this.prisma.helpTicket.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, workspace },
       orderBy: { updatedAt: 'desc' },
       take: 100,
       select: { id: true },
@@ -111,11 +111,18 @@ export class HelpdeskService {
     return Promise.all(rows.map((r) => this.toSummary(r.id)));
   }
 
-  async getMine(subject: string, id: string): Promise<HelpTicketDetail> {
+  async getMine(
+    subject: string,
+    id: string,
+    workspace?: HelpTicketWorkspace,
+  ): Promise<HelpTicketDetail> {
     const user = await this.requireUser(subject);
     const ticket = await this.prisma.helpTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
     if (ticket.userId !== user.id) throw new ForbiddenException('Not your ticket');
+    if (workspace && ticket.workspace !== workspace) {
+      throw new ForbiddenException('This ticket belongs to a different workspace');
+    }
     return this.toDetail(id);
   }
 
@@ -123,11 +130,15 @@ export class HelpdeskService {
     subject: string,
     id: string,
     input: HelpTicketMessageInput,
+    workspace?: HelpTicketWorkspace,
   ): Promise<HelpTicketDetail> {
     const user = await this.requireUser(subject);
     const ticket = await this.prisma.helpTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
     if (ticket.userId !== user.id) throw new ForbiddenException('Not your ticket');
+    if (workspace && ticket.workspace !== workspace) {
+      throw new ForbiddenException('This ticket belongs to a different workspace');
+    }
     if (ticket.status === 'closed' || ticket.status === 'resolved') {
       throw new BadRequestException(
         ticket.status === 'resolved'

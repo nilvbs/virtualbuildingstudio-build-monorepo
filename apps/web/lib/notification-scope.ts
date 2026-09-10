@@ -27,6 +27,8 @@ const ADMIN_KINDS = new Set([
   'feedback_received',
   'helpdesk_ticket_received',
   'helpdesk_reply',
+  'project_posted',
+  'surveyor_joined',
 ]);
 
 function sectionHome(section: WorkspaceSection): string {
@@ -69,7 +71,12 @@ export function notificationBelongsToWorkspace(
 
   if (section === 'client') {
     if (CLIENT_KINDS.has(n.kind)) {
-      if (n.kind === 'helpdesk_reply') {
+      // Dual-role users share one account — scope shared kinds by link path.
+      if (
+        n.kind === 'helpdesk_reply' ||
+        n.kind === 'helpdesk_ticket_created' ||
+        n.kind === 'feedback_submitted'
+      ) {
         return Boolean(path?.startsWith('/client'));
       }
       return true;
@@ -77,7 +84,11 @@ export function notificationBelongsToWorkspace(
     if (SURVEYOR_KINDS.has(n.kind) || ADMIN_KINDS.has(n.kind)) return false;
   } else {
     if (SURVEYOR_KINDS.has(n.kind)) {
-      if (n.kind === 'helpdesk_reply') {
+      if (
+        n.kind === 'helpdesk_reply' ||
+        n.kind === 'helpdesk_ticket_created' ||
+        n.kind === 'feedback_submitted'
+      ) {
         return Boolean(path?.startsWith('/surveyor'));
       }
       return true;

@@ -305,6 +305,11 @@ export function HelpDeskWorkspace({ workspace }: { workspace: HelpTicketWorkspac
 
   useEffect(() => setMounted(true), []);
 
+  useEffect(() => {
+    setSelected(null);
+    setError(null);
+  }, [workspace]);
+
   function onCategoryChange(next: HelpTicketCategory) {
     setCategory(next);
     if (next === 'blocker') {
@@ -336,11 +341,12 @@ export function HelpDeskWorkspace({ workspace }: { workspace: HelpTicketWorkspac
   }
 
   const refresh = useCallback(async () => {
-    const rows = await api.listMyHelpTickets();
+    const rows = await api.listMyHelpTickets(workspace);
     setTickets(rows);
-  }, []);
+  }, [workspace]);
 
   useEffect(() => {
+    setLoading(true);
     refresh()
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
@@ -363,7 +369,7 @@ export function HelpDeskWorkspace({ workspace }: { workspace: HelpTicketWorkspac
   async function openTicket(id: string) {
     setError(null);
     try {
-      const detail = await api.getMyHelpTicket(id);
+      const detail = await api.getMyHelpTicket(id, workspace);
       setSelected(detail);
       if (showForm) closeNewTicket();
       setReply('');
@@ -427,10 +433,14 @@ export function HelpDeskWorkspace({ workspace }: { workspace: HelpTicketWorkspac
     setBusy(true);
     setError(null);
     try {
-      const detail = await api.replyHelpTicket(selected.id, {
-        body: reply.trim(),
-        attachments: replyAttachments,
-      });
+      const detail = await api.replyHelpTicket(
+        selected.id,
+        {
+          body: reply.trim(),
+          attachments: replyAttachments,
+        },
+        workspace,
+      );
       setReply('');
       setReplyAttachments([]);
       setSelected(detail);

@@ -148,6 +148,8 @@ export interface AdminOverviewQueryBody {
 
 export interface AdminProjectsQueryBody {
   clientId?: string;
+  /** pipeline = pending match only; all = every project */
+  scope?: 'pipeline' | 'all';
 }
 
 export interface CreateMatchBody {
@@ -508,6 +510,7 @@ export class SurveyLinkClient {
   async listAdminOpenProjects(query: AdminProjectsQueryBody = {}): Promise<AdminQueueProject[]> {
     const qs = new URLSearchParams();
     if (query.clientId) qs.set('clientId', query.clientId);
+    if (query.scope) qs.set('scope', query.scope);
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
     return this.request<AdminQueueProject[]>('GET', `/admin/projects/open${suffix}`);
   }
@@ -571,12 +574,14 @@ export class SurveyLinkClient {
     return this.request<HelpTicketDetail>('POST', '/helpdesk/tickets', body);
   }
 
-  async listMyHelpTickets(): Promise<HelpTicket[]> {
-    return this.request<HelpTicket[]>('GET', '/helpdesk/tickets');
+  async listMyHelpTickets(workspace: HelpTicketWorkspace): Promise<HelpTicket[]> {
+    const qs = new URLSearchParams({ workspace });
+    return this.request<HelpTicket[]>('GET', `/helpdesk/tickets?${qs}`);
   }
 
-  async getMyHelpTicket(id: string): Promise<HelpTicketDetail> {
-    return this.request<HelpTicketDetail>('GET', `/helpdesk/tickets/${id}`);
+  async getMyHelpTicket(id: string, workspace: HelpTicketWorkspace): Promise<HelpTicketDetail> {
+    const qs = new URLSearchParams({ workspace });
+    return this.request<HelpTicketDetail>('GET', `/helpdesk/tickets/${id}?${qs}`);
   }
 
   async replyHelpTicket(
@@ -587,9 +592,15 @@ export class SurveyLinkClient {
           body: string;
           attachments?: Array<{ url: string; fileName: string; contentType?: string | null }>;
         },
+    workspace: HelpTicketWorkspace,
   ): Promise<HelpTicketDetail> {
     const payload = typeof body === 'string' ? { body } : body;
-    return this.request<HelpTicketDetail>('POST', `/helpdesk/tickets/${id}/messages`, payload);
+    const qs = new URLSearchParams({ workspace });
+    return this.request<HelpTicketDetail>(
+      'POST',
+      `/helpdesk/tickets/${id}/messages?${qs}`,
+      payload,
+    );
   }
 
   async listAdminHelpTickets(): Promise<HelpTicket[]> {

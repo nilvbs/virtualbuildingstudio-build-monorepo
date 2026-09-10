@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
-import type { AuthPrincipal, HelpTicket, HelpTicketDetail } from '@surveylink/types';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, BadRequestException } from '@nestjs/common';
+import type { AuthPrincipal, HelpTicket, HelpTicketDetail, HelpTicketWorkspace } from '@surveylink/types';
 import {
   createHelpTicketSchema,
   helpTicketMessageSchema,
+  helpTicketWorkspaceSchema,
   updateHelpTicketSchema,
   type CreateHelpTicketInput,
   type HelpTicketMessageInput,
@@ -13,6 +14,14 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { HelpdeskService } from './helpdesk.service';
+
+function parseWorkspace(raw: string | undefined): HelpTicketWorkspace {
+  const parsed = helpTicketWorkspaceSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new BadRequestException('workspace query must be client or surveyor');
+  }
+  return parsed.data;
+}
 
 @Controller()
 export class HelpdeskController {
@@ -27,16 +36,20 @@ export class HelpdeskController {
   }
 
   @Get('helpdesk/tickets')
-  listMine(@CurrentUser() principal: AuthPrincipal): Promise<HelpTicket[]> {
-    return this.helpdesk.listMine(principal.sub);
+  listMine(
+    @CurrentUser() principal: AuthPrincipal,
+    @Query('workspace') workspaceRaw?: string,
+  ): Promise<HelpTicket[]> {
+    return this.helpdesk.listMine(principal.sub, parseWorkspace(workspaceRaw));
   }
 
   @Get('helpdesk/tickets/:id')
   getMine(
     @CurrentUser() principal: AuthPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
+    @Query('workspace') workspaceRaw?: string,
   ): Promise<HelpTicketDetail> {
-    return this.helpdesk.getMine(principal.sub, id);
+    return this.helpdesk.getMine(principal.sub, id, parseWorkspace(workspaceRaw));
   }
 
   @Post('helpdesk/tickets/:id/messages')
@@ -44,8 +57,9 @@ export class HelpdeskController {
     @CurrentUser() principal: AuthPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(helpTicketMessageSchema)) body: HelpTicketMessageInput,
+    @Query('workspace') workspaceRaw?: string,
   ): Promise<HelpTicketDetail> {
-    return this.helpdesk.replyMine(principal.sub, id, body);
+    return this.helpdesk.replyMine(principal.sub, id, body, parseWorkspace(workspaceRaw));
   }
 
   @Get('admin/helpdesk/tickets')

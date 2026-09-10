@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
 
-const USER = { id: 'client-1', authSubject: 'auth0|c1' };
+const USER = { id: 'client-1', authSubject: 'auth0|c1', fullName: 'Casey Client' };
 
 function projectRow(overrides: Record<string, unknown> = {}) {
   const now = new Date('2026-02-01T00:00:00Z');
@@ -51,7 +51,11 @@ describe('ProjectsService', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const activity = { record: jest.fn().mockResolvedValue(undefined) } as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new ProjectsService(prisma as any, media, autoMatch, activity);
+    const notifications = {
+      notifyProjectPosted: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    service = new ProjectsService(prisma as any, media, autoMatch, activity, notifications);
   });
 
   describe('create', () => {

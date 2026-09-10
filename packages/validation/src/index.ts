@@ -340,6 +340,8 @@ export type AdminSurveyorQuery = z.infer<typeof adminSurveyorQuerySchema>;
 
 export const adminProjectsQuerySchema = z.object({
   clientId: z.string().uuid().optional(),
+  /** pipeline = pending match; all = every status */
+  scope: z.enum(['pipeline', 'all']).optional().default('pipeline'),
 });
 export type AdminProjectsQuery = z.infer<typeof adminProjectsQuerySchema>;
 

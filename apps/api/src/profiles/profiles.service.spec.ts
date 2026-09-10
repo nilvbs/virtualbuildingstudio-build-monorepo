@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { ProfilesService } from './profiles.service';
 
-const USER = { id: 'user-1', authSubject: 'auth0|1' };
+const USER = { id: 'user-1', authSubject: 'auth0|1', fullName: 'Alex Surveyor' };
 
 function profileRow(overrides: Record<string, unknown> = {}) {
   const now = new Date('2026-01-01T00:00:00Z');
@@ -53,6 +53,7 @@ describe('ProfilesService', () => {
       {
         expireStaleOffers: jest.fn().mockResolvedValue(0),
         cancelSiblingOffers: jest.fn().mockResolvedValue(undefined),
+        retryOpenMatching: jest.fn().mockResolvedValue(undefined),
         getWorkingHoursConfig: () => ({
           timeZone: 'America/Chicago',
           startHour: 9,
@@ -61,7 +62,10 @@ describe('ProfilesService', () => {
         }),
         getResponseWorkingHours: () => 3,
       } as any,
-      { notifyMatchAccepted: jest.fn().mockResolvedValue(undefined) } as any,
+      {
+        notifyMatchAccepted: jest.fn().mockResolvedValue(undefined),
+        notifySurveyorJoined: jest.fn().mockResolvedValue(undefined),
+      } as any,
       { record: jest.fn().mockResolvedValue(undefined) } as any,
     );
   });

@@ -327,10 +327,13 @@ export class AdminService {
   }
 
   async listOpenProjects(query: AdminProjectsQuery = {}): Promise<AdminQueueProject[]> {
+    const scope = query.scope ?? 'pipeline';
     const openProjects = await this.prisma.project.findMany({
       where: query.clientId
         ? { clientId: query.clientId }
-        : { status: { in: OPEN_PROJECT_STATUSES } },
+        : scope === 'all'
+          ? {}
+          : { status: { in: OPEN_PROJECT_STATUSES } },
       orderBy: { createdAt: 'desc' },
       include: {
         client: { select: { id: true, fullName: true } },

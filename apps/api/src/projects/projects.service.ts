@@ -18,6 +18,7 @@ import { S3MediaStorageService } from '../media/s3-media.storage';
 import { haversineKm } from '../common/geo';
 import { AutoMatchService } from '../matching/auto-match.service';
 import { ActivityService } from '../activity/activity.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 interface GeoRow {
   id: string;
@@ -32,6 +33,7 @@ export class ProjectsService {
     private readonly media: S3MediaStorageService,
     private readonly autoMatch: AutoMatchService,
     private readonly activity: ActivityService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(subject: string, input: CreateProjectInput): Promise<Project> {
@@ -72,8 +74,17 @@ export class ProjectsService {
       metadata: { status: 'matching', services: input.services },
     });
 
+    await Promise.allSettled([
+      this.notifications.notifyProjectPosted({
+        projectId: row.id,
+        projectTitle: row.title,
+        clientName: user.fullName,
+        services: input.services as string[],
+      }),
+    ]);
+
     // Uber-style fan-out — never block project creation on matching failures.
-    await this.autoMatch.offerForProject(row.id);
+    await this.autoMatch.offerForProject(row.id, { reason: 'initial' });
 
     return this.getOwned(user.id, row.id);
   }

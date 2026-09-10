@@ -3,9 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Building2, FolderPlus, MapPin, Plus, Sparkles } from 'lucide-react';
+import { ArrowRight, Building2, FilePenLine, FolderPlus, MapPin, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { SURVEY_SERVICE_LABELS, clientProjectHeadline, type Project, type ProjectStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../lib/api';
+import {
+  clearProjectPostDraft,
+  draftDisplayTitle,
+  draftStepLabel,
+  readProjectPostDraft,
+  type ProjectPostDraft,
+} from '../../lib/project-post-draft';
 import { StatusBadge } from '../../components/status';
 
 function formatPosted(iso: string): string {
@@ -29,6 +36,11 @@ export default function ClientDashboardPage() {
   const [userName, setUserName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState<ProjectPostDraft | null>(null);
+
+  useEffect(() => {
+    setDraft(readProjectPostDraft());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +64,11 @@ export default function ClientDashboardPage() {
   }, [router]);
 
   const stats = useMemo(() => countByBucket(projects ?? []), [projects]);
+
+  function discardDraft() {
+    clearProjectPostDraft();
+    setDraft(null);
+  }
 
   return (
     <div className="cli-home">
@@ -87,6 +104,59 @@ export default function ClientDashboardPage() {
         </div>
       </div>
 
+      {draft ? (
+        <section className="cli-home-panel cli-home-panel--draft">
+          <div className="cli-home-panel-head">
+            <h2 className="cli-home-panel-title">
+              Draft
+              <span className="cli-home-count">1</span>
+            </h2>
+          </div>
+          <div className="cli-project-grid">
+            <div className="cli-project-card cli-project-card--draft">
+              <div className="cli-project-card-top">
+                <span className="cli-project-card-ico" aria-hidden>
+                  <FilePenLine size={17} />
+                </span>
+                <span className="cli-draft-badge">Draft</span>
+              </div>
+              <div className="cli-project-card-title">{draftDisplayTitle(draft)}</div>
+              <p className="cli-project-card-meta">
+                Saved at {draftStepLabel(draft.step)}
+                {draft.savedAt ? ` · ${formatPosted(draft.savedAt)}` : ''}
+              </p>
+              {(draft.locationText || draft.services.length > 0) && (
+                <div className="cli-project-card-facts">
+                  {draft.locationText ? (
+                    <span className="cli-project-card-fact">
+                      <MapPin size={13} aria-hidden />
+                      <span>{draft.locationText}</span>
+                    </span>
+                  ) : null}
+                  {draft.services.length > 0 ? (
+                    <span className="cli-project-card-fact">
+                      {draft.services
+                        .slice(0, 2)
+                        .map((s) => SURVEY_SERVICE_LABELS[s])
+                        .join(' · ')}
+                      {draft.services.length > 2 ? ` +${draft.services.length - 2}` : ''}
+                    </span>
+                  ) : null}
+                </div>
+              )}
+              <div className="cli-project-card-foot cli-project-card-foot--actions">
+                <button type="button" className="cli-draft-discard plain" onClick={discardDraft}>
+                  <Trash2 size={14} /> Discard
+                </button>
+                <Link className="btn sm" href="/client/projects/new?continue=1">
+                  Continue <ArrowRight size={14} />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="cli-home-panel">
         <div className="cli-home-panel-head">
           <h2 className="cli-home-panel-title">
@@ -108,7 +178,7 @@ export default function ClientDashboardPage() {
           </div>
         )}
 
-        {projects && projects.length === 0 && (
+        {projects && projects.length === 0 && !draft && (
           <div className="cli-home-empty">
             <div className="cli-home-empty-ico" aria-hidden>
               <FolderPlus size={22} />
@@ -123,6 +193,12 @@ export default function ClientDashboardPage() {
             </Link>
           </div>
         )}
+
+        {projects && projects.length === 0 && draft ? (
+          <div className="cli-home-empty cli-home-empty--compact">
+            <p>No published projects yet — finish your draft when you&apos;re ready.</p>
+          </div>
+        ) : null}
 
         {projects && projects.length > 0 && (
           <div className="cli-project-grid stagger">

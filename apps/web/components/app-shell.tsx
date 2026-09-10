@@ -6,10 +6,9 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { ChevronDown, CircleUserRound, LogOut } from 'lucide-react';
 import { LordIcon, type LordIconName } from './lord-icon';
-import type { AuthenticatedUser, WorkspaceRole, StaffPermission } from '@surveylink/types';
+import type { AuthenticatedUser, StaffPermission } from '@surveylink/types';
 import { api, ApiError } from '../lib/api';
-import { homePathForWorkspace, workspaceMemberships } from '../lib/home';
-import { clearSession, isAuthenticated, setActiveRole } from '../lib/session';
+import { clearSession, isAuthenticated } from '../lib/session';
 import { IncompleteProfileModal, SidebarProfileMeter } from './profile-completion';
 import { ActionToasts } from './action-toasts';
 import { NotificationToasts } from './notification-toasts';
@@ -83,6 +82,12 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
         label: 'Surveyors',
         icon: 'account',
         requiresPermission: 'surveyors:view',
+      },
+      {
+        href: '/build/admin/pipeline',
+        label: 'Pipeline',
+        icon: 'check',
+        requiresPermission: 'projects:view',
       },
       {
         href: '/build/admin/projects',
@@ -173,8 +178,11 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     if (/^\/build\/admin\/projects\/[^/]+/.test(pathname)) {
       return { label: 'Project workspace', sub: 'Status, matches, and assignment' };
     }
+    if (pathname.startsWith('/build/admin/pipeline')) {
+      return { label: 'Match pipeline', sub: 'Projects pending a surveyor match' };
+    }
     if (pathname.startsWith('/build/admin/projects')) {
-      return { label: 'Projects', sub: 'Demand awaiting a surveyor' };
+      return { label: 'Projects', sub: 'All client projects' };
     }
     if (pathname.startsWith('/build/admin/feedback')) {
       return { label: 'Feedback', sub: 'Ratings from clients and surveyors' };
@@ -292,12 +300,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
     window.location.assign(section === 'admin' ? '/build/admin' : '/?auth=login');
   }
 
-  function switchWorkspace(role: WorkspaceRole) {
-    setActiveRole(role);
-    setMenuOpen(false);
-    router.push(homePathForWorkspace(role));
-  }
-
   function snoozeProfilePrompt() {
     if (typeof window !== 'undefined') sessionStorage.setItem(SURVEYOR_SNOOZE_KEY, '1');
     setShowProfilePrompt(false);
@@ -310,7 +312,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
 
   const nav = NAV[section];
   const header = topbarCopy(section, pathname);
-  const workspaces = user ? workspaceMemberships(user) : [];
   const roleLabel =
     user?.roles.includes('admin') && section === 'admin'
       ? user.staffLevel === 'super_admin'
@@ -436,11 +437,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
                   >
                     <CircleUserRound size={16} />
                     Personal profile
-                  </button>
-                )}
-                {section !== 'admin' && workspaces.includes('surveyor') && section !== 'surveyor' && (
-                  <button className="menu-item" type="button" role="menuitem" onClick={() => switchWorkspace('surveyor')}>
-                    Switch to expert (surveyor)
                   </button>
                 )}
                 <button

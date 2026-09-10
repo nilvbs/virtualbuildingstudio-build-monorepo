@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Check, Circle, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, Sparkles } from 'lucide-react';
 import {
   emptyProjectDetails,
   PROJECT_ACCURACY,
@@ -60,6 +60,12 @@ import {
 } from '@surveylink/types';
 import type { CreateProjectBody } from '@surveylink/api-client';
 import { api, errorMessage } from '../../../../lib/api';
+import { toastSuccess } from '../../../../lib/action-toast';
+import {
+  clearProjectPostDraft,
+  readProjectPostDraft,
+  writeProjectPostDraft,
+} from '../../../../lib/project-post-draft';
 import { reverseGeocode } from '../../../../lib/geocode';
 import { BldMuiProvider } from '../../../../lib/bld-mui-theme';
 import {
@@ -109,7 +115,6 @@ const LocationPlaceSearch = dynamic(
   { ssr: false },
 );
 
-const DRAFT_KEY = 'bld.projectPostDraft.v1';
 const STEPS = PROJECT_POST_STEPS;
 type StepId = ProjectPostStepId;
 
@@ -174,11 +179,14 @@ function ReviewChips({ items, empty = '—' }: { items: string[]; empty?: string
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resumeDraft = searchParams.get('continue') === '1' || searchParams.get('draft') === '1';
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [draftReady, setDraftReady] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const [title, setTitle] = useState('');
   const [services, setServices] = useState<SurveyService[]>([]);
@@ -216,53 +224,57 @@ export default function NewProjectPage() {
     [title, services, locationText, lat, lng, buildingType, floors, areaSqft, neededWithin, notes, details],
   );
 
-  // Restore draft once.
+  // New project = blank form. Only restore when continuing a saved draft.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) {
-        setDraftReady(true);
-        return;
-      }
-      const parsed = JSON.parse(raw) as {
-        step?: number;
-        title?: string;
-        services?: SurveyService[];
-        locationText?: string;
-        lat?: string;
-        lng?: string;
-        buildingType?: string;
-        buildingAge?: string;
-        floors?: string;
-        areaSqft?: string;
-        neededWithin?: string;
-        notes?: string;
-        details?: ProjectDetails;
-      };
-      if (parsed.title) setTitle(parsed.title);
-      if (parsed.services) setServices(parsed.services);
-      if (parsed.locationText) setLocationText(parsed.locationText);
-      if (parsed.lat) setLat(parsed.lat);
-      if (parsed.lng) setLng(parsed.lng);
-      if (parsed.buildingType) setBuildingType(parsed.buildingType);
-      if (parsed.buildingAge) setBuildingAge(parsed.buildingAge);
-      if (parsed.floors) setFloors(parsed.floors);
-      if (parsed.areaSqft) setAreaSqft(parsed.areaSqft);
-      if (parsed.neededWithin) setNeededWithin(parsed.neededWithin);
-      if (parsed.notes) setNotes(parsed.notes);
-      if (parsed.details) setDetails({ ...emptyProjectDetails(), ...parsed.details });
-      if (typeof parsed.step === 'number') setStep(Math.min(Math.max(parsed.step, 0), STEPS.length - 1));
-    } catch {
-      // ignore corrupt draft
-    } finally {
-      setDraftReady(true);
+    if (!resumeDraft) {
+      setHydrated(true);
+      return;
     }
+    const parsed = readProjectPostDraft();
+    if (!parsed) {
+      setHydrated(true);
+      return;
+    }
+    setTitle(parsed.title);
+    setServices(parsed.services);
+    setLocationText(parsed.locationText);
+    setLat(parsed.lat);
+    setLng(parsed.lng);
+    setBuildingType(parsed.buildingType);
+    setBuildingAge(parsed.buildingAge);
+    setFloors(parsed.floors);
+    setAreaSqft(parsed.areaSqft);
+    setNeededWithin(parsed.neededWithin);
+    setNotes(parsed.notes);
+    setDetails({ ...emptyProjectDetails(), ...parsed.details });
+    setStep(Math.min(Math.max(parsed.step, 0), STEPS.length - 1));
+    setResuming(true);
+    setHydrated(true);
+  }, [resumeDraft]);
+
+  const patchDetails = useCallback((partial: Partial<ProjectDetails>) => {
+    setDetails((prev) => ({ ...prev, ...partial }));
   }, []);
 
-  // Persist draft.
-  useEffect(() => {
-    if (!draftReady) return;
-    const payload = {
+  function resetFormFields() {
+    setTitle('');
+    setServices([]);
+    setLocationText('');
+    setLat('');
+    setLng('');
+    setBuildingType('');
+    setBuildingAge('');
+    setFloors('');
+    setAreaSqft('');
+    setNeededWithin('');
+    setNotes('');
+    setDetails(emptyProjectDetails());
+    setStep(0);
+    setError(null);
+  }
+
+  function saveDraft() {
+    writeProjectPostDraft({
       step,
       title,
       services,
@@ -276,28 +288,29 @@ export default function NewProjectPage() {
       neededWithin,
       notes,
       details,
-    };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-  }, [
-    draftReady,
-    step,
-    title,
-    services,
-    locationText,
-    lat,
-    lng,
-    buildingType,
-    buildingAge,
-    floors,
-    areaSqft,
-    neededWithin,
-    notes,
-    details,
-  ]);
+    });
+    setResuming(true);
+    if (!resumeDraft) {
+      router.replace('/client/projects/new?continue=1');
+    }
+    toastSuccess(
+      'Draft saved',
+      `Saved at ${STEPS[step]?.label ?? 'this step'}. Continue it anytime from Your projects.`,
+    );
+  }
 
-  const patchDetails = useCallback((partial: Partial<ProjectDetails>) => {
-    setDetails((prev) => ({ ...prev, ...partial }));
-  }, []);
+  function resetForm() {
+    resetFormFields();
+    setResuming(false);
+  }
+
+  function discardDraft() {
+    clearProjectPostDraft();
+    resetFormFields();
+    setResuming(false);
+    toastSuccess('Draft discarded', 'Your saved draft was removed.');
+    if (resumeDraft) router.replace('/client/projects/new');
+  }
 
   const stepValid = useMemo(() => {
     const id = current.id;
@@ -438,7 +451,11 @@ export default function NewProjectPage() {
 
     try {
       const project = await api.createProject(body);
-      localStorage.removeItem(DRAFT_KEY);
+      clearProjectPostDraft();
+      toastSuccess(
+        "We're finding the best surveyor",
+        `"${project.title}" is live — we'll match you with a strong fit nearby.`,
+      );
       router.push(`/client/projects/${project.id}/surveyors`);
     } catch (err) {
       setError(errorMessage(err));
@@ -447,21 +464,15 @@ export default function NewProjectPage() {
     }
   }
 
-  function clearDraft() {
-    localStorage.removeItem(DRAFT_KEY);
-    setTitle('');
-    setServices([]);
-    setLocationText('');
-    setLat('');
-    setLng('');
-    setBuildingType('');
-    setBuildingAge('');
-    setFloors('');
-    setAreaSqft('');
-    setNeededWithin('');
-    setNotes('');
-    setDetails(emptyProjectDetails());
-    setStep(0);
+  if (!hydrated) {
+    return (
+      <BldMuiProvider>
+        <div className="project-post">
+          <div className="skeleton sk-line" style={{ width: 180, height: 28 }} />
+          <div className="skeleton" style={{ marginTop: 16, minHeight: 240, borderRadius: 14 }} />
+        </div>
+      </BldMuiProvider>
+    );
   }
 
   return (
@@ -481,6 +492,11 @@ export default function NewProjectPage() {
           <strong>{progress.percent}%</strong>
         </p>
       </div>
+      {resuming ? (
+        <p className="project-post-draft-banner" role="status">
+          Continuing your draft · {STEPS[step]?.label} (step {step + 1} of {STEPS.length})
+        </p>
+      ) : null}
 
       <nav className="project-post-steps" aria-label="Project steps">
         <ol>
@@ -1321,8 +1337,17 @@ export default function NewProjectPage() {
             >
               Back
             </Button>
-            <Button type="button" variant="text" onClick={clearDraft} disabled={busy} sx={{ color: 'text.secondary' }}>
-              Clear draft
+            <Button type="button" variant="outlined" onClick={saveDraft} disabled={busy}>
+              Save draft
+            </Button>
+            <Button
+              type="button"
+              variant="text"
+              onClick={resuming || resumeDraft ? discardDraft : resetForm}
+              disabled={busy}
+              sx={{ color: 'text.secondary' }}
+            >
+              {resuming || resumeDraft ? 'Discard draft' : 'Reset form'}
             </Button>
           </Stack>
           {isLast ? (

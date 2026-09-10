@@ -788,8 +788,8 @@ export function clientProjectHeadline(status: ProjectStatus): {
     case 'submitted':
     case 'matching':
       return {
-        headline: "We're finding the right surveyor for you",
-        subtext: 'Our team is reviewing your project and matching it to a vetted surveyor nearby.',
+        headline: "We're finding the best surveyor for you",
+        subtext: 'BLD is matching your brief to vetted surveyors nearby — hang tight.',
       };
     case 'matched':
       return {

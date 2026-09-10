@@ -98,7 +98,18 @@ export class ProfilesService {
       await this.writeLocation(row.id, input.location.lng, input.location.lat);
     }
 
-    return this.getByUserId(user.id);
+    const profile = await this.getByUserId(user.id);
+    await Promise.allSettled([
+      this.notifications.notifySurveyorJoined({
+        profileId: profile.id,
+        fullName: user.fullName,
+        baseCity: profile.baseCity,
+      }),
+    ]);
+    if (profile.isMatchable) {
+      void this.autoMatch.retryOpenMatching();
+    }
+    return profile;
   }
 
   async getProfile(subject: string): Promise<SurveyorProfile> {
@@ -144,7 +155,11 @@ export class ProfilesService {
       await this.writeLocation(existing.id, input.location.lng, input.location.lat);
     }
 
-    return this.getByUserId(user.id);
+    const profile = await this.getByUserId(user.id);
+    if (input.isMatchable === true && profile.isMatchable) {
+      void this.autoMatch.retryOpenMatching();
+    }
+    return profile;
   }
 
   async getStatus(subject: string): Promise<SurveyorStatus> {

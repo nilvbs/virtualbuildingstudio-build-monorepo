@@ -87,15 +87,21 @@ export class NotificationsService {
     projectId: string;
     projectTitle: string;
     offerCount: number;
+    /** When rematching later, avoid repeating the “searching” notice. */
+    reason?: 'initial' | 'rematch';
   }): Promise<void> {
+    const reason = ctx.reason ?? 'initial';
+    // Rematches with zero new offers: stay quiet (client already knows we're searching).
+    if (reason === 'rematch' && ctx.offerCount <= 0) return;
+
     const title =
       ctx.offerCount > 0
-        ? 'Surveyors are being notified'
-        : 'Looking for available surveyors';
+        ? 'Finding your best surveyor match'
+        : "We're finding the best surveyor for you";
     const body =
       ctx.offerCount > 0
-        ? `We notified ${ctx.offerCount} nearby surveyor${ctx.offerCount === 1 ? '' : 's'} about "${ctx.projectTitle}". They have a few working hours to respond.`
-        : `We couldn't find a live surveyor nearby for "${ctx.projectTitle}" yet. We'll keep this job in the matching queue.`;
+        ? `We're matching "${ctx.projectTitle}" with strong nearby surveyors. ${ctx.offerCount} ${ctx.offerCount === 1 ? 'has' : 'have'} been notified and can respond shortly.`
+        : `Thanks for posting "${ctx.projectTitle}". We're finding the best surveyor match for your brief and will update you as soon as there's a strong fit.`;
 
     await this.createInApp(
       ctx.clientUserId,
@@ -104,6 +110,92 @@ export class NotificationsService {
       body,
       `/client/projects/${ctx.projectId}`,
     );
+  }
+
+  /** Ops: client posted a project that needs matching. */
+  async notifyProjectPosted(ctx: {
+    projectId: string;
+    projectTitle: string;
+    clientName: string;
+    services: string[];
+  }): Promise<void> {
+    const adminLink = `${this.webAppUrl}/build/admin/projects/${ctx.projectId}`;
+    const serviceBit =
+      ctx.services.length > 0 ? ` · ${ctx.services.slice(0, 3).join(', ')}` : '';
+    const body = `${ctx.clientName} posted "${ctx.projectTitle}"${serviceBit}. Pending match in the pipeline.`;
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'admin' } }, status: 'active' },
+      select: { id: true },
+      take: 40,
+    });
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.createInApp(
+          admin.id,
+          'project_posted',
+          'New project posted',
+          body,
+          `/build/admin/pipeline`,
+        ),
+      ),
+    );
+
+    const notifyEmail =
+      this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
+      this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
+    if (notifyEmail) {
+      await Promise.allSettled([
+        this.email.send({
+          to: notifyEmail,
+          subject: `BLD · New project: ${ctx.projectTitle}`,
+          text: `${body}\n\n${adminLink}`,
+          html: `<p>${body}</p><p><a href="${adminLink}">Open project</a></p>`,
+        }),
+      ]);
+    }
+  }
+
+  /** Ops: a surveyor finished joining / became available for matching. */
+  async notifySurveyorJoined(ctx: {
+    profileId: string;
+    fullName: string;
+    baseCity?: string | null;
+  }): Promise<void> {
+    const adminLink = `${this.webAppUrl}/build/admin/surveyors/${ctx.profileId}`;
+    const place = ctx.baseCity?.trim() ? ` (${ctx.baseCity.trim()})` : '';
+    const body = `${ctx.fullName}${place} joined BLD and can be matched to open projects.`;
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'admin' } }, status: 'active' },
+      select: { id: true },
+      take: 40,
+    });
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.createInApp(
+          admin.id,
+          'surveyor_joined',
+          'New surveyor added',
+          body,
+          `/build/admin/surveyors/${ctx.profileId}`,
+        ),
+      ),
+    );
+
+    const notifyEmail =
+      this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
+      this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
+    if (notifyEmail) {
+      await Promise.allSettled([
+        this.email.send({
+          to: notifyEmail,
+          subject: `BLD · New surveyor: ${ctx.fullName}`,
+          text: `${body}\n\n${adminLink}`,
+          html: `<p>${body}</p><p><a href="${adminLink}">Open surveyor</a></p>`,
+        }),
+      ]);
+    }
   }
 
   /** Surveyor: Uber-style ringing offer with working-hours deadline. */
