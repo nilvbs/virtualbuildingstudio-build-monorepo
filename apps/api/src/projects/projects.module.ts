@@ -3,12 +3,13 @@ import { ProjectsController } from './projects.controller';
 import { ProjectsService } from './projects.service';
 import { MediaModule } from '../media/media.module';
 import { MatchingModule } from '../matching/matching.module';
+import { ActivityModule } from '../activity/activity.module';
 
 /**
  * Projects module — client project posting, listing, detail, and surveyor discovery.
  */
 @Module({
-  imports: [MediaModule, MatchingModule],
+  imports: [MediaModule, MatchingModule, ActivityModule],
   controllers: [ProjectsController],
   providers: [ProjectsService],
   exports: [ProjectsService],

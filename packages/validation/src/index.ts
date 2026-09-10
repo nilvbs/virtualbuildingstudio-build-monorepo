@@ -442,3 +442,73 @@ export const createProjectSchema = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
+// --- Feedback & ratings ---
+
+export const feedbackAspectsSchema = z
+  .object({
+    communication: z.number().int().min(1).max(5).optional(),
+    quality: z.number().int().min(1).max(5).optional(),
+    professionalism: z.number().int().min(1).max(5).optional(),
+    timeliness: z.number().int().min(1).max(5).optional(),
+  })
+  .default({});
+
+export const submitFeedbackSchema = z.object({
+  matchId: z.string().uuid(),
+  rating: z.number().int().min(1).max(5),
+  comment: z
+    .string()
+    .trim()
+    .min(10, 'Please share at least 10 characters')
+    .max(2000),
+  aspects: feedbackAspectsSchema.optional(),
+  recommend: z.boolean().nullable().optional(),
+});
+export type SubmitFeedbackInput = z.infer<typeof submitFeedbackSchema>;
+
+// --- Help desk ---
+
+export const helpTicketCategorySchema = z.enum([
+  'blocker',
+  'account',
+  'billing',
+  'project',
+  'matching',
+  'technical',
+  'other',
+]);
+export const helpTicketPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
+export const helpTicketStatusSchema = z.enum([
+  'open',
+  'in_progress',
+  'waiting',
+  'resolved',
+  'closed',
+]);
+export const helpTicketWorkspaceSchema = z.enum(['client', 'surveyor']);
+
+export const createHelpTicketSchema = z.object({
+  workspace: helpTicketWorkspaceSchema,
+  category: helpTicketCategorySchema,
+  priority: helpTicketPrioritySchema.default('normal'),
+  subject: z.string().trim().min(4).max(160),
+  body: z.string().trim().min(10).max(4000),
+  projectId: z.string().uuid().nullable().optional(),
+});
+export type CreateHelpTicketInput = z.infer<typeof createHelpTicketSchema>;
+
+export const helpTicketMessageSchema = z.object({
+  body: z.string().trim().min(2).max(4000),
+});
+export type HelpTicketMessageInput = z.infer<typeof helpTicketMessageSchema>;
+
+export const updateHelpTicketSchema = z
+  .object({
+    status: helpTicketStatusSchema.optional(),
+    priority: helpTicketPrioritySchema.optional(),
+  })
+  .refine((v) => v.status !== undefined || v.priority !== undefined, {
+    message: 'Provide a status and/or priority',
+  });
+export type UpdateHelpTicketInput = z.infer<typeof updateHelpTicketSchema>;

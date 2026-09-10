@@ -14,6 +14,7 @@ import {
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 import { StatusBadge } from '../../../../components/status';
 import { LocationMapPreview } from '../../../../components/location-map-preview';
+import { FeedbackForm } from '../../../../components/feedback-form';
 
 const FINDING = new Set<ProjectStatus>(['submitted', 'matching']);
 
@@ -193,6 +194,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     {' · '}
                     {new Date(m.createdAt).toLocaleDateString()}
                   </span>
+                  {m.feedbackSubmitted ? (
+                    <span className="fb-inline-done">Feedback submitted</span>
+                  ) : null}
                 </div>
                 <StatusBadge status={m.status} />
               </article>
@@ -200,6 +204,21 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           </div>
         </section>
       )}
+
+      {visibleMatches
+        .filter((m) => m.canLeaveFeedback)
+        .map((m) => (
+          <FeedbackForm
+            key={`fb-${m.matchId}`}
+            matchId={m.matchId}
+            counterpartLabel={m.surveyorUsername ? `@${m.surveyorUsername}` : 'your surveyor'}
+            projectTitle={project.title}
+            role="client"
+            onSubmitted={() => {
+              api.getProject(id).then(setProject).catch(() => undefined);
+            }}
+          />
+        ))}
 
       <section className="cli-detail-panel">
         <h2 className="cli-detail-panel-title">Project details</h2>

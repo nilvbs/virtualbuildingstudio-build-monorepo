@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { SurveyService } from '@surveylink/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ActivityService } from '../activity/activity.service';
 import { haversineKm } from '../common/geo';
 import {
   DEFAULT_WORKING_HOURS,
@@ -38,6 +39,7 @@ export class AutoMatchService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly activity: ActivityService,
   ) {
     this.maxOffers = Number(this.config.get('AUTO_MATCH_MAX_OFFERS') ?? 8);
     this.responseWorkingHours = Number(this.config.get('AUTO_MATCH_RESPONSE_HOURS') ?? 3);
@@ -181,6 +183,14 @@ export class AutoMatchService {
         projectTitle: project.title,
         offerCount: 0,
       });
+      await this.activity.record({
+        entityType: 'project',
+        entityId: projectId,
+        projectId,
+        action: 'project.matching_started',
+        summary: `Auto-match found no eligible surveyors for "${project.title}"`,
+        metadata: { offerCount: 0 },
+      });
       return 0;
     }
 
@@ -198,6 +208,7 @@ export class AutoMatchService {
             status: 'proposed',
             offerSource: 'auto',
             expiresAt,
+            proposedAt: new Date(),
             adminNotes: 'Auto-matched offer',
           },
         });
@@ -217,18 +228,38 @@ export class AutoMatchService {
       offerCount: selected.length,
     });
 
+    await this.activity.record({
+      entityType: 'project',
+      entityId: projectId,
+      projectId,
+      action: 'project.matching_started',
+      summary: `Auto-match notified ${selected.length} surveyor(s)`,
+      metadata: { offerCount: selected.length },
+    });
+
     await Promise.allSettled(
       selected.map((c) => {
         const matchId = byProfile.get(c.profileId);
         if (!matchId) return Promise.resolve();
-        return this.notifications.notifyMatchOffer({
-          clientUserId: project.clientId,
-          surveyorUserId: c.userId,
-          projectId,
-          matchId,
-          projectTitle: project.title,
-          responseWorkingHours: this.responseWorkingHours,
-        });
+        return Promise.all([
+          this.notifications.notifyMatchOffer({
+            clientUserId: project.clientId,
+            surveyorUserId: c.userId,
+            projectId,
+            matchId,
+            projectTitle: project.title,
+            responseWorkingHours: this.responseWorkingHours,
+          }),
+          this.activity.record({
+            entityType: 'match',
+            entityId: matchId,
+            projectId,
+            matchId,
+            action: 'match.offer_sent',
+            summary: `Auto offer sent for "${project.title}"`,
+            metadata: { surveyorProfileId: c.profileId, offerSource: 'auto' },
+          }),
+        ]);
       }),
     );
 
@@ -246,26 +277,60 @@ export class AutoMatchService {
         status: 'proposed',
         expiresAt: { lte: now },
       },
-      select: { id: true },
+      select: { id: true, projectId: true },
     });
     if (stale.length === 0) return 0;
     await this.prisma.match.updateMany({
       where: { id: { in: stale.map((m) => m.id) } },
-      data: { status: 'cancelled' },
+      data: { status: 'cancelled', cancelledAt: now },
     });
+    await Promise.allSettled(
+      stale.map((m) =>
+        this.activity.record({
+          entityType: 'match',
+          entityId: m.id,
+          projectId: m.projectId,
+          matchId: m.id,
+          action: 'match.expired',
+          summary: 'Offer expired (working-hours window ended)',
+          metadata: { reason: 'expires_at' },
+          occurredAt: now,
+        }),
+      ),
+    );
     return stale.length;
   }
 
   /** Cancel sibling proposed offers when one surveyor accepts (or admin locks a match). */
   async cancelSiblingOffers(projectId: string, keepMatchId: string): Promise<void> {
-    await this.prisma.match.updateMany({
+    const now = new Date();
+    const siblings = await this.prisma.match.findMany({
       where: {
         projectId,
         status: 'proposed',
         id: { not: keepMatchId },
       },
-      data: { status: 'cancelled' },
+      select: { id: true },
     });
+    if (siblings.length === 0) return;
+    await this.prisma.match.updateMany({
+      where: { id: { in: siblings.map((s) => s.id) } },
+      data: { status: 'cancelled', cancelledAt: now },
+    });
+    await Promise.allSettled(
+      siblings.map((s) =>
+        this.activity.record({
+          entityType: 'match',
+          entityId: s.id,
+          projectId,
+          matchId: s.id,
+          action: 'match.cancelled',
+          summary: 'Sibling offer cancelled after another surveyor was selected',
+          metadata: { reason: 'sibling_accepted', keptMatchId: keepMatchId },
+          occurredAt: now,
+        }),
+      ),
+    );
   }
 
   getWorkingHoursConfig(): WorkingHoursConfig {

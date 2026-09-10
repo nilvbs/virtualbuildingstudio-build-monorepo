@@ -9,17 +9,20 @@ import { isAuthenticated } from '../lib/session';
 import {
   notificationBelongsToWorkspace,
   resolveWorkspaceNotificationLink,
-  type MarketplaceSection,
+  type WorkspaceSection,
 } from '../lib/notification-scope';
 
 const POLL_MS = 20_000;
 const AUTO_DISMISS_MS = 12_000;
-const SEEN_KEY = 'bld.notifications.seen';
 
-function loadSeen(): Set<string> {
+function seenKey(section: WorkspaceSection): string {
+  return `bld.notifications.seen.${section}`;
+}
+
+function loadSeen(section: WorkspaceSection): Set<string> {
   if (typeof window === 'undefined') return new Set();
   try {
-    const raw = sessionStorage.getItem(SEEN_KEY);
+    const raw = sessionStorage.getItem(seenKey(section));
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as string[];
     return new Set(Array.isArray(parsed) ? parsed : []);
@@ -28,20 +31,25 @@ function loadSeen(): Set<string> {
   }
 }
 
-function persistSeen(ids: Set<string>) {
+function persistSeen(section: WorkspaceSection, ids: Set<string>) {
   if (typeof window === 'undefined') return;
   const trimmed = [...ids].slice(-80);
-  sessionStorage.setItem(SEEN_KEY, JSON.stringify(trimmed));
+  sessionStorage.setItem(seenKey(section), JSON.stringify(trimmed));
 }
 
 /**
  * Bottom-right toast stack — only toasts for the active workspace role.
  */
-export function NotificationToasts({ section }: { section: MarketplaceSection }) {
+export function NotificationToasts({ section }: { section: WorkspaceSection }) {
   const router = useRouter();
   const [toasts, setToasts] = useState<Notification[]>([]);
-  const seenRef = useRef<Set<string>>(loadSeen());
+  const seenRef = useRef<Set<string>>(new Set());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    seenRef.current = loadSeen(section);
+    setToasts([]);
+  }, [section]);
 
   useEffect(() => {
     if (!isAuthenticated()) return;
@@ -63,7 +71,7 @@ export function NotificationToasts({ section }: { section: MarketplaceSection })
         if (fresh.length === 0) return;
 
         for (const n of fresh) seenRef.current.add(n.id);
-        persistSeen(seenRef.current);
+        persistSeen(section, seenRef.current);
 
         setToasts((prev) => {
           const existing = new Set(prev.map((t) => t.id));

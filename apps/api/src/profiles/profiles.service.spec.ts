@@ -62,6 +62,7 @@ describe('ProfilesService', () => {
         getResponseWorkingHours: () => 3,
       } as any,
       { notifyMatchAccepted: jest.fn().mockResolvedValue(undefined) } as any,
+      { record: jest.fn().mockResolvedValue(undefined) } as any,
     );
   });
 

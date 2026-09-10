@@ -59,7 +59,20 @@ describe('AdminService', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       staffContext as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      {
+        cancelSiblingOffers: jest.fn().mockResolvedValue(undefined),
+        getResponseWorkingHours: () => 3,
+        getWorkingHoursConfig: () => ({
+          timeZone: 'America/Chicago',
+          startHour: 9,
+          endHour: 18,
+          workdays: [1, 2, 3, 4, 5],
+        }),
+      } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       identity as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { record: jest.fn().mockResolvedValue(undefined) } as any,
     );
   });
 

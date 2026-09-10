@@ -151,6 +151,199 @@ export class NotificationsService {
     ]);
   }
 
+  /**
+   * After feedback is submitted: confirmation email to the reviewer,
+   * in-app notice, and ops email to ADMIN_NOTIFY_EMAIL (plus staff in-app).
+   */
+  async notifyFeedbackSubmitted(ctx: {
+    feedbackId: string;
+    fromUserId: string;
+    fromRole: 'client' | 'surveyor';
+    toUserId: string;
+    projectId: string;
+    projectTitle: string;
+    rating: number;
+    comment: string;
+  }): Promise<void> {
+    const stars = `${ctx.rating}/5`;
+    const reviewerLink =
+      ctx.fromRole === 'client'
+        ? `${this.webAppUrl}/client/projects/${ctx.projectId}`
+        : `${this.webAppUrl}/surveyor/matches`;
+    const adminLink = `${this.webAppUrl}/build/admin/feedback`;
+
+    const confirmBody = `Thanks for rating "${ctx.projectTitle}" (${stars}). Your feedback helps keep BLD trusted.`;
+    await this.createInApp(
+      ctx.fromUserId,
+      'feedback_submitted',
+      'Thanks for your feedback',
+      confirmBody,
+      ctx.fromRole === 'client'
+        ? `/client/projects/${ctx.projectId}`
+        : '/surveyor/matches',
+    );
+
+    await Promise.allSettled([
+      this.dispatchExternal(ctx.fromUserId, {
+        emailSubject: `Thanks for your feedback on "${ctx.projectTitle}"`,
+        emailBody: `${confirmBody}\n\n${reviewerLink}`,
+        emailHtml: `<p>${confirmBody}</p><p><a href="${reviewerLink}">Open BLD</a></p>`,
+        smsBody: `BLD: Thanks for your ${stars} feedback on "${ctx.projectTitle}".`,
+      }),
+    ]);
+
+    const adminBody = `New ${ctx.fromRole} feedback on "${ctx.projectTitle}": ${stars}.\n\n${ctx.comment}`;
+    const notifyEmail =
+      this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
+      this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'admin' } }, status: 'active' },
+      select: { id: true, email: true },
+      take: 40,
+    });
+
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.createInApp(
+          admin.id,
+          'feedback_received',
+          'New marketplace feedback',
+          `A ${ctx.fromRole} rated "${ctx.projectTitle}" ${stars}.`,
+          '/build/admin/feedback',
+        ),
+      ),
+    );
+
+    if (notifyEmail) {
+      await Promise.allSettled([
+        this.email.send({
+          to: notifyEmail,
+          subject: `BLD feedback: ${stars} on "${ctx.projectTitle}"`,
+          text: `${adminBody}\n\nReview: ${adminLink}`,
+          html: `<p>A <strong>${ctx.fromRole}</strong> left <strong>${stars}</strong> feedback on <em>${ctx.projectTitle}</em>.</p><blockquote>${ctx.comment.replace(/</g, '&lt;')}</blockquote><p><a href="${adminLink}">Open feedback in admin</a></p>`,
+        }),
+      ]);
+    }
+  }
+
+  /** New help-desk ticket: confirm submitter + alert ops. */
+  async notifyHelpTicketCreated(ctx: {
+    ticketId: string;
+    ticketNumber: string;
+    fromUserId: string;
+    workspace: 'client' | 'surveyor';
+    subject: string;
+    category: string;
+    priority: string;
+    preview: string;
+  }): Promise<void> {
+    const userLink =
+      ctx.workspace === 'client'
+        ? `${this.webAppUrl}/client/help`
+        : `${this.webAppUrl}/surveyor/help`;
+    const adminLink = `${this.webAppUrl}/build/admin/helpdesk/${ctx.ticketId}`;
+    const confirm = `We received ticket ${ctx.ticketNumber}: "${ctx.subject}". Our team will reply soon.`;
+
+    await this.createInApp(
+      ctx.fromUserId,
+      'helpdesk_ticket_created',
+      `Ticket ${ctx.ticketNumber} opened`,
+      confirm,
+      ctx.workspace === 'client' ? '/client/help' : '/surveyor/help',
+    );
+
+    await Promise.allSettled([
+      this.dispatchExternal(ctx.fromUserId, {
+        emailSubject: `BLD Help Desk · ${ctx.ticketNumber}`,
+        emailBody: `${confirm}\n\n${userLink}`,
+        emailHtml: `<p>${confirm}</p><p><a href="${userLink}">View your tickets</a></p>`,
+        smsBody: `BLD: Ticket ${ctx.ticketNumber} received. We'll reply soon.`,
+      }),
+    ]);
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'admin' } }, status: 'active' },
+      select: { id: true },
+      take: 40,
+    });
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.createInApp(
+          admin.id,
+          'helpdesk_ticket_received',
+          `New help desk ticket ${ctx.ticketNumber}`,
+          `${ctx.workspace} · ${ctx.priority} · ${ctx.subject}`,
+          `/build/admin/helpdesk/${ctx.ticketId}`,
+        ),
+      ),
+    );
+
+    const notifyEmail =
+      this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
+      this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
+    if (notifyEmail) {
+      await Promise.allSettled([
+        this.email.send({
+          to: notifyEmail,
+          subject: `BLD Help Desk ${ctx.ticketNumber}: ${ctx.subject}`,
+          text: `${ctx.workspace} / ${ctx.category} / ${ctx.priority}\n\n${ctx.preview}\n\n${adminLink}`,
+          html: `<p><strong>${ctx.ticketNumber}</strong> from <em>${ctx.workspace}</em> (${ctx.priority})</p><p>${ctx.subject}</p><blockquote>${ctx.preview.replace(/</g, '&lt;')}</blockquote><p><a href="${adminLink}">Open in help desk</a></p>`,
+        }),
+      ]);
+    }
+  }
+
+  /** Reply on a ticket — notify the other side. */
+  async notifyHelpTicketReply(ctx: {
+    ticketId: string;
+    ticketNumber: string;
+    fromUserId: string;
+    isStaff: boolean;
+    subject: string;
+    preview: string;
+    ownerUserId: string;
+    ownerWorkspace: 'client' | 'surveyor';
+  }): Promise<void> {
+    if (ctx.isStaff) {
+      const path = ctx.ownerWorkspace === 'client' ? '/client/help' : '/surveyor/help';
+      const body = `Support replied on ${ctx.ticketNumber}: "${ctx.subject}".`;
+      await this.createInApp(
+        ctx.ownerUserId,
+        'helpdesk_reply',
+        `Reply on ${ctx.ticketNumber}`,
+        body,
+        path,
+      );
+      await Promise.allSettled([
+        this.dispatchExternal(ctx.ownerUserId, {
+          emailSubject: `BLD Help Desk reply · ${ctx.ticketNumber}`,
+          emailBody: `${body}\n\n${ctx.preview}\n\n${this.webAppUrl}${path}`,
+          emailHtml: `<p>${body}</p><blockquote>${ctx.preview.replace(/</g, '&lt;')}</blockquote><p><a href="${this.webAppUrl}${path}">Open ticket</a></p>`,
+          smsBody: `BLD: Support replied on ${ctx.ticketNumber}.`,
+        }),
+      ]);
+      return;
+    }
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'admin' } }, status: 'active' },
+      select: { id: true },
+      take: 40,
+    });
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.createInApp(
+          admin.id,
+          'helpdesk_reply',
+          `User replied on ${ctx.ticketNumber}`,
+          ctx.preview.slice(0, 120),
+          `/build/admin/helpdesk/${ctx.ticketId}`,
+        ),
+      ),
+    );
+  }
+
   async listForUser(subject: string): Promise<Notification[]> {
     const user = await this.requireUserId(subject);
     const rows = await this.prisma.notification.findMany({

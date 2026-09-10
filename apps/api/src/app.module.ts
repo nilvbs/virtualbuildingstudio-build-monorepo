@@ -12,6 +12,9 @@ import { MatchingModule } from './matching/matching.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AdminModule } from './admin/admin.module';
 import { MediaModule } from './media/media.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { HelpdeskModule } from './helpdesk/helpdesk.module';
+import { ActivityModule } from './activity/activity.module';
 
 @Module({
   imports: [
@@ -50,6 +53,9 @@ import { MediaModule } from './media/media.module';
     MatchingModule,
     NotificationsModule,
     AdminModule,
+    FeedbackModule,
+    HelpdeskModule,
+    ActivityModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

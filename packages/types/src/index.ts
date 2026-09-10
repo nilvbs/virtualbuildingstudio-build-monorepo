@@ -414,6 +414,17 @@ export interface AdminOverviewStats {
     clientsAdded: number;
     surveyorsAdded: number;
     projectsPosted: number;
+    feedbackSubmitted: number;
+  };
+  /** Marketplace feedback aggregates (optionally narrowed by date). */
+  feedback: {
+    total: number;
+    averageRating: number | null;
+    recommendYes: number;
+    recommendNo: number;
+    fromClients: number;
+    fromSurveyors: number;
+    ratingDistribution: { rating: number; count: number }[];
   };
   /** Ranked location buckets for the filtered set. */
   locations: Array<{
@@ -657,6 +668,10 @@ export interface SurveyorRequest {
     username: string;
     companyName: string | null;
   };
+  /** Surveyor already left feedback for this match. */
+  feedbackSubmitted?: boolean;
+  /** Surveyor may leave feedback (completed engagement). */
+  canLeaveFeedback?: boolean;
 }
 
 /**
@@ -713,6 +728,10 @@ export interface ProjectMatchInfo {
   /** Legal name — only populated for admin callers. */
   surveyorFullName: string | null;
   createdAt: string;
+  /** Current viewer already left feedback for this match. */
+  feedbackSubmitted?: boolean;
+  /** Viewer may leave feedback (completed engagement). */
+  canLeaveFeedback?: boolean;
 }
 
 export interface ProjectDetail extends Project {
@@ -785,7 +804,7 @@ export function clientProjectHeadline(status: ProjectStatus): {
     case 'completed':
       return {
         headline: 'Survey complete',
-        subtext: 'Thanks for using SurveyLink. We hope the results were exactly what you needed.',
+        subtext: 'Thanks for using BLD. Share a quick rating — it helps the network stay trusted.',
       };
     case 'cancelled':
       return {
@@ -793,4 +812,182 @@ export function clientProjectHeadline(status: ProjectStatus): {
         subtext: 'If this was a mistake, post a new project and we\u2019ll pick things back up.',
       };
   }
+}
+
+// --- Feedback & ratings ---
+
+export const FEEDBACK_ROLES = ['client', 'surveyor'] as const;
+export type FeedbackRole = (typeof FEEDBACK_ROLES)[number];
+
+export const FEEDBACK_ASPECT_KEYS = [
+  'communication',
+  'quality',
+  'professionalism',
+  'timeliness',
+] as const;
+export type FeedbackAspectKey = (typeof FEEDBACK_ASPECT_KEYS)[number];
+
+export const FEEDBACK_ASPECT_LABELS: Record<FeedbackAspectKey, string> = {
+  communication: 'Communication',
+  quality: 'Quality of work',
+  professionalism: 'Professionalism',
+  timeliness: 'Timeliness',
+};
+
+export type FeedbackAspects = Partial<Record<FeedbackAspectKey, number>>;
+
+/** Overall 1–5 mapped to emoji labels for the rating UI. */
+export const FEEDBACK_RATING_EMOJIS: Record<
+  1 | 2 | 3 | 4 | 5,
+  { emoji: string; label: string }
+> = {
+  1: { emoji: '😠', label: 'Poor' },
+  2: { emoji: '😕', label: 'Fair' },
+  3: { emoji: '😐', label: 'Okay' },
+  4: { emoji: '🙂', label: 'Good' },
+  5: { emoji: '🤩', label: 'Excellent' },
+};
+
+export function feedbackRatingEmoji(rating: number): string {
+  if (rating >= 1 && rating <= 5) {
+    return FEEDBACK_RATING_EMOJIS[rating as 1 | 2 | 3 | 4 | 5].emoji;
+  }
+  return '⭐';
+}
+
+export interface Feedback {
+  id: string;
+  matchId: string;
+  projectId: string;
+  projectTitle: string;
+  fromUserId: string;
+  fromUsername: string | null;
+  fromFullName: string | null;
+  fromRole: FeedbackRole;
+  toUserId: string;
+  toUsername: string | null;
+  toFullName: string | null;
+  rating: number;
+  comment: string;
+  aspects: FeedbackAspects;
+  recommend: boolean | null;
+  createdAt: string;
+}
+
+export interface FeedbackSubmitResult {
+  feedback: Feedback;
+  message: string;
+}
+
+// --- Activity timeline (date-wise ops visibility) ---
+
+export const ACTIVITY_ENTITY_TYPES = [
+  'project',
+  'match',
+  'help_ticket',
+  'feedback',
+] as const;
+export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
+
+export interface ActivityLogEntry {
+  id: string;
+  entityType: ActivityEntityType;
+  entityId: string;
+  projectId: string | null;
+  matchId: string | null;
+  helpTicketId: string | null;
+  action: string;
+  summary: string;
+  actorUserId: string | null;
+  actorFullName: string | null;
+  actorUsername: string | null;
+  metadata: Record<string, unknown>;
+  occurredAt: string;
+  createdAt: string;
+}
+
+// --- Help desk ---
+
+export const HELP_TICKET_WORKSPACES = ['client', 'surveyor'] as const;
+export type HelpTicketWorkspace = (typeof HELP_TICKET_WORKSPACES)[number];
+
+export const HELP_TICKET_CATEGORIES = [
+  'blocker',
+  'account',
+  'billing',
+  'project',
+  'matching',
+  'technical',
+  'other',
+] as const;
+export type HelpTicketCategory = (typeof HELP_TICKET_CATEGORIES)[number];
+
+export const HELP_TICKET_CATEGORY_LABELS: Record<HelpTicketCategory, string> = {
+  blocker: 'Blocker — can’t proceed',
+  account: 'Account & login',
+  billing: 'Billing',
+  project: 'Project brief',
+  matching: 'Matching & surveyors',
+  technical: 'Technical issue',
+  other: 'Other',
+};
+
+export const HELP_TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+export type HelpTicketPriority = (typeof HELP_TICKET_PRIORITIES)[number];
+
+export const HELP_TICKET_PRIORITY_LABELS: Record<HelpTicketPriority, string> = {
+  low: 'Low',
+  normal: 'Normal',
+  high: 'High',
+  urgent: 'Urgent',
+};
+
+export const HELP_TICKET_STATUSES = [
+  'open',
+  'in_progress',
+  'waiting',
+  'resolved',
+  'closed',
+] as const;
+export type HelpTicketStatus = (typeof HELP_TICKET_STATUSES)[number];
+
+export const HELP_TICKET_STATUS_LABELS: Record<HelpTicketStatus, string> = {
+  open: 'Open',
+  in_progress: 'In progress',
+  waiting: 'Waiting on user',
+  resolved: 'Resolved',
+  closed: 'Closed',
+};
+
+export interface HelpTicketMessage {
+  id: string;
+  body: string;
+  isStaff: boolean;
+  authorUsername: string | null;
+  authorFullName: string | null;
+  createdAt: string;
+}
+
+export interface HelpTicket {
+  id: string;
+  ticketNumber: string;
+  workspace: HelpTicketWorkspace;
+  category: HelpTicketCategory;
+  priority: HelpTicketPriority;
+  subject: string;
+  status: HelpTicketStatus;
+  projectId: string | null;
+  requesterUsername: string | null;
+  requesterFullName: string | null;
+  requesterEmail: string | null;
+  assignedToFullName: string | null;
+  messageCount: number;
+  latestMessagePreview: string | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface HelpTicketDetail extends HelpTicket {
+  messages: HelpTicketMessage[];
 }

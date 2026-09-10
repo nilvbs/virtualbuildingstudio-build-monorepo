@@ -61,6 +61,7 @@ import { StaffContextService } from '../auth/staff-context.service';
 import { buildPersonNameFields } from '../auth/username';
 import { AutoMatchService } from '../matching/auto-match.service';
 import { addWorkingHours } from '../matching/working-hours';
+import { ActivityService } from '../activity/activity.service';
 
 interface GeoRow {
   id: string;
@@ -80,6 +81,7 @@ export class AdminService {
     private readonly staffContext: StaffContextService,
     private readonly autoMatch: AutoMatchService,
     @Inject(IDENTITY_PROVIDER) private readonly identity: IdentityProvider,
+    private readonly activity: ActivityService,
   ) {}
 
   /**
@@ -110,7 +112,7 @@ export class AdminService {
     const locationFilter = query.location?.trim() || null;
     const locationNeedle = locationFilter?.toLowerCase() ?? null;
 
-    const [clients, surveyors, projects] = await Promise.all([
+    const [clients, surveyors, projects, feedbackRows] = await Promise.all([
       this.prisma.user.findMany({
         where: { roles: { some: { role: 'client' } } },
         select: {
@@ -124,6 +126,14 @@ export class AdminService {
       }),
       this.prisma.project.findMany({
         select: { id: true, createdAt: true, locationText: true, status: true },
+      }),
+      this.prisma.feedback.findMany({
+        select: {
+          rating: true,
+          fromRole: true,
+          recommend: true,
+          createdAt: true,
+        },
       }),
     ]);
 
@@ -187,6 +197,14 @@ export class AdminService {
       })
       .slice(0, 12);
 
+    const feedbackInPeriod = feedbackRows.filter((f) => inPeriod(f.createdAt));
+    const feedbackScoped = from || to ? feedbackInPeriod : feedbackRows;
+    const ratingSum = feedbackScoped.reduce((acc, f) => acc + f.rating, 0);
+    const ratingDistribution = [1, 2, 3, 4, 5].map((rating) => ({
+      rating,
+      count: feedbackScoped.filter((f) => f.rating === rating).length,
+    }));
+
     return {
       filters: {
         from: query.from ?? null,
@@ -206,6 +224,19 @@ export class AdminService {
         clientsAdded: clientsScoped.filter((r) => inPeriod(r.createdAt)).length,
         surveyorsAdded: surveyorsScoped.filter((r) => inPeriod(r.createdAt)).length,
         projectsPosted: projectsScoped.filter((r) => inPeriod(r.createdAt)).length,
+        feedbackSubmitted: feedbackInPeriod.length,
+      },
+      feedback: {
+        total: feedbackScoped.length,
+        averageRating:
+          feedbackScoped.length > 0
+            ? Math.round((ratingSum / feedbackScoped.length) * 10) / 10
+            : null,
+        recommendYes: feedbackScoped.filter((f) => f.recommend === true).length,
+        recommendNo: feedbackScoped.filter((f) => f.recommend === false).length,
+        fromClients: feedbackScoped.filter((f) => f.fromRole === 'client').length,
+        fromSurveyors: feedbackScoped.filter((f) => f.fromRole === 'surveyor').length,
+        ratingDistribution,
       },
       locations,
       availableLocations,
@@ -461,6 +492,7 @@ export class AdminService {
           adminNotes: input.notes ?? null,
           offerSource: 'admin',
           expiresAt,
+          proposedAt: new Date(),
         },
       }),
       this.prisma.project.update({
@@ -479,6 +511,27 @@ export class AdminService {
       projectTitle: project.title,
     });
 
+    await this.activity.record({
+      entityType: 'match',
+      entityId: match.id,
+      projectId: project.id,
+      matchId: match.id,
+      action: 'match.proposed',
+      summary: `Surveyor assigned to "${project.title}"`,
+      actorUserId: adminUserId,
+      metadata: { surveyorProfileId: input.surveyorId, offerSource: 'admin' },
+    });
+    await this.activity.record({
+      entityType: 'project',
+      entityId: project.id,
+      projectId: project.id,
+      matchId: match.id,
+      action: 'project.surveyor_assigned',
+      summary: `Project moved to matched — surveyor proposed`,
+      actorUserId: adminUserId,
+      metadata: { fromStatus: project.status, toStatus: 'matched' },
+    });
+
     return this.toMatchDto(match);
   }
 
@@ -487,6 +540,7 @@ export class AdminService {
     if (!match) throw new NotFoundException('Match not found');
 
     const data: Prisma.MatchUpdateInput = {};
+    const now = new Date();
     if (input.status !== undefined) {
       if (!isValidTransition(MATCH_STATUS_TRANSITIONS, match.status as MatchStatus, input.status)) {
         throw new BadRequestException(
@@ -494,10 +548,27 @@ export class AdminService {
         );
       }
       data.status = input.status;
+      if (input.status === 'accepted') data.acceptedAt = now;
+      if (input.status === 'completed') data.completedAt = now;
+      if (input.status === 'declined') data.declinedAt = now;
+      if (input.status === 'cancelled') data.cancelledAt = now;
     }
     if (input.adminNotes !== undefined) data.adminNotes = input.adminNotes;
 
     const updated = await this.prisma.match.update({ where: { id }, data });
+
+    if (input.status !== undefined && input.status !== match.status) {
+      await this.activity.record({
+        entityType: 'match',
+        entityId: updated.id,
+        projectId: updated.projectId,
+        matchId: updated.id,
+        action: `match.${input.status}`,
+        summary: `Match status ${match.status} → ${input.status}`,
+        metadata: { fromStatus: match.status, toStatus: input.status },
+      });
+    }
+
     return this.toMatchDto(updated);
   }
 
@@ -518,7 +589,19 @@ export class AdminService {
       );
     }
 
+    const adminUserId = await this.requireUserId(adminSubject).catch(() => null);
     await this.prisma.project.update({ where: { id }, data: { status: input.status } });
+
+    await this.activity.record({
+      entityType: 'project',
+      entityId: id,
+      projectId: id,
+      action: `project.${input.status}`,
+      summary: `Project status ${project.status} → ${input.status}`,
+      actorUserId: adminUserId,
+      metadata: { fromStatus: project.status, toStatus: input.status },
+    });
+
     return this.projects.getById(adminSubject, roles, id);
   }
 

@@ -29,6 +29,7 @@ describe('ProjectsService', () => {
     user: { findUnique: jest.Mock };
     project: { create: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
     match: { findMany: jest.Mock };
+    feedback: { findMany: jest.Mock };
     $executeRaw: jest.Mock;
     $queryRaw: jest.Mock;
   };
@@ -39,6 +40,7 @@ describe('ProjectsService', () => {
       user: { findUnique: jest.fn().mockResolvedValue(USER) },
       project: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
       match: { findMany: jest.fn().mockResolvedValue([]) },
+      feedback: { findMany: jest.fn().mockResolvedValue([]) },
       $executeRaw: jest.fn().mockResolvedValue(1),
       $queryRaw: jest.fn().mockResolvedValue([{ id: 'proj-1', lng: -96.8, lat: 32.78 }]),
     };
@@ -47,7 +49,9 @@ describe('ProjectsService', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const autoMatch = { offerForProject: jest.fn().mockResolvedValue(0) } as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    service = new ProjectsService(prisma as any, media, autoMatch);
+    const activity = { record: jest.fn().mockResolvedValue(undefined) } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    service = new ProjectsService(prisma as any, media, autoMatch, activity);
   });
 
   describe('create', () => {

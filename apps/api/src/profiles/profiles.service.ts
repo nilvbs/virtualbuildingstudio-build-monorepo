@@ -27,6 +27,7 @@ import { haversineKm } from '../common/geo';
 import { PrismaService } from '../prisma/prisma.service';
 import { AutoMatchService } from '../matching/auto-match.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ActivityService } from '../activity/activity.service';
 import {
   isWithinWorkingHours,
   remainingWorkingMs,
@@ -58,6 +59,7 @@ export class ProfilesService {
     private readonly prisma: PrismaService,
     private readonly autoMatch: AutoMatchService,
     private readonly notifications: NotificationsService,
+    private readonly activity: ActivityService,
   ) {}
 
   async createProfile(
@@ -341,6 +343,15 @@ export class ProfilesService {
       ]),
     );
 
+    const myFeedback = await this.prisma.feedback.findMany({
+      where: {
+        fromUserId: user.id,
+        matchId: { in: matches.map((m) => m.id) },
+      },
+      select: { matchId: true },
+    });
+    const submitted = new Set(myFeedback.map((f) => f.matchId));
+
     return matches.map((m) => {
       const location = geoById.get(m.project.id) ?? null;
       const distanceKm =
@@ -354,6 +365,10 @@ export class ProfilesService {
         expiresAt && m.status === 'proposed'
           ? remainingWorkingMs(now, expiresAt, wh)
           : null;
+      const canLeave =
+        (m.status === 'completed' || m.project.status === 'completed') &&
+        ['accepted', 'completed'].includes(m.status) &&
+        !submitted.has(m.id);
       return {
         matchId: m.id,
         status: m.status as MatchStatus,
@@ -385,6 +400,8 @@ export class ProfilesService {
           username: m.project.client.username,
           companyName: m.project.client.accountProfile?.companyName ?? null,
         },
+        feedbackSubmitted: submitted.has(m.id),
+        canLeaveFeedback: canLeave,
       };
     });
   }
@@ -428,7 +445,7 @@ export class ProfilesService {
     if (match.status === 'proposed' && match.expiresAt && match.expiresAt.getTime() <= Date.now()) {
       await this.prisma.match.update({
         where: { id: matchId },
-        data: { status: 'cancelled' },
+        data: { status: 'cancelled', cancelledAt: new Date() },
       });
       throw new ConflictException('This request expired (working-hours window ended)');
     }
@@ -437,9 +454,16 @@ export class ProfilesService {
       throw new ConflictException(`Cannot move match from ${match.status} to ${target}`);
     }
 
+    const now = new Date();
+    const milestone: Record<string, Date> = {};
+    if (target === 'accepted') milestone.acceptedAt = now;
+    if (target === 'declined') milestone.declinedAt = now;
+    if (target === 'cancelled') milestone.cancelledAt = now;
+    if (target === 'completed') milestone.completedAt = now;
+
     const updated = await this.prisma.match.update({
       where: { id: matchId },
-      data: { status: target },
+      data: { status: target, ...milestone },
     });
 
     if (target === 'accepted') {
@@ -454,6 +478,35 @@ export class ProfilesService {
         projectId: match.project.id,
         matchId,
         projectTitle: match.project.title,
+      });
+      await this.activity.record({
+        entityType: 'match',
+        entityId: matchId,
+        projectId: match.projectId,
+        matchId,
+        action: 'match.accepted',
+        summary: `Surveyor accepted "${match.project.title}"`,
+        actorUserId: user.id,
+      });
+      await this.activity.record({
+        entityType: 'project',
+        entityId: match.projectId,
+        projectId: match.projectId,
+        matchId,
+        action: 'project.matched',
+        summary: `Project matched after surveyor accept`,
+        actorUserId: user.id,
+      });
+    } else {
+      await this.activity.record({
+        entityType: 'match',
+        entityId: matchId,
+        projectId: match.projectId,
+        matchId,
+        action: `match.${target}`,
+        summary: `Match ${match.status} → ${target}`,
+        actorUserId: user.id,
+        metadata: { fromStatus: match.status, toStatus: target },
       });
     }
 

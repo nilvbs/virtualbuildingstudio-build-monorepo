@@ -68,6 +68,12 @@ model User {
   projects        Project[]
   matchesMade     Match[]          @relation("MatchedBy")
   notifications   Notification[]
+  feedbackGiven   Feedback[]       @relation("FeedbackFrom")
+  feedbackReceived Feedback[]      @relation("FeedbackTo")
+  helpTickets     HelpTicket[]     @relation("HelpTicketOwner")
+  helpTicketsAssigned HelpTicket[] @relation("HelpTicketAssignee")
+  helpTicketMessages HelpTicketMessage[]
+  activityLogs    ActivityLog[]
 
   @@index([authSubject], map: "idx_users_auth_subject")
   @@map("users")
@@ -124,6 +130,9 @@ model AccountProfile {
   workEmailVerified  Boolean  @default(false) @map("work_email_verified")
   registrationNumber String?  @map("registration_number")
   website            String?
+  /** Average star rating from surveyors (1–5). Null until reviews exist. */
+  ratingAvg          Float?   @map("rating_avg")
+  ratingCount        Int      @default(0) @map("rating_count")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -199,6 +208,9 @@ model Project {
 
   client  User    @relation(fields: [clientId], references: [id])
   matches Match[]
+  feedbacks Feedback[]
+  helpTickets HelpTicket[]
+  activityLogs ActivityLog[]
 
   @@index([status])
   @@map("projects")
@@ -215,16 +227,144 @@ model Match {
   expiresAt  DateTime? @map("expires_at") @db.Timestamptz(6)
   /** admin = staff match; auto = Uber-style fan-out after project post. */
   offerSource String  @default("admin") @map("offer_source")
+  /** Milestone timestamps for date-wise timelines. */
+  proposedAt   DateTime? @map("proposed_at") @db.Timestamptz(6)
+  acceptedAt   DateTime? @map("accepted_at") @db.Timestamptz(6)
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
+  declinedAt   DateTime? @map("declined_at") @db.Timestamptz(6)
+  cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz(6)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  project  Project         @relation(fields: [projectId], references: [id])
-  surveyor SurveyorProfile @relation(fields: [surveyorId], references: [id])
-  matcher  User            @relation("MatchedBy", fields: [matchedBy], references: [id])
+  project   Project         @relation(fields: [projectId], references: [id])
+  surveyor  SurveyorProfile @relation(fields: [surveyorId], references: [id])
+  matcher   User            @relation("MatchedBy", fields: [matchedBy], references: [id])
+  feedbacks Feedback[]
+  activityLogs ActivityLog[]
 
   @@index([projectId])
   @@index([surveyorId])
   @@map("matches")
+}
+
+/**
+ * Post-job rating from client → surveyor or surveyor → client.
+ * One feedback per match per reviewer.
+ */
+model Feedback {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matchId    String   @map("match_id") @db.Uuid
+  projectId  String   @map("project_id") @db.Uuid
+  fromUserId String   @map("from_user_id") @db.Uuid
+  toUserId   String   @map("to_user_id") @db.Uuid
+  /** client | surveyor — role of the person submitting. */
+  fromRole   String   @map("from_role")
+  /** Overall stars 1–5. */
+  rating     Int
+  comment    String
+  /** Optional aspect scores: communication, quality, professionalism, timeliness. */
+  aspects    Json     @default("{}")
+  recommend  Boolean?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  match   Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromUser User   @relation("FeedbackFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User   @relation("FeedbackTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, fromUserId], map: "uq_feedbacks_match_from_user")
+  @@index([projectId], map: "idx_feedbacks_project_id")
+  @@index([toUserId], map: "idx_feedbacks_to_user_id")
+  @@index([fromUserId], map: "idx_feedbacks_from_user_id")
+  @@index([createdAt], map: "idx_feedbacks_created_at")
+  @@map("feedbacks")
+}
+
+/**
+ * Help desk ticket from a client or surveyor.
+ * Conversation lives in HelpTicketMessage.
+ */
+model HelpTicket {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /** Human-readable id, e.g. HD-20260909-A1B2. */
+  ticketNumber     String    @unique @map("ticket_number")
+  userId           String    @map("user_id") @db.Uuid
+  /** client | surveyor — workspace the reporter opened from. */
+  workspace        String
+  /** account | billing | project | matching | technical | blocker | other */
+  category         String
+  /** low | normal | high | urgent */
+  priority         String    @default("normal")
+  subject          String
+  /** open | in_progress | waiting | resolved | closed */
+  status           String    @default("open")
+  projectId        String?   @map("project_id") @db.Uuid
+  assignedToUserId String?   @map("assigned_to_user_id") @db.Uuid
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+  /** First staff reply timestamp. */
+  firstResponseAt  DateTime? @map("first_response_at") @db.Timestamptz(6)
+  closedAt         DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user       User                @relation("HelpTicketOwner", fields: [userId], references: [id], onDelete: Cascade)
+  assignee   User?               @relation("HelpTicketAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  project    Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  messages   HelpTicketMessage[]
+  activityLogs ActivityLog[]
+
+  @@index([userId], map: "idx_help_tickets_user_id")
+  @@index([status], map: "idx_help_tickets_status")
+  @@index([createdAt], map: "idx_help_tickets_created_at")
+  @@map("help_tickets")
+}
+
+model HelpTicketMessage {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId     String   @map("ticket_id") @db.Uuid
+  authorUserId String   @map("author_user_id") @db.Uuid
+  body         String
+  isStaff      Boolean  @default(false) @map("is_staff")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  ticket HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User       @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt], map: "idx_help_ticket_messages_ticket_id")
+  @@map("help_ticket_messages")
+}
+
+/**
+ * Append-only activity timeline for date-wise ops visibility.
+ * Examples: project submitted, surveyor assigned, match accepted, ticket replied.
+ */
+model ActivityLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /** project | match | help_ticket | feedback */
+  entityType   String   @map("entity_type")
+  entityId     String   @map("entity_id") @db.Uuid
+  projectId    String?  @map("project_id") @db.Uuid
+  matchId      String?  @map("match_id") @db.Uuid
+  helpTicketId String?  @map("help_ticket_id") @db.Uuid
+  /** Machine action key, e.g. project.submitted, match.accepted, ticket.status_changed */
+  action       String
+  summary      String
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  metadata     Json     @default("{}")
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  match      Match?      @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  helpTicket HelpTicket? @relation(fields: [helpTicketId], references: [id], onDelete: SetNull)
+  actor      User?       @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, occurredAt], map: "idx_activity_logs_entity")
+  @@index([projectId, occurredAt], map: "idx_activity_logs_project_id")
+  @@index([helpTicketId, occurredAt], map: "idx_activity_logs_help_ticket_id")
+  @@index([occurredAt], map: "idx_activity_logs_occurred_at")
+  @@map("activity_logs")
 }
 
 model Notification {

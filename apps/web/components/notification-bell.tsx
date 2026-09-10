@@ -9,7 +9,7 @@ import { isAuthenticated } from '../lib/session';
 import {
   notificationBelongsToWorkspace,
   resolveWorkspaceNotificationLink,
-  type MarketplaceSection,
+  type WorkspaceSection,
 } from '../lib/notification-scope';
 
 const POLL_MS = 15_000;
@@ -26,10 +26,10 @@ function relativeTime(iso: string): string {
 }
 
 /**
- * Header inbox for client + surveyor.
+ * Header inbox for client, surveyor, and admin.
  * Only shows / opens notifications for the active workspace role.
  */
-export function NotificationBell({ section }: { section: MarketplaceSection }) {
+export function NotificationBell({ section }: { section: WorkspaceSection }) {
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);

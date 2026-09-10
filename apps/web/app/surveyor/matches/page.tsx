@@ -21,6 +21,7 @@ import {
 import { api, ApiError, errorMessage } from '../../../lib/api';
 import { LocationMapPreview } from '../../../components/location-map-preview';
 import { StatusBadge } from '../../../components/status';
+import { FeedbackForm } from '../../../components/feedback-form';
 
 const TIMELINE_LABELS: Record<string, string> = {
   asap: 'As soon as possible',
@@ -153,7 +154,13 @@ export default function SurveyorMatchesPage() {
           ) : (
             <div className="svy-match-list">
               {matches.map((m) => (
-                <MatchCard key={m.matchId} match={m} />
+                <MatchCard
+                  key={m.matchId}
+                  match={m}
+                  onFeedback={() => {
+                    api.getSurveyorMatches().then(setMatches).catch(() => undefined);
+                  }}
+                />
               ))}
             </div>
           )}
@@ -163,7 +170,13 @@ export default function SurveyorMatchesPage() {
   );
 }
 
-function MatchCard({ match }: { match: SurveyorRequest }) {
+function MatchCard({
+  match,
+  onFeedback,
+}: {
+  match: SurveyorRequest;
+  onFeedback?: () => void;
+}) {
   const { project, client } = match;
   const meta = [
     project.locationText ? { icon: <MapPin size={13} />, text: project.locationText } : null,
@@ -209,6 +222,9 @@ function MatchCard({ match }: { match: SurveyorRequest }) {
               })}
             </time>
           </p>
+          {match.feedbackSubmitted ? (
+            <p className="fb-inline-done">Your feedback was submitted</p>
+          ) : null}
         </div>
       </div>
 
@@ -246,6 +262,18 @@ function MatchCard({ match }: { match: SurveyorRequest }) {
         <div className="svy-match-map-fallback">
           <MapPin size={14} aria-hidden />
           <span>{project.locationText}</span>
+        </div>
+      ) : null}
+
+      {match.canLeaveFeedback ? (
+        <div className="svy-match-feedback">
+          <FeedbackForm
+            matchId={match.matchId}
+            counterpartLabel={`@${client.username}`}
+            projectTitle={project.title}
+            role="surveyor"
+            onSubmitted={onFeedback}
+          />
         </div>
       ) : null}
     </article>

@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import { haversineKm } from '../common/geo';
 import { AutoMatchService } from '../matching/auto-match.service';
+import { ActivityService } from '../activity/activity.service';
 
 interface GeoRow {
   id: string;
@@ -30,6 +31,7 @@ export class ProjectsService {
     private readonly prisma: PrismaService,
     private readonly media: S3MediaStorageService,
     private readonly autoMatch: AutoMatchService,
+    private readonly activity: ActivityService,
   ) {}
 
   async create(subject: string, input: CreateProjectInput): Promise<Project> {
@@ -59,6 +61,16 @@ export class ProjectsService {
             updated_at = now()
         WHERE id = ${row.id}::uuid`;
     }
+
+    await this.activity.record({
+      entityType: 'project',
+      entityId: row.id,
+      projectId: row.id,
+      action: 'project.submitted',
+      summary: `Project submitted: ${row.title}`,
+      actorUserId: user.id,
+      metadata: { status: 'matching', services: input.services },
+    });
 
     // Uber-style fan-out — never block project creation on matching failures.
     await this.autoMatch.offerForProject(row.id);
@@ -105,15 +117,40 @@ export class ProjectsService {
     });
 
     const isAdmin = roles.includes('admin');
-    const matchInfo: ProjectMatchInfo[] = matches.map((m) => ({
-      matchId: m.id,
-      status: m.status as ProjectMatchInfo['status'],
-      surveyorBaseCity: m.surveyor.baseCity,
-      surveyorProfileId: m.surveyor.id,
-      surveyorUsername: m.surveyor.user.username,
-      surveyorFullName: isAdmin ? m.surveyor.user.fullName : null,
-      createdAt: m.createdAt.toISOString(),
-    }));
+    const viewer = await this.prisma.user.findUnique({
+      where: { authSubject: subject },
+      select: { id: true },
+    });
+    const myFeedback = viewer
+      ? await this.prisma.feedback.findMany({
+          where: {
+            projectId,
+            fromUserId: viewer.id,
+            matchId: { in: matches.map((m) => m.id) },
+          },
+          select: { matchId: true },
+        })
+      : [];
+    const submitted = new Set(myFeedback.map((f) => f.matchId));
+
+    const matchInfo: ProjectMatchInfo[] = matches.map((m) => {
+      const canLeave =
+        !isAdmin &&
+        (m.status === 'completed' || row.status === 'completed') &&
+        !submitted.has(m.id) &&
+        ['accepted', 'completed'].includes(m.status);
+      return {
+        matchId: m.id,
+        status: m.status as ProjectMatchInfo['status'],
+        surveyorBaseCity: m.surveyor.baseCity,
+        surveyorProfileId: m.surveyor.id,
+        surveyorUsername: m.surveyor.user.username,
+        surveyorFullName: isAdmin ? m.surveyor.user.fullName : null,
+        createdAt: m.createdAt.toISOString(),
+        feedbackSubmitted: submitted.has(m.id),
+        canLeaveFeedback: canLeave,
+      };
+    });
 
     const client = await this.prisma.user.findUnique({
       where: { id: row.clientId },

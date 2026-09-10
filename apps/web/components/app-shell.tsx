@@ -38,7 +38,10 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
   client: {
     label: 'Your projects',
     sub: 'Post and track your survey projects',
-    items: [{ href: '/client', label: 'Projects', icon: 'chart' }],
+    items: [
+      { href: '/client', label: 'Projects', icon: 'chart' },
+      { href: '/client/help', label: 'Help', icon: 'mail' },
+    ],
   },
   surveyor: {
     label: 'Surveyor workspace',
@@ -60,6 +63,7 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
         requiresCompleteProfile: true,
       },
       { href: '/surveyor/profile', label: 'Portfolio', icon: 'briefcase' },
+      { href: '/surveyor/help', label: 'Help', icon: 'account' },
     ],
   },
   admin: {
@@ -83,6 +87,18 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
         href: '/build/admin/projects',
         label: 'Projects',
         icon: 'briefcase',
+        requiresPermission: 'projects:view',
+      },
+      {
+        href: '/build/admin/feedback',
+        label: 'Feedback',
+        icon: 'mail',
+        requiresPermission: 'projects:view',
+      },
+      {
+        href: '/build/admin/helpdesk',
+        label: 'Help desk',
+        icon: 'check',
         requiresPermission: 'projects:view',
       },
       {
@@ -114,6 +130,9 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     if (pathname.startsWith('/client/projects/new')) {
       return { label: 'New brief', sub: 'Guided steps to match surveyors' };
     }
+    if (pathname.startsWith('/client/help')) {
+      return { label: 'Help desk', sub: 'Support tickets and replies' };
+    }
     if (/^\/client\/projects\/[^/]+/.test(pathname)) {
       return { label: 'Project details', sub: 'Status, progress, and brief' };
     }
@@ -131,6 +150,9 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     }
     if (pathname.startsWith('/surveyor/matches')) {
       return { label: 'My Matches', sub: 'Projects you’ve accepted' };
+    }
+    if (pathname.startsWith('/surveyor/help')) {
+      return { label: 'Help desk', sub: 'Support tickets and replies' };
     }
     return { label: 'Dashboard', sub: 'Portfolio status and coverage' };
   }
@@ -152,6 +174,12 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     }
     if (pathname.startsWith('/build/admin/projects')) {
       return { label: 'Projects', sub: 'Demand awaiting a surveyor' };
+    }
+    if (pathname.startsWith('/build/admin/feedback')) {
+      return { label: 'Feedback', sub: 'Ratings from clients and surveyors' };
+    }
+    if (pathname.startsWith('/build/admin/helpdesk')) {
+      return { label: 'Help desk', sub: 'Support tickets from the marketplace' };
     }
     if (pathname.startsWith('/build/admin/staff')) {
       return { label: 'Staff & permissions', sub: 'Manage admins and access' };
@@ -367,9 +395,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
           </div>
 
           <div className="topbar-actions">
-            {(section === 'client' || section === 'surveyor') && (
-              <NotificationBell section={section} />
-            )}
+            <NotificationBell section={section} />
             <div className="usermenu" ref={menuRef}>
             <button
               className="usermenu-trigger"
@@ -477,9 +503,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
         />
       )}
 
-      {(section === 'client' || section === 'surveyor') && (
-        <NotificationToasts section={section} />
-      )}
+      <NotificationToasts section={section} />
     </div>
   );
 }

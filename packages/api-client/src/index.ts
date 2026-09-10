@@ -32,6 +32,16 @@ import type {
   UserStatus,
   AdminClient,
   AdminQueueProject,
+  Feedback,
+  FeedbackSubmitResult,
+  HelpTicket,
+  HelpTicketDetail,
+  HelpTicketCategory,
+  HelpTicketPriority,
+  HelpTicketStatus,
+  HelpTicketWorkspace,
+  ActivityLogEntry,
+  ActivityEntityType,
 } from '@surveylink/types';
 
 export interface CreateProjectBody {
@@ -515,6 +525,84 @@ export class SurveyLinkClient {
 
   async updateProjectStatus(id: string, status: ProjectStatus): Promise<ProjectDetail> {
     return this.request<ProjectDetail>('PATCH', `/admin/projects/${id}/status`, { status });
+  }
+
+  async submitFeedback(body: {
+    matchId: string;
+    rating: number;
+    comment: string;
+    aspects?: Partial<Record<'communication' | 'quality' | 'professionalism' | 'timeliness', number>>;
+    recommend?: boolean | null;
+  }): Promise<FeedbackSubmitResult> {
+    return this.request<FeedbackSubmitResult>('POST', '/feedback', body);
+  }
+
+  async getMyMatchFeedback(matchId: string): Promise<Feedback | null> {
+    return this.request<Feedback | null>('GET', `/feedback/match/${matchId}/mine`);
+  }
+
+  async listAdminFeedback(): Promise<Feedback[]> {
+    return this.request<Feedback[]>('GET', '/admin/feedback');
+  }
+
+  async createHelpTicket(body: {
+    workspace: HelpTicketWorkspace;
+    category: HelpTicketCategory;
+    priority?: HelpTicketPriority;
+    subject: string;
+    body: string;
+    projectId?: string | null;
+  }): Promise<HelpTicketDetail> {
+    return this.request<HelpTicketDetail>('POST', '/helpdesk/tickets', body);
+  }
+
+  async listMyHelpTickets(): Promise<HelpTicket[]> {
+    return this.request<HelpTicket[]>('GET', '/helpdesk/tickets');
+  }
+
+  async getMyHelpTicket(id: string): Promise<HelpTicketDetail> {
+    return this.request<HelpTicketDetail>('GET', `/helpdesk/tickets/${id}`);
+  }
+
+  async replyHelpTicket(id: string, body: string): Promise<HelpTicketDetail> {
+    return this.request<HelpTicketDetail>('POST', `/helpdesk/tickets/${id}/messages`, { body });
+  }
+
+  async listAdminHelpTickets(): Promise<HelpTicket[]> {
+    return this.request<HelpTicket[]>('GET', '/admin/helpdesk/tickets');
+  }
+
+  async getAdminHelpTicket(id: string): Promise<HelpTicketDetail> {
+    return this.request<HelpTicketDetail>('GET', `/admin/helpdesk/tickets/${id}`);
+  }
+
+  async updateAdminHelpTicket(
+    id: string,
+    body: { status?: HelpTicketStatus; priority?: HelpTicketPriority },
+  ): Promise<HelpTicketDetail> {
+    return this.request<HelpTicketDetail>('PATCH', `/admin/helpdesk/tickets/${id}`, body);
+  }
+
+  async replyAdminHelpTicket(id: string, body: string): Promise<HelpTicketDetail> {
+    return this.request<HelpTicketDetail>('POST', `/admin/helpdesk/tickets/${id}/messages`, {
+      body,
+    });
+  }
+
+  async getProjectActivity(projectId: string): Promise<ActivityLogEntry[]> {
+    return this.request<ActivityLogEntry[]>('GET', `/admin/projects/${projectId}/activity`);
+  }
+
+  async getHelpTicketActivity(ticketId: string): Promise<ActivityLogEntry[]> {
+    return this.request<ActivityLogEntry[]>('GET', `/admin/helpdesk/tickets/${ticketId}/activity`);
+  }
+
+  async getEntityActivity(
+    entityType: ActivityEntityType,
+    entityId: string,
+  ): Promise<ActivityLogEntry[]> {
+    const qs = new URLSearchParams({ entityType, entityId });
+    return this.request<ActivityLogEntry[]>('GET', `/admin/activity?${qs.toString()}`);
   }
 
   async listStaffAdmins(): Promise<StaffAdmin[]> {

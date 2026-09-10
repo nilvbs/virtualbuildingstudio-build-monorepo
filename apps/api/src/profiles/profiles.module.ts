@@ -3,13 +3,14 @@ import { ProfilesController } from './profiles.controller';
 import { ProfilesService } from './profiles.service';
 import { MatchingModule } from '../matching/matching.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ActivityModule } from '../activity/activity.module';
 
 /**
  * Profiles module — surveyor profile create/read/update and the surveyor
  * status ("We're mapping projects to you") surface.
  */
 @Module({
-  imports: [MatchingModule, NotificationsModule],
+  imports: [MatchingModule, NotificationsModule, ActivityModule],
   controllers: [ProfilesController],
   providers: [ProfilesService],
   exports: [ProfilesService],
