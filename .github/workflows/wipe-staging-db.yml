@@ -1,0 +1,72 @@
+name: Wipe Staging Database
+
+# DANGEROUS: truncates all app data on staging PostGIS.
+# Keeps schema + _prisma_migrations. Restarts API after wipe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type wipe-staging to confirm'
+        required: true
+
+jobs:
+  wipe:
+    if: ${{ inputs.confirm == 'wipe-staging' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Truncate staging app tables
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            echo "Wiping staging database (app data only)…"
+            docker exec -i bld-db psql -U surveylink -d surveylink -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE
+              stmt text;
+            BEGIN
+              SELECT 'TRUNCATE TABLE '
+                || string_agg(format('%I.%I', schemaname, tablename), ', ')
+                || ' RESTART IDENTITY CASCADE'
+              INTO stmt
+              FROM pg_tables
+              WHERE schemaname = 'public'
+                AND tablename <> '_prisma_migrations'
+                AND tablename <> 'spatial_ref_sys'
+                AND tablename NOT LIKE 'geography_%'
+                AND tablename NOT LIKE 'geometry_%';
+
+              IF stmt IS NULL THEN
+                RAISE NOTICE 'No app tables found to truncate';
+              ELSE
+                RAISE NOTICE '%', stmt;
+                EXECUTE stmt;
+              END IF;
+            END \$\$;
+            "
+
+            echo "=== row counts after wipe ==="
+            docker exec bld-db psql -U surveylink -d surveylink -c "
+            SELECT 'users' AS tbl, count(*) FROM users
+            UNION ALL SELECT 'user_roles', count(*) FROM user_roles
+            UNION ALL SELECT 'projects', count(*) FROM projects
+            UNION ALL SELECT 'matches', count(*) FROM matches
+            UNION ALL SELECT 'notifications', count(*) FROM notifications
+            UNION ALL SELECT 'contact_otps', count(*) FROM contact_otps
+            UNION ALL SELECT 'feedbacks', count(*) FROM feedbacks
+            UNION ALL SELECT 'help_tickets', count(*) FROM help_tickets
+            ORDER BY 1;
+            "
+
+            echo "Recreating API…"
+            cd /home/ubuntu/BLD/stage
+            docker compose up -d --force-recreate api
+            sleep 12
+            curl -sS http://127.0.0.1:4000/health
+            echo
+            echo "Staging DB wipe complete."
