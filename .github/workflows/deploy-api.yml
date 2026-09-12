@@ -96,11 +96,13 @@ jobs:
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          TWILIO_VERIFY_SERVICE_SID: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
+          TWILIO_MESSAGING_SERVICE_SID: ${{ secrets.TWILIO_MESSAGING_SERVICE_SID }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ steps.dirs.outputs.user }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER
+          envs: TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,TWILIO_VERIFY_SERVICE_SID,TWILIO_MESSAGING_SERVICE_SID
           script: |
             set -euo pipefail
             APP_DIR="${{ steps.dirs.outputs.app_dir }}"
@@ -136,10 +138,22 @@ jobs:
             upsert_env TWILIO_ACCOUNT_SID "${TWILIO_ACCOUNT_SID:-}"
             upsert_env TWILIO_AUTH_TOKEN "${TWILIO_AUTH_TOKEN:-}"
             upsert_env TWILIO_FROM_NUMBER "${TWILIO_FROM_NUMBER:-}"
+            upsert_env TWILIO_VERIFY_SERVICE_SID "${TWILIO_VERIFY_SERVICE_SID:-}"
+            upsert_env TWILIO_MESSAGING_SERVICE_SID "${TWILIO_MESSAGING_SERVICE_SID:-}"
             if grep -q '^TWILIO_ACCOUNT_SID=AC' "$APP_DIR/.env"; then
               echo "Twilio SMS env present on EC2 .env"
             else
               echo "WARN: TWILIO_ACCOUNT_SID not set on EC2 .env"
+            fi
+            if grep -q '^TWILIO_VERIFY_SERVICE_SID=VA' "$APP_DIR/.env"; then
+              echo "Twilio Verify SID present on EC2 .env"
+            else
+              echo "WARN: TWILIO_VERIFY_SERVICE_SID not set on EC2 .env"
+            fi
+            if grep -q '^TWILIO_MESSAGING_SERVICE_SID=MG' "$APP_DIR/.env"; then
+              echo "Twilio Messaging Service SID present on EC2 .env"
+            else
+              echo "WARN: TWILIO_MESSAGING_SERVICE_SID not set on EC2 .env"
             fi
 
             # PostGIS DB + migrate on the compose network (@db), then API.
