@@ -22,12 +22,10 @@ jobs:
           script: |
             set -euo pipefail
             cd /home/ubuntu/BLD/stage
-            set -a
-            # shellcheck disable=SC1091
-            source .env
-            set +a
+            # EC2 .env may have Windows CRLF from earlier edits.
+            eval "$(grep -E '^(AUTH0_DOMAIN|AUTH0_MGMT_CLIENT_ID|AUTH0_MGMT_CLIENT_SECRET)=' .env | tr -d '\r')"
             EMAIL='${{ inputs.email }}'
-            echo "Looking up $EMAIL"
+            echo "Looking up $EMAIL on ${AUTH0_DOMAIN}"
             TOKEN=$(curl -sS -X POST "https://${AUTH0_DOMAIN}/oauth/token" \
               -H 'content-type: application/json' \
               -d "{\"client_id\":\"${AUTH0_MGMT_CLIENT_ID}\",\"client_secret\":\"${AUTH0_MGMT_CLIENT_SECRET}\",\"audience\":\"https://${AUTH0_DOMAIN}/api/v2/\",\"grant_type\":\"client_credentials\"}" \
