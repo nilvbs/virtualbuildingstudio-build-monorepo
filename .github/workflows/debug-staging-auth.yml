@@ -1,4 +1,4 @@
-name: Debug Staging Auth
+﻿name: Debug Staging Auth
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Inspect recent signup/auth errors
+      - name: Inspect users
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -16,9 +16,9 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -euo pipefail
-            echo '=== Recent signup / auth / role errors ==='
-            docker logs bld-api --tail 400 2>&1 | grep -Ei 'signup|Invalid email|already|Google|addRole|neeyaljain6|9783602848|Conflict|Unauthorized|verify-phone|auth/signup' || true
-            echo '=== User row lookup (email/phone, redacted) ==='
-            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT id, email, phone, \"authProvider\", left(\"authSubject\", 24) AS sub, \"roleHint\" FROM users WHERE email ILIKE '%neeyaljain6%' OR phone LIKE '%9783602848%' OR phone LIKE '%9521268343%';" || true
-            echo '=== Memberships ==='
-            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT m.\"userId\", m.role, u.email FROM memberships m JOIN users u ON u.id = m.\"userId\" WHERE u.email ILIKE '%neeyaljain6%' OR u.phone LIKE '%9783602848%' OR u.phone LIKE '%9521268343%';" || true
+            echo '=== users ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT id, email, phone, auth_provider, left(coalesce(auth_subject,''), 32) AS sub, role_hint, onboarding_step FROM users WHERE email ILIKE '%neeyaljain6%' OR phone LIKE '%9783602848%' OR phone LIKE '%9521268343%';"
+            echo '=== user_roles ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT ur.* FROM user_roles ur JOIN users u ON u.id = ur.user_id WHERE u.email ILIKE '%neeyaljain6%' OR u.phone LIKE '%9783602848%' OR u.phone LIKE '%9521268343%';"
+            echo '=== Auth0 login errors ==='
+            docker logs bld-api --tail 200 2>&1 | grep -Ei 'Auth0 login failed|Failed to create Auth0|Invalid email|signup' || true
