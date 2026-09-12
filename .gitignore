@@ -4,7 +4,9 @@ node_modules/
 
 # Build outputs
 dist/
-build/
+/build/
+# Product route: apps/web/app/build (staff portal) — not a build artifact
+!apps/web/app/build/
 .next/
 .open-next/
 out/
