@@ -58,7 +58,7 @@ export const COUNTRY_DIALS: CountryDial[] = [
   { iso: 'VN', name: 'Vietnam', dial: '+84', example: '91 234 56 78', placeholder: '912345678' },
 ];
 
-export const DEFAULT_COUNTRY_ISO = 'IN';
+export const DEFAULT_COUNTRY_ISO = 'US';
 
 export function findCountry(iso: string): CountryDial {
   return COUNTRY_DIALS.find((c) => c.iso === iso) ?? COUNTRY_DIALS[0]!;
