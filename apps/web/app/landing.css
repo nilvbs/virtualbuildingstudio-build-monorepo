@@ -393,6 +393,173 @@
   }
 }
 
+/* ---- 14" / compact laptops (mid width + short height) ---- */
+@media (min-width: 1025px) and (max-width: 1680px) {
+  .bld-landing {
+    --bld-gutter: clamp(20px, 2.4vw, 36px);
+  }
+
+  .bld-landing .bld-nav-inner {
+    padding: 14px var(--bld-gutter);
+    min-height: 56px;
+  }
+
+  .bld-landing .bld-nav-actions {
+    padding: 5px;
+    gap: 6px;
+  }
+
+  .bld-landing .bld-nav-signin,
+  .bld-landing .bld-nav-cta {
+    min-height: 40px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+
+  .bld-landing .bld-hero-logo-img {
+    width: min(18vw, 220px);
+  }
+
+  .bld-landing .bld-hero-stage {
+    padding:
+      calc(52px + env(safe-area-inset-top, 0px)) var(--bld-gutter)
+      clamp(18px, 2.8vh, 32px);
+  }
+
+  .bld-landing .bld-hero-tagline-wrap {
+    width: min(100%, 560px);
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .bld-landing .bld-hero-tagline {
+    white-space: normal;
+    text-wrap: balance;
+    font-size: clamp(15px, 1.35vw, 18px);
+    line-height: 1.4;
+  }
+
+  .bld-landing .bld-hero .bld-btn {
+    min-height: 44px;
+    padding: 0 20px;
+    font-size: 15px;
+  }
+
+  .bld-landing .bld-hero-btn-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .bld-landing .bld-path,
+  .bld-landing .bld-presence,
+  .bld-landing .bld-services {
+    padding-block: clamp(56px, 6.5vw, 88px);
+  }
+
+  .bld-landing .bld-section-head,
+  .bld-landing .bld-path-head {
+    margin-bottom: clamp(28px, 3.5vw, 44px);
+  }
+
+  .bld-landing .bld-section-title {
+    font-size: clamp(28px, 3.2vw, 38px);
+    margin-bottom: 12px;
+  }
+
+  .bld-landing .bld-path-grid {
+    gap: 22px;
+    max-width: 1040px;
+  }
+
+  .bld-landing .bld-path-card {
+    border-radius: 22px;
+  }
+
+  .bld-landing .bld-path-media {
+    height: clamp(180px, 18vw, 220px);
+  }
+
+  .bld-landing .bld-presence-frame {
+    min-height: clamp(340px, 38vw, 480px);
+    aspect-ratio: 2 / 1;
+  }
+
+  .bld-landing .bld-presence-sub {
+    white-space: normal;
+    text-wrap: balance;
+    width: auto;
+    max-width: 40rem;
+  }
+}
+
+/* Short laptop viewports — keep first screen one composed hero */
+@media (min-width: 1025px) and (max-height: 900px) {
+  .bld-landing .bld-hero {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .bld-landing .bld-hero-stage {
+    padding-top: calc(40px + env(safe-area-inset-top, 0px));
+    padding-bottom: clamp(14px, 2.2vh, 24px);
+  }
+
+  .bld-landing .bld-hero-logo-img {
+    width: min(16vw, 180px);
+  }
+
+  .bld-landing .bld-hero-tagline-wrap {
+    margin-top: 6px;
+    padding-top: 8px;
+  }
+
+  .bld-landing .bld-hero-tagline-wrap::after {
+    margin-top: 8px;
+  }
+
+  .bld-landing .bld-hero-tagline {
+    font-size: clamp(14px, 1.5vh + 0.4vw, 17px);
+  }
+
+  .bld-landing .bld-nav-inner {
+    padding-block: 10px;
+    min-height: 48px;
+  }
+
+  .bld-landing .bld-nav-signin,
+  .bld-landing .bld-nav-cta {
+    min-height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .bld-landing .bld-hero .bld-btn {
+    min-height: 40px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+
+  .bld-landing .bld-hero-actions {
+    padding: 5px;
+    gap: 6px;
+  }
+}
+
+/* Very short 14" / 1366×768-class screens */
+@media (min-width: 1025px) and (max-height: 780px) {
+  .bld-landing .bld-hero-logo-img {
+    width: min(14vw, 148px);
+  }
+
+  .bld-landing .bld-hero-tagline-wrap {
+    width: min(100%, 480px);
+  }
+
+  .bld-landing .bld-hero-foot {
+    max-width: min(560px, 100%);
+  }
+}
+
 /* Tablet + mobile — alternate cropped assets */
 @media (max-width: 1024px) {
   .bld-landing .bld-hero-bg--tablet,
