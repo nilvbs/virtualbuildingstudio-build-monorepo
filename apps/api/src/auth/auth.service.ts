@@ -192,12 +192,23 @@ export class AuthService {
       this.phone.startVerification(user.id, input.phone),
     ]);
 
-    const session = await this.identity.login(email, input.password);
-    const hydrated = await this.hydrateUser(user, []);
-    return {
-      session: { ...session, activeRole: legacyHint },
-      user: hydrated,
-    };
+    try {
+      const session = await this.identity.login(email, input.password);
+      const hydrated = await this.hydrateUser(user, []);
+      return {
+        session: { ...session, activeRole: legacyHint },
+        user: hydrated,
+      };
+    } catch (err) {
+      this.logger.error(
+        `Signup created Auth0 user ${identity.subject} but password login failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      throw new UnauthorizedException(
+        'Account was created but sign-in failed. Try Sign in with the same email and password, or use Forgot password.',
+      );
+    }
   }
 
   /**

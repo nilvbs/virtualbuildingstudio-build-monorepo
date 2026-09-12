@@ -97,11 +97,14 @@ export class Auth0IdentityProvider implements IdentityProvider {
 
   async createIdentity(input: CreateIdentityInput): Promise<CreatedIdentity> {
     try {
+      // Mark email verified in Auth0 so Resource Owner Password Grant can issue a
+      // session immediately. Marketplace still runs its own email/phone OTP gates.
       const { data } = await this.mgmt().users.create({
         connection: this.connection,
         email: input.email,
         password: input.password,
         name: input.fullName,
+        email_verified: true,
         verify_email: false,
       });
       if (!data.user_id) {
