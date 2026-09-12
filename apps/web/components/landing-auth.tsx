@@ -538,13 +538,17 @@ export function LandingAuthOverlay({
                         />
                         <div className="field">
                           <label htmlFor="mkt-signup-password">Password</label>
-                          <input
-                            id="mkt-signup-password"
-                            type="password"
-                            required
-                            value={signup.password}
-                            onChange={(e) => setSignup((s) => ({ ...s, password: e.target.value }))}
-                          />
+                          <div className="input-icon">
+                            <LordIcon name="security" size={18} trigger="hover" />
+                            <input
+                              id="mkt-signup-password"
+                              type="password"
+                              autoComplete="new-password"
+                              required
+                              value={signup.password}
+                              onChange={(e) => setSignup((s) => ({ ...s, password: e.target.value }))}
+                            />
+                          </div>
                         </div>
                         <button className="btn block" type="submit" disabled={signupBusy}>
                           {signupBusy ? <span className="spin" /> : null}

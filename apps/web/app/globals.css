@@ -8768,7 +8768,8 @@ textarea {
   position: relative;
 }
 
-.input-icon svg {
+.input-icon > svg,
+.input-icon > lord-icon {
   position: absolute;
   left: 13px;
   top: 50%;
@@ -8776,6 +8777,12 @@ textarea {
   color: var(--faint);
   pointer-events: none;
   z-index: 1;
+}
+
+/* Hover-triggered Lord icons still need hit target on the glyph. */
+.input-icon > lord-icon[trigger='hover'],
+.input-icon > lord-icon[trigger='loop-on-hover'] {
+  pointer-events: auto;
 }
 
 .input-icon input {
