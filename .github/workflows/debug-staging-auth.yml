@@ -1,0 +1,24 @@
+name: Debug Staging Auth
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Inspect recent signup/auth errors
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            echo '=== Recent signup / auth / role errors ==='
+            docker logs bld-api --tail 400 2>&1 | grep -Ei 'signup|Invalid email|already|Google|addRole|neeyaljain6|9783602848|Conflict|Unauthorized|verify-phone|auth/signup' || true
+            echo '=== User row lookup (email/phone, redacted) ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT id, email, phone, \"authProvider\", left(\"authSubject\", 24) AS sub, \"roleHint\" FROM users WHERE email ILIKE '%neeyaljain6%' OR phone LIKE '%9783602848%' OR phone LIKE '%9521268343%';" || true
+            echo '=== Memberships ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT m.\"userId\", m.role, u.email FROM memberships m JOIN users u ON u.id = m.\"userId\" WHERE u.email ILIKE '%neeyaljain6%' OR u.phone LIKE '%9783602848%' OR u.phone LIKE '%9521268343%';" || true

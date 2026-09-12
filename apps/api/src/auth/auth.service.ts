@@ -237,6 +237,14 @@ export class AuthService {
   }
 
   private async assertPasswordForUser(user: User, password: string): Promise<void> {
+    // Google-only identities have no database password — second-role signup must
+    // go through "Sign up with Google" (same email) for that workspace.
+    if (user.authProvider === GOOGLE_PROVIDER_NAME) {
+      throw new UnauthorizedException(
+        'This account uses Google sign-in. Use “Sign up with Google” to add the other role (same Google email).',
+      );
+    }
+
     if (devAuthEnabled(this.config)) {
       if (normalizeEmail(user.email) === DEV_EMAIL && password === DEV_PASSWORD) return;
       const local = findDevSignup(user.email);
@@ -252,8 +260,8 @@ export class AuthService {
     }
     try {
       await this.identity.login(normalizeEmail(user.email), password);
-    } catch (err) {
-      if (err instanceof UnauthorizedException) throw err;
+    } catch {
+      // Remap Auth0's generic "Invalid email or password" — this is add-role, not login.
       throw new UnauthorizedException(
         'Email already registered. Enter the same password as that account to add this role.',
       );
