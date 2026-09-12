@@ -492,6 +492,7 @@ export class NotificationsService {
         this.sms.send({
           to: user.phone,
           body: msg.smsBody,
+          purpose: 'notification',
           trialTemplate: TWILIO_TRIAL_NOTIFY_TEMPLATE,
         }),
       );

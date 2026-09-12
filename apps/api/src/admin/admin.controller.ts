@@ -78,12 +78,20 @@ export class AdminController {
     return this.admin.getClient(id);
   }
 
+  @Get('projects')
+  @RequirePermissions('projects:view')
+  listAllProjects(
+    @Query(new ZodValidationPipe(adminProjectsQuerySchema)) query: AdminProjectsQuery,
+  ): Promise<AdminQueueProject[]> {
+    return this.admin.listOpenProjects({ ...query, scope: 'all' });
+  }
+
   @Get('projects/open')
   @RequirePermissions('projects:view')
   listOpenProjects(
     @Query(new ZodValidationPipe(adminProjectsQuerySchema)) query: AdminProjectsQuery,
   ): Promise<AdminQueueProject[]> {
-    return this.admin.listOpenProjects(query);
+    return this.admin.listOpenProjects({ ...query, scope: query.scope ?? 'pipeline' });
   }
 
   @Get('surveyors')

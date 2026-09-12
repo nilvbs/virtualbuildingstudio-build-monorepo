@@ -326,15 +326,15 @@ export class AdminService {
     };
   }
 
-  async listOpenProjects(query: AdminProjectsQuery = {}): Promise<AdminQueueProject[]> {
+  async listOpenProjects(query: Partial<AdminProjectsQuery> = {}): Promise<AdminQueueProject[]> {
     const scope = query.scope ?? 'pipeline';
     const openProjects = await this.prisma.project.findMany({
-      where: query.clientId
-        ? { clientId: query.clientId }
-        : scope === 'all'
-          ? {}
-          : { status: { in: OPEN_PROJECT_STATUSES } },
+      where: {
+        ...(query.clientId ? { clientId: query.clientId } : {}),
+        ...(scope === 'all' ? {} : { status: { in: OPEN_PROJECT_STATUSES } }),
+      },
       orderBy: { createdAt: 'desc' },
+      take: scope === 'all' ? 500 : 200,
       include: {
         client: { select: { id: true, fullName: true } },
         matches: {

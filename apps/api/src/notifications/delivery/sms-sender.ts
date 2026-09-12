@@ -5,6 +5,11 @@ export interface SmsMessage {
   to: string;
   body: string;
   /**
+   * otp → TWILIO_FROM_NUMBER only.
+   * notification → TWILIO_MESSAGING_SERVICE_SID (alerts to registered mobiles).
+   */
+  purpose?: 'otp' | 'notification';
+  /**
    * Twilio trial accounts reject custom bodies (error 572006).
    * When set, the sender retries with this template name (e.g. sms_2fa).
    */

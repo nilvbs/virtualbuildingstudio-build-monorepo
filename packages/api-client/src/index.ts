@@ -510,9 +510,20 @@ export class SurveyLinkClient {
   async listAdminOpenProjects(query: AdminProjectsQueryBody = {}): Promise<AdminQueueProject[]> {
     const qs = new URLSearchParams();
     if (query.clientId) qs.set('clientId', query.clientId);
-    if (query.scope) qs.set('scope', query.scope);
+    // Pipeline = pending match only. Prefer explicit path over scope query.
+    const scope = query.scope ?? 'pipeline';
+    if (scope === 'all') {
+      const suffix = qs.toString() ? `?${qs.toString()}` : '';
+      return this.request<AdminQueueProject[]>('GET', `/admin/projects${suffix}`);
+    }
+    qs.set('scope', 'pipeline');
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
     return this.request<AdminQueueProject[]>('GET', `/admin/projects/open${suffix}`);
+  }
+
+  /** All projects (any status). */
+  async listAdminProjects(query: { clientId?: string } = {}): Promise<AdminQueueProject[]> {
+    return this.listAdminOpenProjects({ ...query, scope: 'all' });
   }
 
   async browseAdminSurveyors(query: AdminSurveyorQueryBody = {}): Promise<AdminSurveyor[]> {
