@@ -1,0 +1,33 @@
+﻿name: Debug Staging Twilio
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Inspect API Twilio logs
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/BLD/stage
+            echo '=== Twilio keys present (prefixes only) ==='
+            for k in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM_NUMBER TWILIO_VERIFY_SERVICE_SID TWILIO_MESSAGING_SERVICE_SID; do
+              line=$(grep -E "^${k}=" .env || true)
+              val=${line#*=}
+              if [ -z "$val" ]; then
+                echo "$k=MISSING"
+              else
+                echo "$k=${val:0:4}… len=${#val}"
+              fi
+            done
+            echo '=== Recent Twilio/Verify/OTP errors ==='
+            docker logs bld-api --tail 300 2>&1 | grep -Ei 'Twilio|Verify|OTP|SMS|verification' || true
+            echo '=== Last 40 API log lines ==='
+            docker logs bld-api --tail 40 2>&1
