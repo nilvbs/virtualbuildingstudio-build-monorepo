@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowUpRight, Search, ShieldAlert, Users } from 'lucide-react';
+import { Eye, Pencil, Search, ShieldAlert, Trash2, Users } from 'lucide-react';
 import type { AdminUser, MembershipRole, UserStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 import { StatusBadge } from '../../../../components/status';
@@ -30,15 +30,16 @@ function LoadingState() {
             <th>Role</th>
             <th>Email</th>
             <th>Phone</th>
+            <th>Location</th>
             <th>Status</th>
             <th>Joined</th>
-            <th aria-label="Open" />
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
           {[0, 1, 2, 3].map((i) => (
             <tr key={i}>
-              <td colSpan={7}>
+              <td colSpan={8}>
                 <div className="skeleton sk-line" style={{ width: '100%', height: 18 }} />
               </td>
             </tr>
@@ -58,10 +59,13 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState('');
   const [role, setRole] = useState<'all' | MembershipRole>('all');
   const [status, setStatus] = useState<'all' | UserStatus>('all');
+  const [canManage, setCanManage] = useState(false);
+  const [selfId, setSelfId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadUsers = useCallback(() => {
     setLoading(true);
-    api
+    return api
       .listAdminUsers({
         ...(role !== 'all' ? { role } : {}),
         ...(status !== 'all' ? { status } : {}),
@@ -75,6 +79,24 @@ export default function AdminUsersPage() {
       .finally(() => setLoading(false));
   }, [router, role, status]);
 
+  useEffect(() => {
+    void api
+      .me()
+      .then((me) => {
+        setSelfId(me.id);
+        setCanManage(
+          me.staffLevel === 'super_admin' || Boolean(me.permissions?.includes('users:manage')),
+        );
+      })
+      .catch(() => {
+        /* list call still gates access */
+      });
+  }, []);
+
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
+
   const filtered = useMemo(() => {
     if (!users) return [];
     const term = q.trim().toLowerCase();
@@ -86,6 +108,32 @@ export default function AdminUsersPage() {
         .includes(term),
     );
   }, [users, q]);
+
+  async function onDelete(u: AdminUser) {
+    if (!canManage) return;
+    if (u.id === selfId) {
+      setError('You cannot delete your own account.');
+      return;
+    }
+    if (u.roles.includes('admin')) {
+      setError('Staff accounts must be removed from Staff first.');
+      return;
+    }
+    const ok = window.confirm(
+      `Delete ${u.fullName}? This removes their account and related data. This cannot be undone.`,
+    );
+    if (!ok) return;
+    setBusyId(u.id);
+    setError(null);
+    try {
+      await api.deleteAdminUser(u.id);
+      setUsers((prev) => (prev ? prev.filter((row) => row.id !== u.id) : prev));
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <div className="admin-cli">
@@ -180,52 +228,86 @@ export default function AdminUsersPage() {
                     <th>Location</th>
                     <th>Status</th>
                     <th>Joined</th>
-                    <th aria-label="Open" />
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((u) => (
-                    <tr key={u.id}>
-                      <td>
-                        <Link href={`/build/admin/users/${u.id}`} className="admin-users-person plain">
-                          <span className="admin-users-avatar" aria-hidden>
-                            {initials(u.fullName)}
-                          </span>
-                          <span className="admin-users-person-text">
-                            <strong>{u.fullName}</strong>
-                            <span>@{u.username}</span>
-                          </span>
-                        </Link>
-                      </td>
-                      <td>{roleLabel(u.roles)}</td>
-                      <td>
-                        <a href={`mailto:${u.email}`} className="plain admin-users-contact">
-                          {u.email}
-                        </a>
-                      </td>
-                      <td>
-                        <span className="admin-users-contact">{u.phone}</span>
-                      </td>
-                      <td>{u.city || '—'}</td>
-                      <td>
-                        <StatusBadge status={u.status} />
-                      </td>
-                      <td>
-                        <time dateTime={u.createdAt}>
-                          {new Date(u.createdAt).toLocaleDateString()}
-                        </time>
-                      </td>
-                      <td className="hd-admin-open">
-                        <Link
-                          href={`/build/admin/users/${u.id}`}
-                          className="hd-admin-open-btn"
-                          aria-label={`Open ${u.fullName}`}
-                        >
-                          <ArrowUpRight size={16} />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map((u) => {
+                    const canDelete =
+                      canManage && u.id !== selfId && !u.roles.includes('admin');
+                    return (
+                      <tr key={u.id}>
+                        <td>
+                          <Link
+                            href={`/build/admin/users/${u.id}`}
+                            className="admin-users-person plain"
+                          >
+                            <span className="admin-users-avatar" aria-hidden>
+                              {initials(u.fullName)}
+                            </span>
+                            <span className="admin-users-person-text">
+                              <strong>{u.fullName}</strong>
+                              <span>@{u.username}</span>
+                            </span>
+                          </Link>
+                        </td>
+                        <td>{roleLabel(u.roles)}</td>
+                        <td>
+                          <a href={`mailto:${u.email}`} className="plain admin-users-contact">
+                            {u.email}
+                          </a>
+                        </td>
+                        <td>
+                          <span className="admin-users-contact">{u.phone}</span>
+                        </td>
+                        <td>{u.city || '—'}</td>
+                        <td>
+                          <StatusBadge status={u.status} />
+                        </td>
+                        <td>
+                          <time dateTime={u.createdAt}>
+                            {new Date(u.createdAt).toLocaleDateString()}
+                          </time>
+                        </td>
+                        <td>
+                          <div className="admin-users-actions">
+                            <Link
+                              href={`/build/admin/users/${u.id}`}
+                              className="admin-users-action"
+                              title="View"
+                              aria-label={`View ${u.fullName}`}
+                            >
+                              <Eye size={15} strokeWidth={2} />
+                            </Link>
+                            <Link
+                              href={`/build/admin/users/${u.id}#edit`}
+                              className="admin-users-action"
+                              title="Edit"
+                              aria-label={`Edit ${u.fullName}`}
+                            >
+                              <Pencil size={15} strokeWidth={2} />
+                            </Link>
+                            <button
+                              type="button"
+                              className="admin-users-action admin-users-action--danger"
+                              title={
+                                canDelete
+                                  ? 'Delete'
+                                  : u.roles.includes('admin')
+                                    ? 'Remove staff access first'
+                                    : 'Delete not allowed'
+                              }
+                              aria-label={`Delete ${u.fullName}`}
+                              disabled={!canDelete || busyId === u.id}
+                              onClick={() => void onDelete(u)}
+                            >
+                              <Trash2 size={15} strokeWidth={2} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

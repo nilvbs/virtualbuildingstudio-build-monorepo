@@ -317,7 +317,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
         </section>
       </div>
 
-      <section className="admin-dossier-card" style={{ marginTop: 14 }}>
+      <section id="edit" className="admin-dossier-card" style={{ marginTop: 14 }}>
         <div className="admin-dossier-card-head">
           <h2>Edit details</h2>
         </div>

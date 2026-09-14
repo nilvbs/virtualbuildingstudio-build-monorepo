@@ -14911,6 +14911,44 @@ a.plain:hover {
   word-break: break-all;
 }
 
+.admin-users-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.admin-users-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #5b52e0;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-users-action:hover {
+  background: #f0eeff;
+  border-color: rgba(113, 104, 246, 0.18);
+}
+
+.admin-users-action--danger {
+  color: #b42318;
+}
+
+.admin-users-action--danger:hover:not(:disabled) {
+  background: #fff1f0;
+  border-color: rgba(180, 35, 24, 0.18);
+}
+
+.admin-users-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .hd-admin-ticket-link {
   display: grid;
   gap: 3px;
