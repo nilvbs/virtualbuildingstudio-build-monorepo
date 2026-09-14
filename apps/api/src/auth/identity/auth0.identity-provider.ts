@@ -121,6 +121,123 @@ export class Auth0IdentityProvider implements IdentityProvider {
     }
   }
 
+  /**
+   * Google-only (or social) accounts have no DB password. Creating a Username-
+   * Password identity and linking it to the primary subject lets password signup
+   * / login work alongside Google for the same marketplace user.
+   */
+  async ensurePasswordCredential(input: {
+    email: string;
+    password: string;
+    primarySubject: string;
+  }): Promise<void> {
+    const email = input.email.trim().toLowerCase();
+    const primary = input.primarySubject.trim();
+    if (!email || !input.password || !primary) {
+      throw new UnauthorizedException('Could not enable password sign-in for this account');
+    }
+
+    // Already able to ROPG with this password → nothing to do.
+    try {
+      await this.login(email, input.password);
+      return;
+    } catch {
+      /* continue — may need create / link / password update */
+    }
+
+    let dbUserId: string | undefined;
+    try {
+      const { data: byEmail } = await this.mgmt().usersByEmail.getByEmail({ email });
+      const dbRow = (byEmail ?? []).find((u) =>
+        (u.identities ?? []).some(
+          (i) => i.provider === 'auth0' || i.connection === this.connection,
+        ),
+      );
+      dbUserId = dbRow?.user_id ?? undefined;
+    } catch (err) {
+      this.logger.warn(
+        `Auth0 users-by-email lookup failed for ${email}: ${(err as Error).message}`,
+      );
+    }
+
+    if (dbUserId) {
+      try {
+        await this.mgmt().users.update({ id: dbUserId }, { password: input.password });
+      } catch (err) {
+        this.logger.error(`Failed to update Auth0 password for ${dbUserId}`, err as Error);
+        throw new UnauthorizedException(
+          'Could not set a password on this account. Try Sign in with Google, or Forgot password.',
+        );
+      }
+      // Ensure linked to marketplace primary (idempotent when already linked).
+      await this.linkDatabaseIdentity(primary, dbUserId);
+      return;
+    }
+
+    try {
+      const { data } = await this.mgmt().users.create({
+        connection: this.connection,
+        email,
+        password: input.password,
+        email_verified: true,
+        verify_email: false,
+      });
+      if (!data.user_id) {
+        throw new ServiceUnavailableException('Auth0 did not return a user id');
+      }
+      dbUserId = data.user_id;
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode;
+      if (status === 409) {
+        // Race: DB user appeared — retry login / update path once.
+        try {
+          await this.login(email, input.password);
+          return;
+        } catch {
+          throw new ConflictException(
+            'An account with this email already exists. Sign in with Google or use Forgot password.',
+          );
+        }
+      }
+      this.logger.error('Failed to create Auth0 password identity', err as Error);
+      throw err;
+    }
+
+    await this.linkDatabaseIdentity(primary, dbUserId);
+  }
+
+  private async linkDatabaseIdentity(primarySubject: string, dbUserId: string): Promise<void> {
+    if (!primarySubject || !dbUserId || primarySubject === dbUserId) return;
+    // Linking is only needed when primary is social (google-oauth2|…).
+    if (primarySubject.startsWith('auth0|')) return;
+
+    const secondaryId = dbUserId.startsWith('auth0|')
+      ? dbUserId.slice('auth0|'.length)
+      : dbUserId;
+
+    try {
+      await this.mgmt().users.link(
+        { id: primarySubject },
+        { provider: 'auth0', user_id: secondaryId },
+      );
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode;
+      const msg = (err as Error).message ?? '';
+      // Already linked / identity exists — treat as success.
+      if (status === 409 || /already/i.test(msg)) {
+        this.logger.warn(`Auth0 link skipped for ${primarySubject}: ${msg}`);
+        return;
+      }
+      this.logger.error(
+        `Failed to link Auth0 DB identity ${dbUserId} → ${primarySubject}`,
+        err as Error,
+      );
+      throw new ServiceUnavailableException(
+        'Password was set but could not be linked to this Google account. Try Sign in with Google.',
+      );
+    }
+  }
+
   async login(email: string, password: string): Promise<AuthSession> {
     try {
       const { data } = await this.auth().oauth.passwordGrant({

@@ -271,12 +271,24 @@ export class AuthService {
   }
 
   private async assertPasswordForUser(user: User, password: string): Promise<void> {
-    // Google-only identities have no database password — second-role signup must
-    // go through "Sign up with Google" (same email) for that workspace.
+    // Google-only identities have no DB password yet — enable password sign-in
+    // (Auth0 DB identity + link) so the user can add roles via Create account too.
     if (user.authProvider === GOOGLE_PROVIDER_NAME) {
-      throw new UnauthorizedException(
-        'This account uses Google sign-in. Use “Sign up with Google” to add the other role (same Google email).',
-      );
+      if (devAuthEnabled(this.config)) {
+        if (user.authSubject) {
+          rememberDevSignup(normalizeEmail(user.email), password, user.authSubject);
+        }
+        return;
+      }
+      if (!user.authSubject) {
+        throw new UnauthorizedException('This Google account is missing an identity link.');
+      }
+      await this.identity.ensurePasswordCredential({
+        email: normalizeEmail(user.email),
+        password,
+        primarySubject: user.authSubject,
+      });
+      return;
     }
 
     if (devAuthEnabled(this.config)) {
@@ -418,11 +430,8 @@ export class AuthService {
       return { ok: true, message };
     }
 
-    // Google-only marketplace users have no DB password to reset.
-    if (user.authProvider === GOOGLE_PROVIDER_NAME) {
-      return { ok: true, message };
-    }
-
+    // Google-only accounts can still request a reset once a DB password exists;
+    // Auth0 no-ops / anti-enumerates when there is nothing to reset.
     if (devAuthEnabled(this.config)) {
       // Local bypass has no outbound email; keep response identical.
       return { ok: true, message };
