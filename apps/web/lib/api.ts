@@ -19,7 +19,12 @@ export function errorMessage(err: unknown): string {
     const body = err.body as { message?: string | string[] } | undefined;
     const msg = body?.message;
     if (Array.isArray(msg)) return msg.join(', ');
-    if (typeof msg === 'string' && msg !== 'Unauthorized') return msg;
+    if (typeof msg === 'string' && msg !== 'Unauthorized') {
+      if (/^validation failed$/i.test(msg.trim())) {
+        return 'Password does not meet the requirements. Use 8+ characters with upper, lower, a number, and a symbol.';
+      }
+      return msg;
+    }
     if (err.status === 401) {
       return 'Session expired or the API could not validate your sign-in. Sign out, sign in again, then retry.';
     }

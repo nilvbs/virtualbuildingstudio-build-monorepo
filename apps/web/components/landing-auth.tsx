@@ -16,6 +16,7 @@ import { api, errorMessage } from '../lib/api';
 import { homePathForUser, homePathForWorkspace } from '../lib/home';
 import { isAuthenticated, setSession } from '../lib/session';
 import { GoogleButton } from './google-button';
+import { PasswordStrength, passwordMeetsPolicy } from './password-strength';
 import { defaultPhoneInput, PhoneInput, phoneInputIsValid, phoneInputToE164 } from './phone-input';
 
 export type AuthMode = 'login' | 'signup';
@@ -185,6 +186,12 @@ export function LandingAuthOverlay({
 
     if (!phoneInputIsValid(signupPhone)) {
       setSignupError('Enter a valid phone number for the selected country (include country code).');
+      setSignupBusy(false);
+      return;
+    }
+
+    if (!passwordMeetsPolicy(signup.password)) {
+      setSignupError('Choose a stronger password — meet all the checks below.');
       setSignupBusy(false);
       return;
     }
@@ -556,12 +563,21 @@ export function LandingAuthOverlay({
                               type="password"
                               autoComplete="new-password"
                               required
+                              minLength={8}
                               value={signup.password}
+                              aria-describedby="mkt-signup-password-hints"
                               onChange={(e) => setSignup((s) => ({ ...s, password: e.target.value }))}
                             />
                           </div>
+                          <div id="mkt-signup-password-hints">
+                            <PasswordStrength password={signup.password} />
+                          </div>
                         </div>
-                        <button className="btn block" type="submit" disabled={signupBusy}>
+                        <button
+                          className="btn block"
+                          type="submit"
+                          disabled={signupBusy || (signup.password.length > 0 && !passwordMeetsPolicy(signup.password))}
+                        >
                           {signupBusy ? <span className="spin" /> : null}
                           {signupBusy ? 'Creating…' : 'Create account'}
                         </button>

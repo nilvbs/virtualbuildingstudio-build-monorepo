@@ -68,13 +68,19 @@ export const notificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
 // --- Auth DTOs ---
 
 /**
- * Passwords are delegated to the managed provider (Auth0); we only enforce a
- * baseline here. Auth0's own password policy is the source of truth.
+ * Passwords are delegated to the managed provider (Auth0); we enforce a
+ * baseline that matches Auth0’s usual “good” DB policy so signup fails early
+ * with a clear message instead of a generic “Validation failed”.
  */
 export const passwordSchema = z
   .string()
   .min(8, 'Password must be at least 8 characters')
-  .max(128);
+  .max(128)
+  .regex(/[a-z]/, 'Include a lowercase letter')
+  .regex(/[A-Z]/, 'Include an uppercase letter')
+  .regex(/\d/, 'Include a number')
+  .regex(/[^A-Za-z0-9]/, 'Include a symbol (!@#$…)');
+
 
 export const namePartSchema = z
   .string()
