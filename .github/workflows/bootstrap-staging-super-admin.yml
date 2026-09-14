@@ -1,0 +1,39 @@
+﻿name: Bootstrap Staging Super Admin
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SA_EMAIL: tracker@virtualbuildingstudio.com
+          SA_PASS: ${{ secrets.STAGING_SUPER_ADMIN_PASSWORD }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: SA_EMAIL,SA_PASS
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/BLD/stage
+            EMAIL="${SA_EMAIL}"
+            PASS="${SA_PASS}"
+            if [ -z "$PASS" ]; then
+              echo "Missing STAGING_SUPER_ADMIN_PASSWORD secret"
+              exit 1
+            fi
+            # upsert env keys
+            touch .env
+            sed -i '/^SUPER_ADMIN_EMAIL=/d' .env
+            sed -i '/^SUPER_ADMIN_PASSWORD=/d' .env
+            sed -i '/^SUPER_ADMIN_PHONE=/d' .env
+            sed -i '/^SUPER_ADMIN_NAME=/d' .env
+            printf '\nSUPER_ADMIN_EMAIL=%s\nSUPER_ADMIN_PASSWORD=%s\nSUPER_ADMIN_PHONE=+10000000001\nSUPER_ADMIN_NAME=Super Admin\n' "$EMAIL" "$PASS" >> .env
+            docker compose up -d --force-recreate api
+            sleep 12
+            docker compose exec -T api printenv | grep -E '^SUPER_ADMIN_EMAIL=' || true
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT u.email, u.status, ap.staff_level FROM users u JOIN admin_profiles ap ON ap.user_id = u.id ORDER BY u.email;"
