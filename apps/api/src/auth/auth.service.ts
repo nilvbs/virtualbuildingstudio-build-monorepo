@@ -209,13 +209,19 @@ export class AuthService {
         user: hydrated,
       };
     } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `Signup created Auth0 user ${identity.subject} but password login failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `Signup created Auth0 user ${identity.subject} but password login failed: ${detail}`,
       );
+      // Account + membership already exist — do not look like a failed registration.
+      // Common cause: Auth0 app missing Password / Password Realm grant types.
+      if (/unauthorized_client|grant|realm/i.test(detail)) {
+        throw new UnauthorizedException(
+          'Your account was created, but automatic sign-in is blocked by Auth0 (Password grant). Use Sign in with the same email and password, or ask an admin to enable Password + Password Realm on the Auth0 app.',
+        );
+      }
       throw new UnauthorizedException(
-        'Account was created but sign-in failed. Try Sign in with the same email and password, or use Forgot password.',
+        'Your account was created. Automatic sign-in failed — tap Sign in and use the same email and password.',
       );
     }
   }

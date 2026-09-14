@@ -208,7 +208,18 @@ export function LandingAuthOverlay({
       setSignupPhone(defaultPhoneInput());
       router.push('/onboarding');
     } catch (err) {
-      setSignupError(errorMessage(err));
+      const msg = errorMessage(err);
+      // Account may already exist after Auth0 create succeeded but ROPG failed —
+      // nudge the user onto Sign in with email prefilled instead of looking stuck.
+      if (/account was created|automatic sign-in/i.test(msg)) {
+        setLoginEmail(signup.email);
+        setLoginPassword(signup.password);
+        setLoginError(msg);
+        onModeChange('login');
+        setSignupError(null);
+      } else {
+        setSignupError(msg);
+      }
     } finally {
       setSignupBusy(false);
     }
