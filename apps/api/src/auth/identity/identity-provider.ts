@@ -61,7 +61,7 @@ export interface IdentityProvider {
   /**
    * Ensure the email can sign in with a database password (creates/links Auth0
    * DB credentials when the account was previously Google-only).
-   * Resolves with a usable session after password grant succeeds.
+   * Resolves with a usable session (Auth0 tokens or API-minted fallback).
    */
   ensurePasswordCredential(input: {
     email: string;

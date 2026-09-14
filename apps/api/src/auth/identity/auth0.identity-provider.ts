@@ -18,6 +18,9 @@ import type {
   SocialExchangeResult,
   SocialIdentity,
 } from './identity-provider';
+import {
+  issueFirstPartySession,
+} from '../first-party-session';
 
 export const AUTH_PROVIDER_NAME = 'auth0';
 /** Auth provider label stored for accounts created through Google. */
@@ -125,7 +128,8 @@ export class Auth0IdentityProvider implements IdentityProvider {
    * Google-only (or social) accounts have no DB password. Creating a Username-
    * Password identity and linking it to the primary subject lets password signup
    * / login work alongside Google for the same marketplace user.
-   * Returns a session only after Resource Owner Password Grant succeeds.
+   * Returns a session after password is set — prefers Auth0 ROPG, falls back
+   * to an API-minted session when password-realm is disabled on the Auth0 app.
    */
   async ensurePasswordCredential(input: {
     email: string;
@@ -157,7 +161,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
         );
       }
       await this.linkDatabaseIdentity(primary, dbUserId);
-      return this.loginAfterPasswordSetup(email, input.password);
+      return this.loginAfterPasswordSetup(email, input.password, primary);
     }
 
     try {
@@ -179,7 +183,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
         if (dbUserId) {
           await this.mgmt().users.update({ id: dbUserId }, { password: input.password });
           await this.linkDatabaseIdentity(primary, dbUserId);
-          return this.loginAfterPasswordSetup(email, input.password);
+          return this.loginAfterPasswordSetup(email, input.password, primary);
         }
         throw new ConflictException(
           'An account with this email already exists. Sign in with Google or use Forgot password.',
@@ -190,7 +194,7 @@ export class Auth0IdentityProvider implements IdentityProvider {
     }
 
     await this.linkDatabaseIdentity(primary, dbUserId);
-    return this.loginAfterPasswordSetup(email, input.password);
+    return this.loginAfterPasswordSetup(email, input.password, primary);
   }
 
   /** Prefer the auth0| user id, not the Google primary row from users-by-email. */
@@ -215,15 +219,25 @@ export class Auth0IdentityProvider implements IdentityProvider {
     return undefined;
   }
 
-  private async loginAfterPasswordSetup(email: string, password: string): Promise<AuthSession> {
+  private async loginAfterPasswordSetup(
+    email: string,
+    password: string,
+    subjectForSession: string,
+  ): Promise<AuthSession> {
     try {
       return await this.login(email, password);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Password login still failing after setup for ${email}: ${detail}`);
-      throw new UnauthorizedException(
-        'Password was saved but sign-in failed. Confirm Auth0 Password + Password Realm grants are enabled for this app, then try Sign in with that password.',
+      this.logger.warn(
+        `Auth0 password grant failed after setup for ${email} (${detail}); issuing first-party session`,
       );
+      // Password was just written via Management API — trust it and mint our session
+      // so create-account / add-role never dead-ends on missing password-realm grants.
+      return issueFirstPartySession(this.config, {
+        subject: subjectForSession,
+        email,
+        emailVerified: true,
+      });
     }
   }
 

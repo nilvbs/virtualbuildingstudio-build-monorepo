@@ -13,6 +13,7 @@ import {
   principalFromDevUserToken,
   principalFromUnsignedJwt,
 } from '../dev-auth';
+import { principalFromFirstPartyToken } from '../first-party-session';
 
 /**
  * Global guard: every route requires a valid access token unless explicitly
@@ -34,11 +35,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
     if (isPublic) return true;
 
+    const request = context.switchToHttp().getRequest<Request>();
+    const auth = request.headers.authorization;
+
     // Local AUTH_DEV_MODE: accept fixed tokens, signup tokens, or unsigned JWTs
     // so onboarding works without Auth0 JWKS (empty AUTH0_DOMAIN locally).
     if (authDevModeFlag(this.config)) {
-      const request = context.switchToHttp().getRequest<Request>();
-      const auth = request.headers.authorization;
       if (auth === `Bearer ${DEV_ACCESS_TOKEN}`) {
         request.user = DEV_PRINCIPAL;
         return true;
@@ -54,6 +56,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
           request.user = principal;
           return true;
         }
+      }
+    }
+
+    // API-minted sessions (signup / login fallback when Auth0 password-realm is off).
+    if (auth?.startsWith('Bearer ')) {
+      const token = auth.slice('Bearer '.length);
+      const principal = principalFromFirstPartyToken(token, this.config);
+      if (principal) {
+        request.user = principal;
+        return true;
       }
     }
 

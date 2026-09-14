@@ -29,6 +29,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     status: 'active',
     authProvider: 'auth0',
     authSubject: 'auth0|123',
+    passwordVerifier: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -116,7 +117,9 @@ describe('AuthService', () => {
       start: jest.fn().mockResolvedValue(undefined),
       check: jest.fn(),
     };
-    const config = { get: () => undefined } as unknown as import('@nestjs/config').ConfigService;
+    const config = {
+      get: (key: string) => (key === 'AUTH0_CLIENT_SECRET' ? 'test-session-secret' : undefined),
+    } as unknown as import('@nestjs/config').ConfigService;
     const media = {
       resolveSignedUrl: jest.fn((v: string | null) => v),
       deleteStoredObject: jest.fn().mockResolvedValue(undefined),
@@ -167,12 +170,36 @@ describe('AuthService', () => {
       expect(emailOtp.start).toHaveBeenCalledWith('user-uuid', signupInput.email);
       expect(phone.startVerification).toHaveBeenCalledWith('user-uuid', signupInput.phone);
       expect(identity.login).toHaveBeenCalledWith(signupInput.email, signupInput.password);
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-uuid' },
+          data: expect.objectContaining({ passwordVerifier: expect.any(String) }),
+        }),
+      );
       expect(result.session.accessToken).toBe('tok');
       expect(result.user).toMatchObject({
         emailVerified: false,
         phoneVerified: false,
         onboardingStep: 'select_account_type',
       });
+    });
+
+    it('still returns a session when Auth0 password grant is disabled', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      identity.createIdentity.mockResolvedValue({ subject: 'auth0|123', emailVerified: true });
+      prisma.user.create.mockResolvedValue(
+        makeUser({ onboardingStep: 'select_account_type', emailVerified: true }),
+      );
+      identity.login.mockRejectedValue(
+        new UnauthorizedException("Grant type 'password-realm' not allowed for the client"),
+      );
+
+      const result = await service.signup(signupInput);
+
+      expect(result.session.accessToken).toBeTruthy();
+      expect(result.session.accessToken).not.toBe('tok');
+      expect(result.session.tokenType).toBe('Bearer');
+      expect(result.user.email).toBe(signupInput.email);
     });
 
     it('rejects signing up again for a role the account already has', async () => {

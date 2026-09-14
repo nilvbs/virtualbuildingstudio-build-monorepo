@@ -48,6 +48,11 @@ import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.ident
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import { EmailOtpService } from './email/email-otp.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
+import {
+  isAuth0GrantMisconfigured,
+  issueFirstPartySession,
+} from './first-party-session';
+import { hashPassword, verifyPassword } from './password-verifier';
 import { buildPersonNameFields, composeFullName, splitFullName } from './username';
 import { AvatarStorageService } from './avatar-storage.service';
 import {
@@ -201,29 +206,29 @@ export class AuthService {
       this.phone.startVerification(user.id, input.phone),
     ]);
 
+    await this.persistPasswordVerifier(user.id, input.password);
+
+    let session: AuthSession;
     try {
-      const session = await this.identity.login(email, input.password);
-      const hydrated = await this.hydrateUser(user, []);
-      return {
-        session: { ...session, activeRole: legacyHint },
-        user: hydrated,
-      };
+      session = await this.identity.login(email, input.password);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Signup created Auth0 user ${identity.subject} but password login failed: ${detail}`,
+      this.logger.warn(
+        `Signup Auth0 login failed for ${identity.subject} (${detail}); issuing first-party session`,
       );
-      // Account + membership already exist — do not look like a failed registration.
-      // Common cause: Auth0 app missing Password / Password Realm grant types.
-      if (/unauthorized_client|grant|realm/i.test(detail)) {
-        throw new UnauthorizedException(
-          'Your account was created, but automatic sign-in is blocked by Auth0 (Password grant). Use Sign in with the same email and password, or ask an admin to enable Password + Password Realm on the Auth0 app.',
-        );
-      }
-      throw new UnauthorizedException(
-        'Your account was created. Automatic sign-in failed — tap Sign in and use the same email and password.',
-      );
+      // Account + password already exist in Auth0 — never leave the user without a session.
+      session = issueFirstPartySession(this.config, {
+        subject: identity.subject,
+        email,
+        emailVerified: emailAlreadyVerified,
+      });
     }
+
+    const hydrated = await this.hydrateUser(user, []);
+    return {
+      session: { ...session, activeRole: legacyHint },
+      user: hydrated,
+    };
   }
 
   /**
@@ -253,6 +258,7 @@ export class AuthService {
     }
 
     const session = await this.assertPasswordForUser(existing, input.password);
+    await this.persistPasswordVerifier(existing.id, input.password);
 
     // Keepdev password map in sync when adding roles under AUTH_DEV_MODE.
     if (devAuthEnabled(this.config) && existing.authSubject) {
@@ -332,8 +338,21 @@ export class AuthService {
       return await this.identity.login(normalizeEmail(user.email), password);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
-      if (/unauthorized_client|grant|realm/i.test(msg)) {
-        throw new UnauthorizedException(msg);
+      if (isAuth0GrantMisconfigured(msg) || /unauthorized_client|grant|realm/i.test(msg)) {
+        // Auth0 ROPG blocked — accept local verifier when present, else set it
+        // after Management API already accepted this password on Google→password link.
+        if (verifyPassword(password, user.passwordVerifier)) {
+          if (!user.authSubject) {
+            throw new UnauthorizedException(
+              'Email already registered. Enter the same password as that account to add this role.',
+            );
+          }
+          return issueFirstPartySession(this.config, {
+            subject: user.authSubject,
+            email: normalizeEmail(user.email),
+            emailVerified: user.emailVerified,
+          });
+        }
       }
       // Remap Auth0's generic "Invalid email or password" — this is add-role, not login.
       throw new UnauthorizedException(
@@ -410,13 +429,35 @@ export class AuthService {
         }
       }
     } else {
-      session = await this.identity.login(normalized, password);
+      try {
+        session = await this.identity.login(normalized, password);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        const local = await this.findUserByEmail(normalized);
+        if (
+          isAuth0GrantMisconfigured(detail) &&
+          local?.authSubject &&
+          verifyPassword(password, local.passwordVerifier)
+        ) {
+          session = issueFirstPartySession(this.config, {
+            subject: local.authSubject,
+            email: normalized,
+            emailVerified: local.emailVerified,
+          });
+        } else if (err instanceof UnauthorizedException) {
+          throw err;
+        } else {
+          throw new UnauthorizedException('Invalid email or password');
+        }
+      }
     }
 
     const user = await this.findUserByEmail(normalized);
     if (!user) {
       return session;
     }
+
+    await this.persistPasswordVerifier(user.id, password);
 
     const memberships = await listMemberships(this.prisma, user.id);
 
@@ -467,6 +508,21 @@ export class AuthService {
 
     await this.identity.requestPasswordReset(user.email);
     return { ok: true, message };
+  }
+
+  /** Persist scrypt verifier so login/signup sessions work without Auth0 ROPG. */
+  private async persistPasswordVerifier(userId: string, password: string): Promise<void> {
+    if (!password) return;
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { passwordVerifier: hashPassword(password) },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to store password verifier for ${userId}: ${(err as Error).message}`,
+      );
+    }
   }
 
   /** Case-insensitive email lookup; rewrites legacy mixed-case rows to lowercase. */

@@ -57,6 +57,12 @@ model User {
   status         String   @default("active")
   authProvider   String?  @map("auth_provider")
   authSubject    String?  @unique @map("auth_subject")
+  /**
+   * scrypt verifier for email/password when Auth0 password-realm grant is off.
+   * Auth0 remains source of truth for Universal Login / reset; this only backs
+   * API-issued sessions after signup and local login fallback.
+   */
+  passwordVerifier String? @map("password_verifier")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
