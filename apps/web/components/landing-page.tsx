@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
@@ -13,6 +13,7 @@ import {
   Radar,
 } from 'lucide-react';
 import { LandingAuthOverlay, useLandingAuth } from './landing-auth';
+import { LandingFeedbackFab, LandingFeedbackOverlay } from './landing-feedback';
 import { LandingFlow } from './landing-flow';
 
 const LandingPresenceMap = dynamic(
@@ -57,6 +58,13 @@ export function LandingPage() {
   const { open, mode, role, created, closeAuth, setMode, setRole, clearRole } =
     useLandingAuth();
   const navRef = useRef<HTMLElement>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackSource, setFeedbackSource] = useState<'landing' | 'support'>('landing');
+
+  function openFeedback(source: 'landing' | 'support' = 'landing') {
+    setFeedbackSource(source);
+    setFeedbackOpen(true);
+  }
 
   useEffect(() => {
     const previous =
@@ -411,11 +419,20 @@ export function LandingPage() {
             <div className="bld-footer-legal">
               <a href="#">Terms</a>
               <a href="#">Privacy</a>
-              <a href="#">Support</a>
+              <button type="button" className="bld-footer-link-btn" onClick={() => openFeedback('support')}>
+                Support
+              </button>
             </div>
           </div>
         </div>
       </footer>
+
+      <LandingFeedbackFab onClick={() => openFeedback('landing')} />
+      <LandingFeedbackOverlay
+        open={feedbackOpen}
+        source={feedbackSource}
+        onClose={() => setFeedbackOpen(false)}
+      />
 
       <LandingAuthOverlay
         open={open}

@@ -19,6 +19,7 @@ import {
   FEEDBACK_RATING_EMOJIS,
   feedbackRatingEmoji,
   type Feedback,
+  type SiteFeedback,
 } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 
@@ -50,6 +51,7 @@ function AspectBar({ label, value }: { label: string; value: number }) {
 export default function AdminFeedbackPage() {
   const router = useRouter();
   const [rows, setRows] = useState<Feedback[] | null>(null);
+  const [siteRows, setSiteRows] = useState<SiteFeedback[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -59,9 +61,11 @@ export default function AdminFeedbackPage() {
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    api
-      .listAdminFeedback()
-      .then(setRows)
+    Promise.all([api.listAdminFeedback(), api.listAdminSiteFeedback()])
+      .then(([jobRows, landingRows]) => {
+        setRows(jobRows);
+        setSiteRows(landingRows);
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) router.replace('/sign-in');
         else setError(errorMessage(err));
@@ -425,6 +429,47 @@ export default function AdminFeedbackPage() {
           })}
         </ul>
       )}
+
+      <section className="admin-fb-site" aria-label="Landing page feedback">
+        <div className="admin-fb-site-head">
+          <h2>Landing &amp; support feedback</h2>
+          <p>Public notes from the marketing site — no account required.</p>
+        </div>
+        {siteRows.length === 0 ? (
+          <p className="admin-fb-site-empty">No landing feedback yet.</p>
+        ) : (
+          <ul className="admin-fb-site-list">
+            {siteRows.map((f) => {
+              const ratingMeta =
+                FEEDBACK_RATING_EMOJIS[Math.max(1, Math.min(5, f.rating)) as 1 | 2 | 3 | 4 | 5];
+              return (
+                <li key={f.id} className="admin-fb-site-item">
+                  <div className="admin-fb-site-item-top">
+                    <span aria-hidden>{feedbackRatingEmoji(f.rating)}</span>
+                    <strong>
+                      {f.rating}/5 · {ratingMeta.label}
+                    </strong>
+                    <em>{f.source}</em>
+                  </div>
+                  <p>{f.message}</p>
+                  <div className="admin-fb-site-item-foot">
+                    <span>
+                      {f.name?.trim() || 'Anonymous'}
+                      {f.email ? ` · ${f.email}` : ''}
+                    </span>
+                    <time dateTime={f.createdAt}>
+                      {new Date(f.createdAt).toLocaleString(undefined, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </time>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       {detailDrawer}
     </div>

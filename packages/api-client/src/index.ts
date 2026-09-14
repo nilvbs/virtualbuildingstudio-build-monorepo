@@ -34,6 +34,8 @@ import type {
   AdminQueueProject,
   Feedback,
   FeedbackSubmitResult,
+  SiteFeedback,
+  SiteFeedbackSubmitResult,
   HelpTicket,
   HelpTicketDetail,
   HelpTicketCategory,
@@ -571,6 +573,21 @@ export class SurveyLinkClient {
 
   async listAdminFeedback(): Promise<Feedback[]> {
     return this.request<Feedback[]>('GET', '/admin/feedback');
+  }
+
+  async submitSiteFeedback(body: {
+    name?: string;
+    email?: string;
+    rating: number;
+    message: string;
+    source?: 'landing' | 'support' | 'other';
+    company?: string;
+  }): Promise<SiteFeedbackSubmitResult> {
+    return this.request<SiteFeedbackSubmitResult>('POST', '/public/feedback', body);
+  }
+
+  async listAdminSiteFeedback(): Promise<SiteFeedback[]> {
+    return this.request<SiteFeedback[]>('GET', '/admin/site-feedback');
   }
 
   async createHelpTicket(body: {

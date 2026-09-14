@@ -894,6 +894,22 @@ export interface FeedbackSubmitResult {
   message: string;
 }
 
+/** Public landing / marketing site feedback (no auth, no match). */
+export interface SiteFeedback {
+  id: string;
+  name: string | null;
+  email: string | null;
+  rating: number;
+  message: string;
+  source: string;
+  createdAt: string;
+}
+
+export interface SiteFeedbackSubmitResult {
+  feedback: SiteFeedback;
+  message: string;
+}
+
 // --- Activity timeline (date-wise ops visibility) ---
 
 export const ACTIVITY_ENTITY_TYPES = [

@@ -319,6 +319,66 @@ export class NotificationsService {
     }
   }
 
+  /** Public landing-page feedback — email ops + in-app for staff. */
+  async notifySiteFeedback(ctx: {
+    feedbackId: string;
+    name: string | null;
+    email: string | null;
+    rating: number;
+    message: string;
+    source: string;
+  }): Promise<void> {
+    const stars = `${ctx.rating}/5`;
+    const adminLink = `${this.webAppUrl}/build/admin/feedback`;
+    const who = ctx.name?.trim() || ctx.email?.trim() || 'Anonymous visitor';
+    const contact = ctx.email?.trim() ? ` (${ctx.email.trim()})` : '';
+    const safeMessage = ctx.message.replace(/</g, '&lt;');
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'admin' } }, status: 'active' },
+      select: { id: true },
+      take: 40,
+    });
+
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.createInApp(
+          admin.id,
+          'feedback_received',
+          'New landing feedback',
+          `${who} rated BLD ${stars} from the ${ctx.source} page.`,
+          '/build/admin/feedback',
+        ),
+      ),
+    );
+
+    const notifyEmail =
+      this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
+      this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
+
+    if (notifyEmail) {
+      await Promise.allSettled([
+        this.email.send({
+          to: notifyEmail,
+          subject: `BLD landing feedback: ${stars}`,
+          text: `${who}${contact} left ${stars} feedback (${ctx.source}):\n\n${ctx.message}\n\nReview: ${adminLink}`,
+          html: `<p><strong>${who}</strong>${contact} left <strong>${stars}</strong> feedback from <em>${ctx.source}</em>.</p><blockquote>${safeMessage}</blockquote><p><a href="${adminLink}">Open feedback in admin</a></p>`,
+        }),
+      ]);
+    }
+
+    if (ctx.email?.trim()) {
+      await Promise.allSettled([
+        this.email.send({
+          to: ctx.email.trim(),
+          subject: 'Thanks for your BLD feedback',
+          text: `Thanks for rating BLD ${stars}. Your note helps us improve the product.\n\n${this.webAppUrl}`,
+          html: `<p>Thanks for rating BLD <strong>${stars}</strong>. Your note helps us improve matching, tools, and support.</p><p><a href="${this.webAppUrl}">Visit BLD</a></p>`,
+        }),
+      ]);
+    }
+  }
+
   /** New help-desk ticket: confirm submitter + alert ops. */
   async notifyHelpTicketCreated(ctx: {
     ticketId: string;

@@ -5,8 +5,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Feedback, FeedbackAspects, FeedbackRole, FeedbackSubmitResult } from '@surveylink/types';
-import type { SubmitFeedbackInput } from '@surveylink/validation';
+import type {
+  Feedback,
+  FeedbackAspects,
+  FeedbackRole,
+  FeedbackSubmitResult,
+  SiteFeedback,
+  SiteFeedbackSubmitResult,
+} from '@surveylink/types';
+import type { SubmitFeedbackInput, SubmitSiteFeedbackInput } from '@surveylink/validation';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -112,6 +119,46 @@ export class FeedbackService {
       feedback,
       message: 'Thank you — your feedback was recorded and a confirmation was emailed to you.',
     };
+  }
+
+  async submitSite(input: SubmitSiteFeedbackInput): Promise<SiteFeedbackSubmitResult> {
+    if (input.company) {
+      throw new BadRequestException('Invalid submission');
+    }
+
+    const row = await this.prisma.siteFeedback.create({
+      data: {
+        name: input.name?.trim() || null,
+        email: input.email?.trim().toLowerCase() || null,
+        rating: input.rating,
+        message: input.message.trim(),
+        source: input.source ?? 'landing',
+      },
+    });
+
+    const feedback = this.toSiteDto(row);
+
+    await this.notifications.notifySiteFeedback({
+      feedbackId: feedback.id,
+      name: feedback.name,
+      email: feedback.email,
+      rating: feedback.rating,
+      message: feedback.message,
+      source: feedback.source,
+    });
+
+    return {
+      feedback,
+      message: 'Thanks — your feedback was sent to the BLD team.',
+    };
+  }
+
+  async listSiteForAdmin(): Promise<SiteFeedback[]> {
+    const rows = await this.prisma.siteFeedback.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return rows.map((r) => this.toSiteDto(r));
   }
 
   async getMineForMatch(subject: string, matchId: string): Promise<Feedback | null> {
@@ -234,6 +281,26 @@ export class FeedbackService {
       comment: row.comment,
       aspects: (row.aspects ?? {}) as FeedbackAspects,
       recommend: row.recommend,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  private toSiteDto(row: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    rating: number;
+    message: string;
+    source: string;
+    createdAt: Date;
+  }): SiteFeedback {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      rating: row.rating,
+      message: row.message,
+      source: row.source,
       createdAt: row.createdAt.toISOString(),
     };
   }

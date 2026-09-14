@@ -282,6 +282,25 @@ model Feedback {
 }
 
 /**
+ * Anonymous / public product feedback from the marketing landing page.
+ * Not tied to a match — ops reviews these separately from job ratings.
+ */
+model SiteFeedback {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String?
+  email     String?
+  /** Overall stars 1–5. */
+  rating    Int
+  message   String
+  /** landing | support | other */
+  source    String   @default("landing")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt], map: "idx_site_feedbacks_created_at")
+  @@map("site_feedbacks")
+}
+
+/**
  * Help desk ticket from a client or surveyor.
  * Conversation lives in HelpTicketMessage.
  */

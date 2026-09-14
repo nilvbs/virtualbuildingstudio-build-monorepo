@@ -473,6 +473,29 @@ export const submitFeedbackSchema = z.object({
 });
 export type SubmitFeedbackInput = z.infer<typeof submitFeedbackSchema>;
 
+export const submitSiteFeedbackSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  email: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().trim().email('Enter a valid email').max(160).optional(),
+  ),
+  rating: z.number().int().min(1).max(5),
+  message: z
+    .string()
+    .trim()
+    .min(10, 'Please share at least 10 characters')
+    .max(2000),
+  source: z.enum(['landing', 'support', 'other']).optional().default('landing'),
+  /** Honeypot — must stay empty. */
+  company: z.string().max(0).optional(),
+});
+export type SubmitSiteFeedbackInput = z.infer<typeof submitSiteFeedbackSchema>;
+
 // --- Help desk ---
 
 export const helpTicketCategorySchema = z.enum([
