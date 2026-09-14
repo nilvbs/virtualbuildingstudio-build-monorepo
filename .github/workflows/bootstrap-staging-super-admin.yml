@@ -26,7 +26,6 @@ jobs:
               echo "Missing STAGING_SUPER_ADMIN_PASSWORD secret"
               exit 1
             fi
-            # upsert env keys
             touch .env
             sed -i '/^SUPER_ADMIN_EMAIL=/d' .env
             sed -i '/^SUPER_ADMIN_PASSWORD=/d' .env
@@ -34,6 +33,6 @@ jobs:
             sed -i '/^SUPER_ADMIN_NAME=/d' .env
             printf '\nSUPER_ADMIN_EMAIL=%s\nSUPER_ADMIN_PASSWORD=%s\nSUPER_ADMIN_PHONE=+10000000001\nSUPER_ADMIN_NAME=Super Admin\n' "$EMAIL" "$PASS" >> .env
             docker compose up -d --force-recreate api
-            sleep 12
+            sleep 15
             docker compose exec -T api printenv | grep -E '^SUPER_ADMIN_EMAIL=' || true
-            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT u.email, u.status, ap.staff_level FROM users u JOIN admin_profiles ap ON ap.user_id = u.id ORDER BY u.email;"
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT u.email, u.status, ap.staff_level, (u.password_verifier IS NOT NULL) AS has_verifier FROM users u JOIN admin_profiles ap ON ap.user_id = u.id ORDER BY u.email;"

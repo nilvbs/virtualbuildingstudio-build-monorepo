@@ -15,6 +15,7 @@ import {
 import { ensureMembership } from './memberships';
 import { normalizeEmail } from '@surveylink/validation';
 import { buildPersonNameFields } from './username';
+import { hashPassword } from './password-verifier';
 
 /**
  * Ensures the configured SUPER_ADMIN_EMAIL account exists as staffLevel=super_admin.
@@ -124,6 +125,12 @@ export class SuperAdminBootstrapService implements OnModuleInit {
         permissions: [],
         title: 'Super Admin',
       },
+    });
+    // Keep local verifier in sync so staff login works even when Auth0
+    // password-realm is disabled on the app.
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordVerifier: hashPassword(input.password) },
     });
     this.logger.log(`Ensured super_admin privileges for ${email}`);
   }
