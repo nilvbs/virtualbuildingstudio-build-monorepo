@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Phone, Search, ShieldAlert, Users } from 'lucide-react';
+import { ArrowUpRight, Search, ShieldAlert, Users } from 'lucide-react';
 import type { AdminUser, MembershipRole, UserStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 import { StatusBadge } from '../../../../components/status';
@@ -16,22 +16,35 @@ function initials(name: string) {
 }
 
 function roleLabel(roles: MembershipRole[]) {
-  if (roles.length === 0) return 'No role';
+  if (roles.length === 0) return '—';
   return roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(' · ');
 }
 
 function LoadingState() {
   return (
-    <div className="admin-cli-list">
-      {[0, 1, 2].map((i) => (
-        <div className="admin-cli-row" key={i} aria-hidden>
-          <div className="skeleton" style={{ width: 44, height: 44, borderRadius: 12 }} />
-          <div style={{ flex: 1, display: 'grid', gap: 8 }}>
-            <div className="skeleton sk-line" style={{ width: '30%', height: 16 }} />
-            <div className="skeleton sk-line" style={{ width: '55%' }} />
-          </div>
-        </div>
-      ))}
+    <div className="hd-admin-table-wrap" aria-hidden>
+      <table className="hd-admin-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Status</th>
+            <th>Joined</th>
+            <th aria-label="Open" />
+          </tr>
+        </thead>
+        <tbody>
+          {[0, 1, 2, 3].map((i) => (
+            <tr key={i}>
+              <td colSpan={7}>
+                <div className="skeleton sk-line" style={{ width: '100%', height: 18 }} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -156,50 +169,65 @@ export default function AdminUsersPage() {
               <h3 style={{ fontSize: 17 }}>{q ? 'No matches' : 'No users yet'}</h3>
             </div>
           ) : (
-            <div className="admin-cli-list">
-              {filtered.map((u) => (
-                <article className="admin-cli-row" key={u.id}>
-                  <Link
-                    href={`/build/admin/users/${u.id}`}
-                    className="admin-cli-avatar plain"
-                    aria-label={`Open ${u.fullName}`}
-                  >
-                    {initials(u.fullName)}
-                  </Link>
-                  <div className="admin-cli-main">
-                    <div className="admin-cli-title-row">
-                      <Link href={`/build/admin/users/${u.id}`} className="admin-cli-name plain">
-                        {u.fullName}
-                      </Link>
-                      <StatusBadge status={u.status} />
-                    </div>
-                    <div className="admin-cli-meta">
-                      <span>{roleLabel(u.roles)}</span>
-                      <span aria-hidden>·</span>
-                      <span>@{u.username}</span>
-                      {u.city ? (
-                        <>
-                          <span aria-hidden>·</span>
-                          <span>{u.city}</span>
-                        </>
-                      ) : null}
-                    </div>
-                    <div className="admin-cli-meta">
-                      <span>
-                        <Mail size={12} aria-hidden /> {u.email}
-                      </span>
-                      <span>
-                        <Phone size={12} aria-hidden /> {u.phone}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="admin-cli-actions">
-                    <Link href={`/build/admin/users/${u.id}`} className="btn secondary sm">
-                      Open
-                    </Link>
-                  </div>
-                </article>
-              ))}
+            <div className="hd-admin-table-wrap">
+              <table className="hd-admin-table admin-users-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Location</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th aria-label="Open" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((u) => (
+                    <tr key={u.id}>
+                      <td>
+                        <Link href={`/build/admin/users/${u.id}`} className="admin-users-person plain">
+                          <span className="admin-users-avatar" aria-hidden>
+                            {initials(u.fullName)}
+                          </span>
+                          <span className="admin-users-person-text">
+                            <strong>{u.fullName}</strong>
+                            <span>@{u.username}</span>
+                          </span>
+                        </Link>
+                      </td>
+                      <td>{roleLabel(u.roles)}</td>
+                      <td>
+                        <a href={`mailto:${u.email}`} className="plain admin-users-contact">
+                          {u.email}
+                        </a>
+                      </td>
+                      <td>
+                        <span className="admin-users-contact">{u.phone}</span>
+                      </td>
+                      <td>{u.city || '—'}</td>
+                      <td>
+                        <StatusBadge status={u.status} />
+                      </td>
+                      <td>
+                        <time dateTime={u.createdAt}>
+                          {new Date(u.createdAt).toLocaleDateString()}
+                        </time>
+                      </td>
+                      <td className="hd-admin-open">
+                        <Link
+                          href={`/build/admin/users/${u.id}`}
+                          className="hd-admin-open-btn"
+                          aria-label={`Open ${u.fullName}`}
+                        >
+                          <ArrowUpRight size={16} />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </>

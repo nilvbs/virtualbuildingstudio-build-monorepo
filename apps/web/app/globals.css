@@ -14863,6 +14863,54 @@ a.plain:hover {
   background: #fbfaff;
 }
 
+.admin-users-table {
+  min-width: 980px;
+}
+
+.admin-users-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 160px;
+  color: inherit;
+}
+
+.admin-users-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #eeeaff;
+  color: #5b52e0;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.admin-users-person-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-users-person-text strong {
+  font-size: 13.5px;
+  color: #2a2558;
+  line-height: 1.2;
+}
+
+.admin-users-person-text span {
+  font-size: 12px;
+  color: #8a84a8;
+}
+
+.admin-users-contact {
+  color: #2a2558;
+  word-break: break-all;
+}
+
 .hd-admin-ticket-link {
   display: grid;
   gap: 3px;
