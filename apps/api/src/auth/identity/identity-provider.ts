@@ -76,6 +76,8 @@ export interface IdentityProvider {
   requestPasswordReset(email: string): Promise<void>;
   sendEmailVerification(subject: string): Promise<void>;
   getIdentity(subject: string): Promise<IdentityRecord>;
+  /** Best-effort delete of the Auth0 (or provider) identity. */
+  deleteIdentity(subject: string): Promise<void>;
   /** Best-effort refresh-token revocation on logout. */
   revokeRefreshToken(refreshToken: string): Promise<void>;
   /** Build the provider authorize URL for a social (OAuth code) login. */

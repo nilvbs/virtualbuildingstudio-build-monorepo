@@ -353,6 +353,39 @@ export const adminProjectsQuerySchema = z
   .default({});
 export type AdminProjectsQuery = z.infer<typeof adminProjectsQuerySchema>;
 
+export const adminUsersQuerySchema = z
+  .object({
+    q: z.string().trim().max(120).optional(),
+    role: z.enum(['client', 'surveyor', 'admin']).optional(),
+    status: z.enum(['active', 'suspended']).optional(),
+  })
+  .default({});
+export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;
+
+export const updateAdminUserSchema = z
+  .object({
+    firstName: namePartSchema.optional(),
+    lastName: namePartSchema.optional(),
+    email: emailSchema.optional(),
+    phone: phoneSchema.optional(),
+    status: z.enum(['active', 'suspended']).optional(),
+    accountType: z.enum(ACCOUNT_TYPES).optional(),
+    companyName: z.string().trim().max(200).nullable().optional(),
+    addressLine1: z.string().trim().max(200).nullable().optional(),
+    addressLine2: z.string().trim().max(200).nullable().optional(),
+    city: z.string().trim().max(120).nullable().optional(),
+    state: z.string().trim().max(120).nullable().optional(),
+    postalCode: z.string().trim().max(40).nullable().optional(),
+    country: z.string().trim().max(120).nullable().optional(),
+    workEmail: z.union([emailSchema, z.literal(''), z.null()]).optional(),
+    website: z.string().trim().max(300).nullable().optional(),
+    registrationNumber: z.string().trim().max(120).nullable().optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'Provide at least one field to update',
+  });
+export type UpdateAdminUserInput = z.infer<typeof updateAdminUserSchema>;
+
 /** Date / location filters for the admin operations overview. */
 export const adminOverviewQuerySchema = z.object({
   from: z

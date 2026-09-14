@@ -84,6 +84,12 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
         requiresPermission: 'surveyors:view',
       },
       {
+        href: '/build/admin/users',
+        label: 'Users',
+        icon: 'avatar',
+        requiresPermission: 'users:view',
+      },
+      {
         href: '/build/admin/pipeline',
         label: 'Pipeline',
         icon: 'check',
@@ -174,6 +180,12 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     }
     if (pathname.startsWith('/build/admin/surveyors')) {
       return { label: 'Surveyors', sub: 'Expert network' };
+    }
+    if (pathname.startsWith('/build/admin/users/') && pathname !== '/build/admin/users') {
+      return { label: 'User profile', sub: 'View and edit account details' };
+    }
+    if (pathname.startsWith('/build/admin/users')) {
+      return { label: 'Users', sub: 'All accounts — view, edit, or delete' };
     }
     if (/^\/build\/admin\/projects\/[^/]+/.test(pathname)) {
       return { label: 'Project workspace', sub: 'Status, matches, and assignment' };

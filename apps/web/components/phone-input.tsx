@@ -90,3 +90,17 @@ export function phoneInputIsValid(value: PhoneInputValue): boolean {
 export function defaultPhoneInput(): PhoneInputValue {
   return { countryIso: DEFAULT_COUNTRY_ISO, national: '' };
 }
+
+/** Best-effort parse of an E.164 string into the phone input controls. */
+export function phoneInputFromE164(e164: string | null | undefined): PhoneInputValue | null {
+  const raw = (e164 ?? '').trim();
+  if (!raw.startsWith('+')) return null;
+  const sorted = [...COUNTRY_DIALS].sort((a, b) => b.dial.length - a.dial.length);
+  for (const c of sorted) {
+    if (raw.startsWith(c.dial)) {
+      return { countryIso: c.iso, national: raw.slice(c.dial.length).replace(/\D/g, '') };
+    }
+  }
+  return { countryIso: DEFAULT_COUNTRY_ISO, national: raw.replace(/^\+/, '').replace(/\D/g, '') };
+}
+

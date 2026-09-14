@@ -152,6 +152,8 @@ export const STAFF_PERMISSIONS = [
   'match:create',
   'match:update',
   'project:update_status',
+  'users:view',
+  'users:manage',
   'staff:manage',
 ] as const;
 export type StaffPermission = (typeof STAFF_PERMISSIONS)[number];
@@ -164,11 +166,12 @@ export const STAFF_PERMISSION_PRESET_MAP: Record<
   Exclude<StaffPermissionPreset, 'custom'>,
   StaffPermission[]
 > = {
-  viewer: ['clients:view', 'surveyors:view', 'projects:view'],
+  viewer: ['clients:view', 'surveyors:view', 'projects:view', 'users:view'],
   matcher: [
     'clients:view',
     'surveyors:view',
     'projects:view',
+    'users:view',
     'match:create',
     'match:update',
     'project:update_status',
@@ -177,6 +180,8 @@ export const STAFF_PERMISSION_PRESET_MAP: Record<
     'clients:view',
     'surveyors:view',
     'projects:view',
+    'users:view',
+    'users:manage',
     'match:create',
     'match:update',
     'project:update_status',
@@ -190,6 +195,8 @@ export const STAFF_PERMISSION_LABELS: Record<StaffPermission, string> = {
   'match:create': 'Create matches',
   'match:update': 'Update matches',
   'project:update_status': 'Update project status',
+  'users:view': 'View users',
+  'users:manage': 'Edit & delete users',
   'staff:manage': 'Manage staff admins',
 };
 
@@ -372,6 +379,44 @@ export interface AdminClientDetail {
   projectCount: number;
   projects: AdminClientProjectSummary[];
   createdAt: string;
+}
+
+/** Marketplace / account directory row for the admin Users module. */
+export interface AdminUser {
+  id: string;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  username: string;
+  email: string;
+  phone: string;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  accountType: string;
+  status: UserStatus;
+  roles: MembershipRole[];
+  onboardingStep: string;
+  authProvider: string | null;
+  companyName: string | null;
+  city: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Full user record for admin view / edit. */
+export interface AdminUserDetail extends AdminUser {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
+  workEmail: string | null;
+  workEmailVerified: boolean;
+  registrationNumber: string | null;
+  website: string | null;
+  projectCount: number;
+  isStaff: boolean;
+  staffLevel: StaffLevel | null;
 }
 
 export interface AdminQueueProject {

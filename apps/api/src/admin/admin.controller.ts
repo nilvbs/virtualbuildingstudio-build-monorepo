@@ -18,6 +18,8 @@ import type {
   AdminQueueProject,
   AdminSurveyor,
   AdminSurveyorDetail,
+  AdminUser,
+  AdminUserDetail,
   AuthPrincipal,
   Match,
   ProjectDetail,
@@ -27,16 +29,20 @@ import {
   adminOverviewQuerySchema,
   adminProjectsQuerySchema,
   adminSurveyorQuerySchema,
+  adminUsersQuerySchema,
   createMatchSchema,
   createStaffAdminSchema,
+  updateAdminUserSchema,
   updateMatchSchema,
   updateProjectStatusSchema,
   updateStaffAdminSchema,
   type AdminOverviewQuery,
   type AdminProjectsQuery,
   type AdminSurveyorQuery,
+  type AdminUsersQuery,
   type CreateMatchInput,
   type CreateStaffAdminInput,
+  type UpdateAdminUserInput,
   type UpdateMatchInput,
   type UpdateProjectStatusInput,
   type UpdateStaffAdminInput,
@@ -76,6 +82,39 @@ export class AdminController {
   @RequirePermissions('clients:view')
   getClient(@Param('id', ParseUUIDPipe) id: string): Promise<AdminClientDetail> {
     return this.admin.getClient(id);
+  }
+
+  @Get('users')
+  @RequirePermissions('users:view')
+  listUsers(
+    @Query(new ZodValidationPipe(adminUsersQuerySchema)) query: AdminUsersQuery,
+  ): Promise<AdminUser[]> {
+    return this.admin.listUsers(query);
+  }
+
+  @Get('users/:id')
+  @RequirePermissions('users:view')
+  getUser(@Param('id', ParseUUIDPipe) id: string): Promise<AdminUserDetail> {
+    return this.admin.getUser(id);
+  }
+
+  @Patch('users/:id')
+  @RequirePermissions('users:manage')
+  updateUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateAdminUserSchema)) body: UpdateAdminUserInput,
+  ): Promise<AdminUserDetail> {
+    return this.admin.updateUser(id, body);
+  }
+
+  @Delete('users/:id')
+  @HttpCode(204)
+  @RequirePermissions('users:manage')
+  async deleteUser(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.admin.deleteUser(principal.sub, id);
   }
 
   @Get('projects')

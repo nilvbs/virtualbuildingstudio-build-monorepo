@@ -105,6 +105,7 @@ describe('AuthService', () => {
       requestPasswordReset: jest.fn().mockResolvedValue(undefined),
       sendEmailVerification: jest.fn().mockResolvedValue(undefined),
       getIdentity: jest.fn(),
+      deleteIdentity: jest.fn().mockResolvedValue(undefined),
       revokeRefreshToken: jest.fn().mockResolvedValue(undefined),
       buildSocialAuthorizeUrl: jest.fn(),
       exchangeAuthorizationCode: jest.fn(),

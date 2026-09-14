@@ -21,7 +21,10 @@ import type {
   AdminOverviewStats,
   AdminSurveyor,
   AdminSurveyorDetail,
+  AdminClient,
   AdminClientDetail,
+  AdminUser,
+  AdminUserDetail,
   Match,
   MatchStatus,
   ProjectStatus,
@@ -30,7 +33,6 @@ import type {
   StaffPermission,
   StaffPermissionPreset,
   UserStatus,
-  AdminClient,
   AdminQueueProject,
   Feedback,
   FeedbackSubmitResult,
@@ -507,6 +509,51 @@ export class SurveyLinkClient {
 
   async getAdminClient(id: string): Promise<AdminClientDetail> {
     return this.request<AdminClientDetail>('GET', `/admin/clients/${id}`);
+  }
+
+  async listAdminUsers(query: {
+    q?: string;
+    role?: 'client' | 'surveyor' | 'admin';
+    status?: 'active' | 'suspended';
+  } = {}): Promise<AdminUser[]> {
+    const qs = new URLSearchParams();
+    if (query.q) qs.set('q', query.q);
+    if (query.role) qs.set('role', query.role);
+    if (query.status) qs.set('status', query.status);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request<AdminUser[]>('GET', `/admin/users${suffix}`);
+  }
+
+  async getAdminUser(id: string): Promise<AdminUserDetail> {
+    return this.request<AdminUserDetail>('GET', `/admin/users/${id}`);
+  }
+
+  async updateAdminUser(
+    id: string,
+    body: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+      status?: 'active' | 'suspended';
+      accountType?: 'individual' | 'company';
+      companyName?: string | null;
+      addressLine1?: string | null;
+      addressLine2?: string | null;
+      city?: string | null;
+      state?: string | null;
+      postalCode?: string | null;
+      country?: string | null;
+      workEmail?: string | null;
+      website?: string | null;
+      registrationNumber?: string | null;
+    },
+  ): Promise<AdminUserDetail> {
+    return this.request<AdminUserDetail>('PATCH', `/admin/users/${id}`, body);
+  }
+
+  async deleteAdminUser(id: string): Promise<void> {
+    await this.request<void>('DELETE', `/admin/users/${id}`);
   }
 
   async listAdminOpenProjects(query: AdminProjectsQueryBody = {}): Promise<AdminQueueProject[]> {

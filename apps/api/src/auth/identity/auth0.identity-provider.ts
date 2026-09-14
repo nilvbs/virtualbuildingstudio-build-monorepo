@@ -415,6 +415,19 @@ export class Auth0IdentityProvider implements IdentityProvider, OnModuleInit {
     };
   }
 
+  async deleteIdentity(subject: string): Promise<void> {
+    if (!subject.trim()) return;
+    try {
+      await this.mgmt().users.delete({ id: subject });
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode;
+      if (status === 404) return;
+      this.logger.warn(
+        `Auth0 identity delete failed for ${subject}: ${(err as Error).message}`,
+      );
+    }
+  }
+
   async revokeRefreshToken(refreshToken: string): Promise<void> {
     try {
       await this.auth().oauth.revokeRefreshToken({ token: refreshToken });

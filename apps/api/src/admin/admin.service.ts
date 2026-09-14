@@ -22,8 +22,11 @@ import {
   type AdminQueueProject,
   type AdminSurveyor,
   type AdminSurveyorDetail,
+  type AdminUser,
+  type AdminUserDetail,
   type Match,
   type MatchStatus,
+  type MembershipRole,
   type ProjectDetail,
   type ProjectStatus,
   type StaffAdmin,
@@ -37,8 +40,10 @@ import type {
   AdminOverviewQuery,
   AdminProjectsQuery,
   AdminSurveyorQuery,
+  AdminUsersQuery,
   CreateMatchInput,
   CreateStaffAdminInput,
+  UpdateAdminUserInput,
   UpdateMatchInput,
   UpdateProjectStatusInput,
   UpdateStaffAdminInput,
@@ -772,6 +777,287 @@ export class AdminService {
       this.prisma.adminProfile.delete({ where: { userId: staffUserId } }),
       this.prisma.userRole.deleteMany({ where: { userId: staffUserId, role: 'admin' } }),
     ]);
+  }
+
+  async listUsers(query: AdminUsersQuery = {}): Promise<AdminUser[]> {
+    const term = query.q?.trim();
+    const rows = await this.prisma.user.findMany({
+      where: {
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.role ? { roles: { some: { role: query.role } } } : {}),
+        ...(term
+          ? {
+              OR: [
+                { fullName: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+                { phone: { contains: term, mode: 'insensitive' } },
+                { username: { contains: term, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      include: {
+        roles: { select: { role: true } },
+        accountProfile: { select: { companyName: true, city: true } },
+      },
+    });
+    return rows.map((u) => this.toAdminUserDto(u));
+  }
+
+  async getUser(userId: string): Promise<AdminUserDetail> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        roles: { select: { role: true } },
+        accountProfile: true,
+        adminProfile: { select: { staffLevel: true } },
+        _count: { select: { projects: true } },
+      },
+    });
+    if (!u) throw new NotFoundException('User not found');
+    return this.toAdminUserDetailDto(u);
+  }
+
+  async updateUser(userId: string, input: UpdateAdminUserInput): Promise<AdminUserDetail> {
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { accountProfile: true, adminProfile: true },
+    });
+    if (!existing) throw new NotFoundException('User not found');
+    if (existing.adminProfile?.staffLevel === 'super_admin' && input.status === 'suspended') {
+      throw new ForbiddenException('Cannot suspend the super admin');
+    }
+
+    if (input.email) {
+      const email = normalizeEmail(input.email);
+      const clash = await this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' }, NOT: { id: userId } },
+        select: { id: true },
+      });
+      if (clash) throw new ConflictException('Another account already uses that email');
+    }
+    if (input.phone) {
+      const clash = await this.prisma.user.findFirst({
+        where: { phone: input.phone, NOT: { id: userId } },
+        select: { id: true },
+      });
+      if (clash) throw new ConflictException('Another account already uses that phone number');
+    }
+
+    const firstName = input.firstName?.trim() ?? existing.firstName;
+    const lastName = input.lastName?.trim() ?? existing.lastName;
+    const fullName =
+      input.firstName !== undefined || input.lastName !== undefined
+        ? `${firstName} ${lastName}`.trim()
+        : existing.fullName;
+
+    const profilePatch = {
+      companyName: input.companyName,
+      addressLine1: input.addressLine1,
+      addressLine2: input.addressLine2,
+      city: input.city,
+      state: input.state,
+      postalCode: input.postalCode,
+      country: input.country,
+      workEmail:
+        input.workEmail === undefined
+          ? undefined
+          : input.workEmail === '' || input.workEmail === null
+            ? null
+            : normalizeEmail(input.workEmail),
+      website: input.website,
+      registrationNumber: input.registrationNumber,
+    };
+    const hasProfilePatch = Object.values(profilePatch).some((v) => v !== undefined);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          firstName,
+          lastName,
+          fullName,
+          ...(input.email ? { email: normalizeEmail(input.email) } : {}),
+          ...(input.phone ? { phone: input.phone } : {}),
+          ...(input.status ? { status: input.status } : {}),
+          ...(input.accountType ? { accountType: input.accountType } : {}),
+        },
+      });
+
+      if (hasProfilePatch) {
+        const data = Object.fromEntries(
+          Object.entries(profilePatch).filter(([, v]) => v !== undefined),
+        );
+        await tx.accountProfile.upsert({
+          where: { userId },
+          create: { userId, ...data },
+          update: data,
+        });
+      }
+    });
+
+    return this.getUser(userId);
+  }
+
+  async deleteUser(actorSubject: string, userId: string): Promise<void> {
+    const actor = await this.prisma.user.findUnique({
+      where: { authSubject: actorSubject },
+      select: { id: true },
+    });
+    if (!actor) throw new NotFoundException('No local account is linked to this admin identity');
+    if (actor.id === userId) {
+      throw new BadRequestException('You cannot delete your own account');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        adminProfile: true,
+        surveyorProfile: { select: { id: true } },
+        roles: { select: { role: true } },
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.adminProfile?.staffLevel === 'super_admin') {
+      throw new ForbiddenException('Cannot delete the super admin');
+    }
+    if (user.roles.some((r) => r.role === 'admin')) {
+      throw new BadRequestException(
+        'This account has staff access. Remove the admin role from Staff first, then delete.',
+      );
+    }
+
+    const surveyorProfileId = user.surveyorProfile?.id;
+    const authSubject = user.authSubject;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Clear match FKs that would block project / user deletes.
+      if (surveyorProfileId) {
+        await tx.match.deleteMany({ where: { surveyorId: surveyorProfileId } });
+      }
+      const projectIds = (
+        await tx.project.findMany({ where: { clientId: userId }, select: { id: true } })
+      ).map((p) => p.id);
+      if (projectIds.length) {
+        await tx.match.deleteMany({ where: { projectId: { in: projectIds } } });
+        await tx.feedback.deleteMany({ where: { projectId: { in: projectIds } } });
+        await tx.project.deleteMany({ where: { id: { in: projectIds } } });
+      }
+      await tx.match.deleteMany({ where: { matchedBy: userId } });
+      await tx.feedback.deleteMany({
+        where: { OR: [{ fromUserId: userId }, { toUserId: userId }] },
+      });
+      await tx.notification.deleteMany({ where: { userId } });
+      await tx.user.delete({ where: { id: userId } });
+    });
+
+    if (authSubject) {
+      await this.identity.deleteIdentity(authSubject);
+    }
+  }
+
+  private toAdminUserDto(u: {
+    id: string;
+    fullName: string;
+    firstName: string;
+    lastName: string;
+    username: string;
+    email: string;
+    phone: string;
+    emailVerified: boolean;
+    phoneVerified: boolean;
+    accountType: string;
+    status: string;
+    onboardingStep: string;
+    authProvider: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    roles: Array<{ role: string }>;
+    accountProfile: { companyName: string | null; city: string | null } | null;
+  }): AdminUser {
+    return {
+      id: u.id,
+      fullName: u.fullName,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      username: u.username,
+      email: u.email,
+      phone: u.phone,
+      emailVerified: u.emailVerified,
+      phoneVerified: u.phoneVerified,
+      accountType: u.accountType,
+      status: u.status as UserStatus,
+      roles: u.roles
+        .map((r) => r.role)
+        .filter((r): r is MembershipRole =>
+          r === 'client' || r === 'surveyor' || r === 'admin',
+        ),
+      onboardingStep: u.onboardingStep,
+      authProvider: u.authProvider,
+      companyName: u.accountProfile?.companyName ?? null,
+      city: u.accountProfile?.city ?? null,
+      createdAt: u.createdAt.toISOString(),
+      updatedAt: u.updatedAt.toISOString(),
+    };
+  }
+
+  private toAdminUserDetailDto(u: {
+    id: string;
+    fullName: string;
+    firstName: string;
+    lastName: string;
+    username: string;
+    email: string;
+    phone: string;
+    emailVerified: boolean;
+    phoneVerified: boolean;
+    accountType: string;
+    status: string;
+    onboardingStep: string;
+    authProvider: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    roles: Array<{ role: string }>;
+    accountProfile: {
+      companyName: string | null;
+      addressLine1: string | null;
+      addressLine2: string | null;
+      city: string | null;
+      state: string | null;
+      postalCode: string | null;
+      country: string | null;
+      workEmail: string | null;
+      workEmailVerified: boolean;
+      registrationNumber: string | null;
+      website: string | null;
+    } | null;
+    adminProfile: { staffLevel: string } | null;
+    _count: { projects: number };
+  }): AdminUserDetail {
+    const base = this.toAdminUserDto({
+      ...u,
+      accountProfile: u.accountProfile
+        ? { companyName: u.accountProfile.companyName, city: u.accountProfile.city }
+        : null,
+    });
+    const ap = u.accountProfile;
+    return {
+      ...base,
+      addressLine1: ap?.addressLine1 ?? null,
+      addressLine2: ap?.addressLine2 ?? null,
+      state: ap?.state ?? null,
+      postalCode: ap?.postalCode ?? null,
+      country: ap?.country ?? null,
+      workEmail: ap?.workEmail ?? null,
+      workEmailVerified: ap?.workEmailVerified ?? false,
+      registrationNumber: ap?.registrationNumber ?? null,
+      website: ap?.website ?? null,
+      projectCount: u._count.projects,
+      isStaff: Boolean(u.adminProfile),
+      staffLevel: (u.adminProfile?.staffLevel as StaffLevel | undefined) ?? null,
+    };
   }
 
   private async requireSuperAdmin(subject: string): Promise<void> {
