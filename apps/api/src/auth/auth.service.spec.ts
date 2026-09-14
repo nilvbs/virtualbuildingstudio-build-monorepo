@@ -170,12 +170,54 @@ describe('AuthService', () => {
       });
     });
 
-    it('rejects a duplicate email/phone without touching the provider', async () => {
+    it('rejects signing up again for a role the account already has', async () => {
       prisma.user.findFirst.mockResolvedValue(makeUser({ id: 'existing' }));
       prisma.userRole.findMany.mockResolvedValue([{ role: 'client' }]);
 
       await expect(service.signup(signupInput)).rejects.toBeInstanceOf(ConflictException);
       expect(identity.createIdentity).not.toHaveBeenCalled();
+    });
+
+    it('adds surveyor when email already has client even if phone differs', async () => {
+      const existing = makeUser({
+        id: 'existing',
+        phone: '+14155550000',
+        authProvider: 'auth0',
+      });
+      prisma.user.findFirst
+        .mockResolvedValueOnce(existing) // findUserByEmail
+        .mockResolvedValueOnce(null); // phoneTaken check in addRole
+      prisma.userRole.findMany
+        .mockResolvedValueOnce([{ role: 'client' }]) // listMemberships before add
+        .mockResolvedValueOnce([{ role: 'client' }, { role: 'surveyor' }]); // after
+      prisma.userRole.upsert.mockResolvedValue({});
+      prisma.user.update.mockResolvedValue({ ...existing, phone: '+14155552671' });
+      prisma.user.findUnique.mockResolvedValue({ ...existing, phone: '+14155552671' });
+      identity.login.mockResolvedValue({
+        accessToken: 'tok',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+      });
+
+      // hydrateUser / attachMarketplaceRole need findUnique etc.
+      const attachSpy = jest
+        .spyOn(service as unknown as { attachMarketplaceRole: AuthService['attachMarketplaceRole'] }, 'attachMarketplaceRole')
+        .mockResolvedValue({ ...existing, phone: '+14155552671' });
+      const hydrateSpy = jest
+        .spyOn(service as unknown as { hydrateUser: AuthService['hydrateUser'] }, 'hydrateUser')
+        .mockResolvedValue({
+          id: 'existing',
+          email: existing.email,
+          roles: ['client', 'surveyor'],
+        } as never);
+
+      const result = await service.signup({ ...signupInput, roleHint: 'surveyor' });
+
+      expect(identity.createIdentity).not.toHaveBeenCalled();
+      expect(attachSpy).toHaveBeenCalled();
+      expect(result.session.accessToken).toBe('tok');
+      attachSpy.mockRestore();
+      hydrateSpy.mockRestore();
     });
   });
 

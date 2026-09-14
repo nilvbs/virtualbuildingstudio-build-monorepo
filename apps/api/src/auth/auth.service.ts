@@ -114,20 +114,27 @@ export class AuthService {
     const legacyHint = membershipRole as WorkspaceRole;
     const email = normalizeEmail(input.email);
 
-    const existing =
-      (await this.findUserByEmail(email)) ??
-      (await this.prisma.user.findFirst({ where: { phone: input.phone } }));
-
-    // Same identity, different workspace: add the missing membership instead of
-    // creating a second user (email/phone stay unique on `users`).
-    if (existing) {
+    // Prefer email: same person can register client + surveyor on one account.
+    // Phone-only hits a *different* email → block (phone stays unique on users).
+    const byEmail = await this.findUserByEmail(email);
+    if (byEmail) {
       const user = await this.addRoleToExistingUser(
-        existing,
+        byEmail,
         { ...input, email },
         membershipRole,
       );
       const session = await this.login(email, input.password, legacyHint);
       return { session, user };
+    }
+
+    const phoneOwner = await this.prisma.user.findFirst({
+      where: { phone: input.phone },
+      select: { id: true, email: true },
+    });
+    if (phoneOwner) {
+      throw new ConflictException(
+        'That phone number is already used by another account. Use a different number, or sign in with the email on that account.',
+      );
     }
 
     const names = await buildPersonNameFields(this.prisma, {
@@ -214,6 +221,9 @@ export class AuthService {
   /**
    * Attach another segregated role (client / surveyor / admin) to an existing
    * identity after verifying the password. Profile tables stay separate.
+   *
+   * Conflict only when that role is already on the account. Email match is enough
+   * to add the other workspace — phone does not need to match (still unique overall).
    */
   private async addRoleToExistingUser(
     existing: User,
@@ -221,10 +231,9 @@ export class AuthService {
     membershipRole: MembershipRole,
   ): Promise<AuthenticatedUser> {
     const emailMatch = normalizeEmail(existing.email) === normalizeEmail(input.email);
-    const phoneMatch = existing.phone === input.phone;
-    if (!emailMatch || !phoneMatch) {
+    if (!emailMatch) {
       throw new ConflictException(
-        'That email or phone is already used by another account. Use the same email and phone as your existing account to add this role, or pick different contact details.',
+        'That phone number is already used by another account. Use a different number, or sign in with the email on that account.',
       );
     }
 
@@ -240,6 +249,20 @@ export class AuthService {
     // Keepdev password map in sync when adding roles under AUTH_DEV_MODE.
     if (devAuthEnabled(this.config) && existing.authSubject) {
       rememberDevSignup(normalizeEmail(input.email), input.password, existing.authSubject);
+    }
+
+    // Optional: adopt the phone from this signup if it isn't already taken elsewhere.
+    if (input.phone && input.phone !== existing.phone) {
+      const phoneTaken = await this.prisma.user.findFirst({
+        where: { phone: input.phone, NOT: { id: existing.id } },
+        select: { id: true },
+      });
+      if (!phoneTaken) {
+        await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { phone: input.phone, phoneVerified: false },
+        });
+      }
     }
 
     const refreshed = await this.attachMarketplaceRole(existing.id, membershipRole);
