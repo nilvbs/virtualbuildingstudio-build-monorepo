@@ -1,5 +1,8 @@
-﻿name: Peek Staging Super Admin Email
-on: workflow_dispatch
+﻿name: Peek Staging Admin Account
+
+on:
+  workflow_dispatch:
+
 jobs:
   peek:
     runs-on: ubuntu-latest
@@ -13,6 +16,9 @@ jobs:
           script: |
             set -euo pipefail
             cd /home/ubuntu/BLD/stage
-            # Email only — never print password into CI logs
-            grep -E '^SUPER_ADMIN_EMAIL=' .env | tr -d '\r' || true
-            if grep -qE '^SUPER_ADMIN_PASSWORD=.+' .env; then echo 'SUPER_ADMIN_PASSWORD=SET'; else echo 'SUPER_ADMIN_PASSWORD=UNSET'; fi
+            echo '=== .env super admin keys (password masked) ==='
+            grep -E '^SUPER_ADMIN_' .env | tr -d '\r' | sed -E 's/(PASSWORD=).*/\1***/'
+            echo '=== docker api env ==='
+            docker compose exec -T api printenv 2>/dev/null | grep -E '^SUPER_ADMIN_' | sed -E 's/(PASSWORD=).*/\1***/' || echo 'api env unavailable'
+            echo '=== admin users in db ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT u.email, u.status, ap.staff_level FROM users u JOIN admin_profiles ap ON ap.user_id = u.id ORDER BY ap.staff_level, u.email;" || echo 'db query failed'
