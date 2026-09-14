@@ -49,7 +49,6 @@ import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import { EmailOtpService } from './email/email-otp.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import {
-  isAuth0GrantMisconfigured,
   issueFirstPartySession,
 } from './first-party-session';
 import { hashPassword, verifyPassword } from './password-verifier';
@@ -208,6 +207,8 @@ export class AuthService {
 
     await this.persistPasswordVerifier(user.id, input.password);
 
+    // Prefer Auth0 tokens; if password-realm is off, mint an API session so
+    // Create account never strands the user (same outcome as Google OAuth).
     let session: AuthSession;
     try {
       session = await this.identity.login(email, input.password);
@@ -216,7 +217,6 @@ export class AuthService {
       this.logger.warn(
         `Signup Auth0 login failed for ${identity.subject} (${detail}); issuing first-party session`,
       );
-      // Account + password already exist in Auth0 — never leave the user without a session.
       session = issueFirstPartySession(this.config, {
         subject: identity.subject,
         email,
@@ -337,22 +337,12 @@ export class AuthService {
     try {
       return await this.identity.login(normalizeEmail(user.email), password);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      if (isAuth0GrantMisconfigured(msg) || /unauthorized_client|grant|realm/i.test(msg)) {
-        // Auth0 ROPG blocked — accept local verifier when present, else set it
-        // after Management API already accepted this password on Google→password link.
-        if (verifyPassword(password, user.passwordVerifier)) {
-          if (!user.authSubject) {
-            throw new UnauthorizedException(
-              'Email already registered. Enter the same password as that account to add this role.',
-            );
-          }
-          return issueFirstPartySession(this.config, {
-            subject: user.authSubject,
-            email: normalizeEmail(user.email),
-            emailVerified: user.emailVerified,
-          });
-        }
+      if (user.authSubject && verifyPassword(password, user.passwordVerifier)) {
+        return issueFirstPartySession(this.config, {
+          subject: user.authSubject,
+          email: normalizeEmail(user.email),
+          emailVerified: user.emailVerified,
+        });
       }
       // Remap Auth0's generic "Invalid email or password" — this is add-role, not login.
       throw new UnauthorizedException(
@@ -432,13 +422,13 @@ export class AuthService {
       try {
         session = await this.identity.login(normalized, password);
       } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
+        // Auth0 ROPG may be blocked or flaky — local verifier (stored at signup)
+        // keeps Sign in working the same way Google’s code exchange always does.
         const local = await this.findUserByEmail(normalized);
-        if (
-          isAuth0GrantMisconfigured(detail) &&
-          local?.authSubject &&
-          verifyPassword(password, local.passwordVerifier)
-        ) {
+        if (local?.authSubject && verifyPassword(password, local.passwordVerifier)) {
+          this.logger.warn(
+            `Auth0 login failed for ${normalized}; using first-party session (${err instanceof Error ? err.message : 'error'})`,
+          );
           session = issueFirstPartySession(this.config, {
             subject: local.authSubject,
             email: normalized,

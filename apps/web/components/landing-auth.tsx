@@ -38,7 +38,6 @@ export function LandingAuthOverlay({
   open,
   mode,
   role,
-  created,
   onClose,
   onModeChange,
   onRoleChange,
@@ -47,6 +46,7 @@ export function LandingAuthOverlay({
   open: boolean;
   mode: AuthMode;
   role: WorkspaceRole | null;
+  /** @deprecated Sessions are issued on signup; kept for URL back-compat. */
   created?: boolean;
   onClose: () => void;
   onModeChange: (mode: AuthMode, opts?: { created?: boolean; role?: WorkspaceRole }) => void;
@@ -215,18 +215,7 @@ export function LandingAuthOverlay({
       setSignupPhone(defaultPhoneInput());
       router.push('/onboarding');
     } catch (err) {
-      const msg = errorMessage(err);
-      // Account may already exist after Auth0 create succeeded but ROPG failed —
-      // nudge the user onto Sign in with email prefilled instead of looking stuck.
-      if (/account was created|automatic sign-in/i.test(msg)) {
-        setLoginEmail(signup.email);
-        setLoginPassword(signup.password);
-        setLoginError(msg);
-        onModeChange('login');
-        setSignupError(null);
-      } else {
-        setSignupError(msg);
-      }
+      setSignupError(errorMessage(err));
     } finally {
       setSignupBusy(false);
     }
@@ -431,12 +420,6 @@ export function LandingAuthOverlay({
                           <div className="alert info">
                             <Info size={17} />
                             <span>Dev mode: prefilled with the fixed test account.</span>
-                          </div>
-                        )}
-                        {(created || signup.email) && !loginError && (
-                          <div className="alert success">
-                            <Info size={17} />
-                            <span>Account ready — sign in to continue.</span>
                           </div>
                         )}
                         {loginError && (

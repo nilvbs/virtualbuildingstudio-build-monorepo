@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  OnModuleInit,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -19,12 +20,19 @@ import type {
   SocialIdentity,
 } from './identity-provider';
 import {
+  isAuth0GrantMisconfigured,
   issueFirstPartySession,
 } from '../first-party-session';
 
 export const AUTH_PROVIDER_NAME = 'auth0';
 /** Auth provider label stored for accounts created through Google. */
 export const GOOGLE_PROVIDER_NAME = 'google-oauth2';
+
+/** Grants required for email/password signup + login (same app Google already uses). */
+const PASSWORD_GRANTS = [
+  'password',
+  'http://auth0.com/oauth/grant-type/password-realm',
+] as const;
 
 interface Auth0IdToken {
   sub?: string;
@@ -49,12 +57,31 @@ function decodeJwtPayload(token: string): Auth0IdToken {
 }
 
 @Injectable()
-export class Auth0IdentityProvider implements IdentityProvider {
+export class Auth0IdentityProvider implements IdentityProvider, OnModuleInit {
   private readonly logger = new Logger(Auth0IdentityProvider.name);
   private authClient?: AuthenticationClient;
   private mgmtClient?: ManagementClient;
+  private grantsEnsured = false;
+  private grantsOk = false;
 
   constructor(private readonly config: ConfigService) {}
+
+  /**
+   * Best-effort: enable Password + Password Realm on the Auth0 app so form
+   * signup can get tokens the same way Google uses Authorization Code.
+   * Never blocks boot — first-party sessions cover failures.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      if (!this.config.get<string>('AUTH0_DOMAIN')?.trim()) return;
+      if (!this.config.get<string>('AUTH0_MGMT_CLIENT_ID')?.trim()) return;
+      await this.ensurePasswordGrants();
+    } catch (err) {
+      this.logger.warn(
+        `Auth0 password-grant bootstrap skipped: ${(err as Error).message}`,
+      );
+    }
+  }
 
   private get domain(): string {
     return this.requireConfig('AUTH0_DOMAIN');
@@ -96,6 +123,61 @@ export class Auth0IdentityProvider implements IdentityProvider {
       });
     }
     return this.mgmtClient;
+  }
+
+  /**
+   * Ensure the Auth0 application allows Resource Owner Password Grant.
+   * Returns true when grants are present (already or after patch).
+   */
+  async ensurePasswordGrants(): Promise<boolean> {
+    if (this.grantsOk) return true;
+    if (this.grantsEnsured) return this.grantsOk;
+    this.grantsEnsured = true;
+
+    const clientId = this.requireConfig('AUTH0_CLIENT_ID');
+    try {
+      const { data: app } = await this.mgmt().clients.get({ client_id: clientId });
+      const before = [...(app.grant_types ?? [])];
+      const after = [
+        ...new Set([...before, ...PASSWORD_GRANTS, 'refresh_token', 'authorization_code']),
+      ];
+      const missing = PASSWORD_GRANTS.filter((g) => !before.includes(g));
+      if (missing.length === 0) {
+        this.grantsOk = true;
+        this.logger.log('Auth0 password grants already enabled');
+        return true;
+      }
+
+      await this.mgmt().clients.update({ client_id: clientId }, { grant_types: after });
+      this.grantsOk = true;
+      this.logger.log(
+        `Enabled Auth0 grant(s) on app ${clientId.slice(0, 8)}…: ${missing.join(', ')}`,
+      );
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `Could not enable Auth0 password grants (need update:clients on M2M): ${(err as Error).message}`,
+      );
+      this.grantsOk = false;
+      return false;
+    }
+  }
+
+  private async passwordGrant(email: string, password: string): Promise<AuthSession> {
+    const { data } = await this.auth().oauth.passwordGrant({
+      username: email,
+      password,
+      realm: this.connection,
+      audience: this.audience,
+      scope: 'openid profile email offline_access',
+    });
+    return {
+      accessToken: data.access_token,
+      idToken: data.id_token,
+      refreshToken: data.refresh_token,
+      tokenType: data.token_type ?? 'Bearer',
+      expiresIn: data.expires_in,
+    };
   }
 
   async createIdentity(input: CreateIdentityInput): Promise<CreatedIdentity> {
@@ -275,33 +357,36 @@ export class Auth0IdentityProvider implements IdentityProvider {
 
   async login(email: string, password: string): Promise<AuthSession> {
     try {
-      const { data } = await this.auth().oauth.passwordGrant({
-        username: email,
-        password,
-        realm: this.connection,
-        audience: this.audience,
-        scope: 'openid profile email offline_access',
-      });
-      return {
-        accessToken: data.access_token,
-        idToken: data.id_token,
-        refreshToken: data.refresh_token,
-        tokenType: data.token_type ?? 'Bearer',
-        expiresIn: data.expires_in,
-      };
+      return await this.passwordGrant(email, password);
     } catch (err) {
-      const status = (err as { statusCode?: number }).statusCode;
       const detail = auth0ErrorMessage(err);
-      if (status === 401 || status === 403) {
-        // Surface Auth0's reason when Password Realm / ROPG is misconfigured.
-        if (/unauthorized_client|grant|realm|password/i.test(detail)) {
-          throw new UnauthorizedException(detail);
+      // If Password Realm is off, try enabling it once then retry — matches Google’s
+      // “just works” path when Management API has update:clients.
+      if (isAuth0GrantMisconfigured(detail)) {
+        const enabled = await this.ensurePasswordGrants();
+        if (enabled) {
+          try {
+            return await this.passwordGrant(email, password);
+          } catch (retryErr) {
+            return this.mapLoginError(retryErr);
+          }
         }
-        throw new UnauthorizedException('Invalid email or password');
       }
-      this.logger.error(`Auth0 login failed: ${detail}`, err as Error);
-      throw err;
+      return this.mapLoginError(err);
     }
+  }
+
+  private mapLoginError(err: unknown): never {
+    const status = (err as { statusCode?: number }).statusCode;
+    const detail = auth0ErrorMessage(err);
+    if (status === 401 || status === 403) {
+      if (/unauthorized_client|grant|realm|password/i.test(detail)) {
+        throw new UnauthorizedException(detail);
+      }
+      throw new UnauthorizedException('Invalid email or password');
+    }
+    this.logger.error(`Auth0 login failed: ${detail}`, err as Error);
+    throw err instanceof Error ? err : new UnauthorizedException(detail);
   }
 
   async requestPasswordReset(email: string): Promise<void> {
