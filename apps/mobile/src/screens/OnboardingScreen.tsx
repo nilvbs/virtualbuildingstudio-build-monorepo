@@ -39,6 +39,7 @@ import {
   type PhoneInputValue,
 } from '../lib/country-codes';
 import { AlertBox, Button, Field } from '../components/ui';
+import { OtpInput } from '../components/OtpInput';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
@@ -421,20 +422,21 @@ export function OnboardingScreen({ navigation }: Props) {
           />
         ) : (
           <View style={{ gap: 10 }}>
-            <TextInput
-              style={styles.codeInput}
+            <OtpInput
               value={phoneCode}
-              onChangeText={setPhoneCode}
-              keyboardType="number-pad"
-              placeholder="SMS verification code"
-              placeholderTextColor={colors.faint}
-              underlineColorAndroid="transparent"
-              maxLength={6}
+              onChange={setPhoneCode}
+              disabled={busy === 'phone'}
+              autoFocus
+              label="SMS verification code"
+              onComplete={(code) => {
+                if (busy === 'phone') return;
+                void run('phone', () => api.verifyPhone(code));
+              }}
             />
             <Button
               label={busy === 'phone' ? 'Verifying…' : 'Verify mobile number'}
               busy={busy === 'phone'}
-              disabled={!phoneCode.trim()}
+              disabled={phoneCode.replace(/\D/g, '').length < 6}
               onPress={() => void run('phone', () => api.verifyPhone(phoneCode))}
             />
             <Button

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CheckCircle2, Phone } from 'lucide-react';
+import { OtpInput } from './otp-input';
 import {
   PhoneInput,
   defaultPhoneInput,
@@ -103,18 +104,21 @@ export function OnboardingPhoneVerify({
       ) : (
         <div className="onboarding-otp-stack">
           {sendInfo ? <p className="onboarding-hint success">{sendInfo}</p> : null}
-          <input
-            className="input onboarding-input"
+          <OtpInput
             value={phoneCode}
-            onChange={(e) => onPhoneCodeChange(e.target.value)}
-            placeholder="SMS verification code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
+            onChange={onPhoneCodeChange}
+            disabled={busy === 'phone'}
+            autoFocus
+            label="SMS verification code"
+            onComplete={() => {
+              if (busy === 'phone') return;
+              void onVerify();
+            }}
           />
           <button
             type="button"
             className="btn block"
-            disabled={busy === 'phone' || !phoneCode.trim()}
+            disabled={busy === 'phone' || phoneCode.replace(/\D/g, '').length < 6}
             onClick={() => void onVerify()}
           >
             {busy === 'phone' ? 'Verifying…' : 'Verify mobile number'}
