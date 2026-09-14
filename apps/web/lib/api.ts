@@ -21,7 +21,7 @@ export function errorMessage(err: unknown): string {
     if (Array.isArray(msg)) return msg.join(', ');
     if (typeof msg === 'string' && msg !== 'Unauthorized') {
       if (/^validation failed$/i.test(msg.trim())) {
-        return 'Password does not meet the requirements. Use 8+ characters with upper, lower, a number, and a symbol.';
+        return 'Check your details and try again.';
       }
       return msg;
     }

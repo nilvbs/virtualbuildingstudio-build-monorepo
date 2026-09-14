@@ -104,7 +104,8 @@ export type SignupInput = z.infer<typeof signupSchema>;
 
 export const loginSchema = z.object({
   email: emailSchema,
-  password: passwordSchema,
+  /** Login must accept existing passwords — do not enforce signup complexity here. */
+  password: z.string().min(1, 'Password is required').max(128),
   /**
    * Marketplace login must pass `client` or `surveyor`.
    * Staff portal (`/build/admin`) omits this and requires an admin membership.
