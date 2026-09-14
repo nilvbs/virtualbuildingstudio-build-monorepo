@@ -118,13 +118,15 @@ export class AuthService {
     // Phone-only hits a *different* email → block (phone stays unique on users).
     const byEmail = await this.findUserByEmail(email);
     if (byEmail) {
-      const user = await this.addRoleToExistingUser(
+      const { user, session } = await this.addRoleToExistingUser(
         byEmail,
         { ...input, email },
         membershipRole,
       );
-      const session = await this.login(email, input.password, legacyHint);
-      return { session, user };
+      return {
+        session: { ...session, activeRole: legacyHint },
+        user,
+      };
     }
 
     const phoneOwner = await this.prisma.user.findFirst({
@@ -229,7 +231,7 @@ export class AuthService {
     existing: User,
     input: SignupInput,
     membershipRole: MembershipRole,
-  ): Promise<AuthenticatedUser> {
+  ): Promise<{ user: AuthenticatedUser; session: AuthSession }> {
     const emailMatch = normalizeEmail(existing.email) === normalizeEmail(input.email);
     if (!emailMatch) {
       throw new ConflictException(
@@ -244,7 +246,7 @@ export class AuthService {
       );
     }
 
-    await this.assertPasswordForUser(existing, input.password);
+    const session = await this.assertPasswordForUser(existing, input.password);
 
     // Keepdev password map in sync when adding roles under AUTH_DEV_MODE.
     if (devAuthEnabled(this.config) && existing.authSubject) {
@@ -267,46 +269,66 @@ export class AuthService {
 
     const refreshed = await this.attachMarketplaceRole(existing.id, membershipRole);
     const next = await listMemberships(this.prisma, existing.id);
-    return this.hydrateUser(refreshed, next.includes('admin') ? ['admin'] : []);
+    const user = await this.hydrateUser(refreshed, next.includes('admin') ? ['admin'] : []);
+    return { user, session };
   }
 
-  private async assertPasswordForUser(user: User, password: string): Promise<void> {
+  private async assertPasswordForUser(user: User, password: string): Promise<AuthSession> {
     // Google-only identities have no DB password yet — enable password sign-in
     // (Auth0 DB identity + link) so the user can add roles via Create account too.
     if (user.authProvider === GOOGLE_PROVIDER_NAME) {
       if (devAuthEnabled(this.config)) {
         if (user.authSubject) {
           rememberDevSignup(normalizeEmail(user.email), password, user.authSubject);
+          return {
+            accessToken: issueDevUserToken(user.authSubject),
+            tokenType: 'Bearer',
+            expiresIn: 60 * 60 * 24,
+          };
         }
-        return;
+        throw new UnauthorizedException('This Google account is missing an identity link.');
       }
       if (!user.authSubject) {
         throw new UnauthorizedException('This Google account is missing an identity link.');
       }
-      await this.identity.ensurePasswordCredential({
+      return this.identity.ensurePasswordCredential({
         email: normalizeEmail(user.email),
         password,
         primarySubject: user.authSubject,
       });
-      return;
     }
 
     if (devAuthEnabled(this.config)) {
-      if (normalizeEmail(user.email) === DEV_EMAIL && password === DEV_PASSWORD) return;
+      if (normalizeEmail(user.email) === DEV_EMAIL && password === DEV_PASSWORD) {
+        await this.ensureDevUser();
+        return {
+          accessToken: DEV_ACCESS_TOKEN,
+          tokenType: 'Bearer',
+          expiresIn: 60 * 60 * 24,
+        };
+      }
       const local = findDevSignup(user.email);
       if (local) {
-        if (local.password === password) return;
-        throw new UnauthorizedException(
-          'Email already registered. Enter the same password as that account to add this role.',
-        );
+        if (local.password !== password) {
+          throw new UnauthorizedException(
+            'Email already registered. Enter the same password as that account to add this role.',
+          );
+        }
+        return {
+          accessToken: issueDevUserToken(local.subject),
+          tokenType: 'Bearer',
+          expiresIn: 60 * 60 * 24,
+        };
       }
-      // Dev password map clears on API restart — re-bind without calling Auth0.
-      await this.loginLocalDevUser(user.email, password);
-      return;
+      return this.loginLocalDevUser(user.email, password);
     }
     try {
-      await this.identity.login(normalizeEmail(user.email), password);
-    } catch {
+      return await this.identity.login(normalizeEmail(user.email), password);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (/unauthorized_client|grant|realm/i.test(msg)) {
+        throw new UnauthorizedException(msg);
+      }
       // Remap Auth0's generic "Invalid email or password" — this is add-role, not login.
       throw new UnauthorizedException(
         'Email already registered. Enter the same password as that account to add this role.',

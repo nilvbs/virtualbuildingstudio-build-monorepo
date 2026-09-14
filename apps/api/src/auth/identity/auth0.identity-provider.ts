@@ -125,40 +125,27 @@ export class Auth0IdentityProvider implements IdentityProvider {
    * Google-only (or social) accounts have no DB password. Creating a Username-
    * Password identity and linking it to the primary subject lets password signup
    * / login work alongside Google for the same marketplace user.
+   * Returns a session only after Resource Owner Password Grant succeeds.
    */
   async ensurePasswordCredential(input: {
     email: string;
     password: string;
     primarySubject: string;
-  }): Promise<void> {
+  }): Promise<AuthSession> {
     const email = input.email.trim().toLowerCase();
     const primary = input.primarySubject.trim();
     if (!email || !input.password || !primary) {
       throw new UnauthorizedException('Could not enable password sign-in for this account');
     }
 
-    // Already able to ROPG with this password → nothing to do.
+    // Already able to ROPG with this password → done.
     try {
-      await this.login(email, input.password);
-      return;
+      return await this.login(email, input.password);
     } catch {
       /* continue — may need create / link / password update */
     }
 
-    let dbUserId: string | undefined;
-    try {
-      const { data: byEmail } = await this.mgmt().usersByEmail.getByEmail({ email });
-      const dbRow = (byEmail ?? []).find((u) =>
-        (u.identities ?? []).some(
-          (i) => i.provider === 'auth0' || i.connection === this.connection,
-        ),
-      );
-      dbUserId = dbRow?.user_id ?? undefined;
-    } catch (err) {
-      this.logger.warn(
-        `Auth0 users-by-email lookup failed for ${email}: ${(err as Error).message}`,
-      );
-    }
+    let dbUserId = await this.findDatabaseUserId(email);
 
     if (dbUserId) {
       try {
@@ -169,9 +156,8 @@ export class Auth0IdentityProvider implements IdentityProvider {
           'Could not set a password on this account. Try Sign in with Google, or Forgot password.',
         );
       }
-      // Ensure linked to marketplace primary (idempotent when already linked).
       await this.linkDatabaseIdentity(primary, dbUserId);
-      return;
+      return this.loginAfterPasswordSetup(email, input.password);
     }
 
     try {
@@ -189,21 +175,56 @@ export class Auth0IdentityProvider implements IdentityProvider {
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
       if (status === 409) {
-        // Race: DB user appeared — retry login / update path once.
-        try {
-          await this.login(email, input.password);
-          return;
-        } catch {
-          throw new ConflictException(
-            'An account with this email already exists. Sign in with Google or use Forgot password.',
-          );
+        dbUserId = await this.findDatabaseUserId(email);
+        if (dbUserId) {
+          await this.mgmt().users.update({ id: dbUserId }, { password: input.password });
+          await this.linkDatabaseIdentity(primary, dbUserId);
+          return this.loginAfterPasswordSetup(email, input.password);
         }
+        throw new ConflictException(
+          'An account with this email already exists. Sign in with Google or use Forgot password.',
+        );
       }
       this.logger.error('Failed to create Auth0 password identity', err as Error);
       throw err;
     }
 
     await this.linkDatabaseIdentity(primary, dbUserId);
+    return this.loginAfterPasswordSetup(email, input.password);
+  }
+
+  /** Prefer the auth0| user id, not the Google primary row from users-by-email. */
+  private async findDatabaseUserId(email: string): Promise<string | undefined> {
+    try {
+      const { data: byEmail } = await this.mgmt().usersByEmail.getByEmail({ email });
+      for (const u of byEmail ?? []) {
+        if (u.user_id?.startsWith('auth0|')) return u.user_id;
+        const auth0Identity = (u.identities ?? []).find(
+          (i) => i.provider === 'auth0' || i.connection === this.connection,
+        );
+        if (auth0Identity?.user_id) {
+          const raw = String(auth0Identity.user_id);
+          return raw.startsWith('auth0|') ? raw : `auth0|${raw}`;
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Auth0 users-by-email lookup failed for ${email}: ${(err as Error).message}`,
+      );
+    }
+    return undefined;
+  }
+
+  private async loginAfterPasswordSetup(email: string, password: string): Promise<AuthSession> {
+    try {
+      return await this.login(email, password);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Password login still failing after setup for ${email}: ${detail}`);
+      throw new UnauthorizedException(
+        'Password was saved but sign-in failed. Confirm Auth0 Password + Password Realm grants are enabled for this app, then try Sign in with that password.',
+      );
+    }
   }
 
   private async linkDatabaseIdentity(primarySubject: string, dbUserId: string): Promise<void> {
@@ -256,10 +277,15 @@ export class Auth0IdentityProvider implements IdentityProvider {
       };
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
+      const detail = auth0ErrorMessage(err);
       if (status === 401 || status === 403) {
+        // Surface Auth0's reason when Password Realm / ROPG is misconfigured.
+        if (/unauthorized_client|grant|realm|password/i.test(detail)) {
+          throw new UnauthorizedException(detail);
+        }
         throw new UnauthorizedException('Invalid email or password');
       }
-      this.logger.error('Auth0 login failed', err as Error);
+      this.logger.error(`Auth0 login failed: ${detail}`, err as Error);
       throw err;
     }
   }

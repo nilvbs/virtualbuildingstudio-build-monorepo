@@ -61,13 +61,14 @@ export interface IdentityProvider {
   /**
    * Ensure the email can sign in with a database password (creates/links Auth0
    * DB credentials when the account was previously Google-only).
+   * Resolves with a usable session after password grant succeeds.
    */
   ensurePasswordCredential(input: {
     email: string;
     password: string;
     /** Existing marketplace auth subject (e.g. google-oauth2|…). */
     primarySubject: string;
-  }): Promise<void>;
+  }): Promise<AuthSession>;
   /**
    * Trigger the provider's "forgot password" email for a database user.
    * Always resolves when the email is absent (provider anti-enumeration).
