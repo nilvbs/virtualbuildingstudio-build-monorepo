@@ -49,6 +49,7 @@ import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import { EmailOtpService } from './email/email-otp.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import {
+  isAuth0GrantMisconfigured,
   issueFirstPartySession,
 } from './first-party-session';
 import { hashPassword, verifyPassword } from './password-verifier';
@@ -422,18 +423,14 @@ export class AuthService {
       try {
         session = await this.identity.login(normalized, password);
       } catch (err) {
-        // Auth0 ROPG may be blocked or flaky — local verifier (stored at signup)
-        // keeps Sign in working the same way Google’s code exchange always does.
+        const detail = err instanceof Error ? err.message : String(err);
         const local = await this.findUserByEmail(normalized);
-        if (local?.authSubject && verifyPassword(password, local.passwordVerifier)) {
-          this.logger.warn(
-            `Auth0 login failed for ${normalized}; using first-party session (${err instanceof Error ? err.message : 'error'})`,
-          );
-          session = issueFirstPartySession(this.config, {
-            subject: local.authSubject,
-            email: normalized,
-            emailVerified: local.emailVerified,
-          });
+        const localSession = await this.tryLocalPasswordSession(local, password, detail);
+        if (localSession) {
+          session = localSession;
+        } else if (isAuth0GrantMisconfigured(detail)) {
+          // Never surface Auth0 grant misconfig to the login form.
+          throw new UnauthorizedException('Invalid email or password');
         } else if (err instanceof UnauthorizedException) {
           throw err;
         } else {
@@ -513,6 +510,50 @@ export class AuthService {
         `Failed to store password verifier for ${userId}: ${(err as Error).message}`,
       );
     }
+  }
+
+  /**
+   * When Auth0 password-realm is blocked, accept the local verifier — or the
+   * configured SUPER_ADMIN_* credentials for the bootstrap staff account.
+   */
+  private async tryLocalPasswordSession(
+    user: User | null,
+    password: string,
+    auth0Detail: string,
+  ): Promise<AuthSession | null> {
+    if (!user?.authSubject) return null;
+
+    if (verifyPassword(password, user.passwordVerifier)) {
+      this.logger.warn(
+        `Auth0 login failed for ${user.email}; using first-party session (${auth0Detail})`,
+      );
+      return issueFirstPartySession(this.config, {
+        subject: user.authSubject,
+        email: normalizeEmail(user.email),
+        emailVerified: user.emailVerified,
+      });
+    }
+
+    const superEmail = normalizeEmail(this.config.get<string>('SUPER_ADMIN_EMAIL') ?? '');
+    const superPassword = this.config.get<string>('SUPER_ADMIN_PASSWORD') ?? '';
+    if (
+      superEmail &&
+      superPassword &&
+      normalizeEmail(user.email) === superEmail &&
+      password === superPassword
+    ) {
+      this.logger.warn(
+        `Auth0 login failed for super admin; syncing verifier and issuing first-party session`,
+      );
+      await this.persistPasswordVerifier(user.id, password);
+      return issueFirstPartySession(this.config, {
+        subject: user.authSubject,
+        email: superEmail,
+        emailVerified: true,
+      });
+    }
+
+    return null;
   }
 
   /** Case-insensitive email lookup; rewrites legacy mixed-case rows to lowercase. */
