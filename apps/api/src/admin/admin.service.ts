@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type Match as MatchRow } from '@prisma/client';
@@ -41,6 +42,7 @@ import type {
   AdminProjectsQuery,
   AdminSurveyorQuery,
   AdminUsersQuery,
+  AdminVerifyContactInput,
   CreateMatchInput,
   CreateStaffAdminInput,
   UpdateAdminUserInput,
@@ -64,6 +66,7 @@ import {
 import { ensureMembership } from '../auth/memberships';
 import { StaffContextService } from '../auth/staff-context.service';
 import { buildPersonNameFields } from '../auth/username';
+import { verifyPassword } from '../auth/password-verifier';
 import { AutoMatchService } from '../matching/auto-match.service';
 import { addWorkingHours } from '../matching/working-hours';
 import { ActivityService } from '../activity/activity.service';
@@ -958,6 +961,45 @@ export class AdminService {
     }
   }
 
+  /**
+   * Super admin marks a user's email or phone as verified after re-entering
+   * their own password (so the action can't be done from a borrowed session alone).
+   */
+  async verifyUserContact(
+    actorSubject: string,
+    userId: string,
+    input: AdminVerifyContactInput,
+  ): Promise<AdminUserDetail> {
+    await this.requireSuperAdmin(actorSubject);
+    await this.assertActorPassword(actorSubject, input.password);
+
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, emailVerified: true, phoneVerified: true },
+    });
+    if (!existing) throw new NotFoundException('User not found');
+
+    if (input.channel === 'email') {
+      if (existing.emailVerified) {
+        throw new BadRequestException('Email is already verified');
+      }
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { emailVerified: true },
+      });
+    } else {
+      if (existing.phoneVerified) {
+        throw new BadRequestException('Phone is already verified');
+      }
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { phoneVerified: true },
+      });
+    }
+
+    return this.getUser(userId);
+  }
+
   private toAdminUserDto(u: {
     id: string;
     fullName: string;
@@ -1064,6 +1106,33 @@ export class AdminService {
     const ctx = await this.staffContext.getBySubject(subject);
     if (!ctx || ctx.staffLevel !== 'super_admin') {
       throw new ForbiddenException('Super admin access required');
+    }
+  }
+
+  /** Confirm the signed-in staff member knows their password before sensitive actions. */
+  private async assertActorPassword(subject: string, password: string): Promise<void> {
+    const user = await this.prisma.user.findFirst({
+      where: { authSubject: subject },
+    });
+    if (!user) {
+      throw new UnauthorizedException('Could not verify your staff account.');
+    }
+
+    const email = normalizeEmail(user.email);
+    const superEmail = normalizeEmail(this.config.get<string>('SUPER_ADMIN_EMAIL') ?? '');
+    const superPassword = this.config.get<string>('SUPER_ADMIN_PASSWORD') ?? '';
+    if (superEmail && superPassword && email === superEmail && password === superPassword) {
+      return;
+    }
+
+    try {
+      await this.identity.login(email, password);
+      return;
+    } catch {
+      if (verifyPassword(password, user.passwordVerifier)) return;
+      throw new UnauthorizedException(
+        'Incorrect password. Enter your super admin password to confirm this action.',
+      );
     }
   }
 

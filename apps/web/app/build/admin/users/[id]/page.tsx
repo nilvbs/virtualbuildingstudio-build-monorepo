@@ -94,6 +94,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [canManage, setCanManage] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [verifyChannel, setVerifyChannel] = useState<'email' | 'phone' | null>(null);
+  const [verifyPassword, setVerifyPassword] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   async function load() {
     try {
@@ -115,6 +119,44 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   useEffect(() => {
     void load();
   }, [id, router]);
+
+  useEffect(() => {
+    void api
+      .me()
+      .then((me) => {
+        setIsSuperAdmin(me.staffLevel === 'super_admin');
+        setCanManage(
+          me.staffLevel === 'super_admin' || Boolean(me.permissions?.includes('users:manage')),
+        );
+      })
+      .catch(() => {
+        /* detail call still gates access */
+      });
+  }, []);
+
+  async function onVerifyContact() {
+    if (!user || !verifyChannel) return;
+    if (!verifyPassword.trim()) {
+      setError('Enter your super admin password to confirm.');
+      return;
+    }
+    setVerifying(true);
+    setError(null);
+    try {
+      const updated = await api.verifyAdminUserContact(user.id, {
+        channel: verifyChannel,
+        password: verifyPassword,
+      });
+      setUser(updated);
+      setForm(formFromUser(updated));
+      setVerifyChannel(null);
+      setVerifyPassword('');
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setVerifying(false);
+    }
+  }
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -253,22 +295,95 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
       {error && <div className="alert error">{error}</div>}
 
+      {verifyChannel ? (
+        <section className="admin-dossier-card" style={{ marginBottom: 16 }}>
+          <h2>Confirm {verifyChannel} verification</h2>
+          <p className="admin-dossier-sub" style={{ marginBottom: 12 }}>
+            Enter your super admin password to mark this user&apos;s {verifyChannel} as verified.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+            <label style={{ flex: '1 1 220px' }}>
+              <span className="label">Your password</span>
+              <input
+                type="password"
+                className="input"
+                autoComplete="current-password"
+                value={verifyPassword}
+                onChange={(e) => setVerifyPassword(e.target.value)}
+                placeholder="Super admin password"
+              />
+            </label>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={verifying}
+              onClick={() => void onVerifyContact()}
+            >
+              {verifying ? 'Verifying…' : `Verify ${verifyChannel}`}
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={verifying}
+              onClick={() => {
+                setVerifyChannel(null);
+                setVerifyPassword('');
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <div className="admin-dossier-grid">
         <section className="admin-dossier-card">
           <h2>Account snapshot</h2>
           <dl className="admin-dossier-dl">
             <div>
               <dt>Email</dt>
-              <dd>
+              <dd style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 <Mail size={13} aria-hidden /> {user.email}
-                {user.emailVerified ? <span className="admin-dossier-ok">Verified</span> : null}
+                {user.emailVerified ? (
+                  <span className="admin-dossier-ok">Verified</span>
+                ) : isSuperAdmin ? (
+                  <button
+                    type="button"
+                    className="btn secondary sm"
+                    onClick={() => {
+                      setVerifyChannel('email');
+                      setVerifyPassword('');
+                      setError(null);
+                    }}
+                  >
+                    Verify email
+                  </button>
+                ) : (
+                  <span style={{ opacity: 0.7 }}>Unverified</span>
+                )}
               </dd>
             </div>
             <div>
               <dt>Phone</dt>
-              <dd>
+              <dd style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 <Phone size={13} aria-hidden /> {user.phone}
-                {user.phoneVerified ? <span className="admin-dossier-ok">Verified</span> : null}
+                {user.phoneVerified ? (
+                  <span className="admin-dossier-ok">Verified</span>
+                ) : isSuperAdmin ? (
+                  <button
+                    type="button"
+                    className="btn secondary sm"
+                    onClick={() => {
+                      setVerifyChannel('phone');
+                      setVerifyPassword('');
+                      setError(null);
+                    }}
+                  >
+                    Verify phone
+                  </button>
+                ) : (
+                  <span style={{ opacity: 0.7 }}>Unverified</span>
+                )}
               </dd>
             </div>
             <div>

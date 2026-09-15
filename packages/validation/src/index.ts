@@ -387,6 +387,14 @@ export const updateAdminUserSchema = z
   });
 export type UpdateAdminUserInput = z.infer<typeof updateAdminUserSchema>;
 
+/** Super-admin confirmation to mark a user's email or phone verified. */
+export const adminVerifyContactSchema = z.object({
+  channel: z.enum(['email', 'phone']),
+  /** Acting super admin's own password (re-auth). */
+  password: z.string().min(1).max(200),
+});
+export type AdminVerifyContactInput = z.infer<typeof adminVerifyContactSchema>;
+
 /** Date / location filters for the admin operations overview. */
 export const adminOverviewQuerySchema = z.object({
   from: z

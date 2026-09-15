@@ -556,6 +556,14 @@ export class SurveyLinkClient {
     await this.request<void>('DELETE', `/admin/users/${id}`);
   }
 
+  /** Super admin only — re-auth with password, then mark email or phone verified. */
+  async verifyAdminUserContact(
+    id: string,
+    body: { channel: 'email' | 'phone'; password: string },
+  ): Promise<AdminUserDetail> {
+    return this.request<AdminUserDetail>('POST', `/admin/users/${id}/verify-contact`, body);
+  }
+
   async listAdminOpenProjects(query: AdminProjectsQueryBody = {}): Promise<AdminQueueProject[]> {
     const qs = new URLSearchParams();
     if (query.clientId) qs.set('clientId', query.clientId);

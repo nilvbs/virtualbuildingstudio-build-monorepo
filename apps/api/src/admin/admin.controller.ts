@@ -36,10 +36,12 @@ import {
   updateMatchSchema,
   updateProjectStatusSchema,
   updateStaffAdminSchema,
+  adminVerifyContactSchema,
   type AdminOverviewQuery,
   type AdminProjectsQuery,
   type AdminSurveyorQuery,
   type AdminUsersQuery,
+  type AdminVerifyContactInput,
   type CreateMatchInput,
   type CreateStaffAdminInput,
   type UpdateAdminUserInput,
@@ -115,6 +117,16 @@ export class AdminController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     await this.admin.deleteUser(principal.sub, id);
+  }
+
+  @Post('users/:id/verify-contact')
+  @RequirePermissions('users:manage')
+  verifyUserContact(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(adminVerifyContactSchema)) body: AdminVerifyContactInput,
+  ): Promise<AdminUserDetail> {
+    return this.admin.verifyUserContact(principal.sub, id, body);
   }
 
   @Get('projects')

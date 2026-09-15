@@ -1,0 +1,151 @@
+name: Sync Staging Auth0 Users
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Import Auth0 identities missing from Postgres
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/BLD/stage
+            eval "$(grep -E '^(AUTH0_DOMAIN|AUTH0_MGMT_CLIENT_ID|AUTH0_MGMT_CLIENT_SECRET)=' .env | tr -d '\r')"
+            TOKEN=$(curl -sS -X POST "https://${AUTH0_DOMAIN}/oauth/token" \
+              -H 'content-type: application/json' \
+              -d "{\"client_id\":\"${AUTH0_MGMT_CLIENT_ID}\",\"client_secret\":\"${AUTH0_MGMT_CLIENT_SECRET}\",\"audience\":\"https://${AUTH0_DOMAIN}/api/v2/\",\"grant_type\":\"client_credentials\"}" \
+              | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+            curl -sS -o /tmp/auth0-users.json \
+              -H "Authorization: Bearer ${TOKEN}" \
+              "https://${AUTH0_DOMAIN}/api/v2/users?per_page=100&page=0&include_totals=true&fields=user_id,email,email_verified,name,given_name,family_name,phone_number,user_metadata,identities,created_at&include_fields=true"
+            python3 - <<'PY'
+            import json, re, subprocess
+
+            def psql(sql: str) -> str:
+                return subprocess.check_output(
+                    ["docker", "exec", "-i", "bld-db", "psql", "-U", "surveylink", "-d", "surveylink", "-At", "-c", sql],
+                    text=True,
+                ).strip()
+
+            raw = open("/tmp/auth0-users.json").read()
+            data = json.loads(raw)
+            users = data["users"] if isinstance(data, dict) and "users" in data else data
+            existing_emails = {
+                e.lower()
+                for e in psql("SELECT lower(email) FROM users").splitlines()
+                if e
+            }
+            existing_subjects = {
+                s for s in psql("SELECT auth_subject FROM users WHERE auth_subject IS NOT NULL").splitlines() if s
+            }
+            used_phones = {p for p in psql("SELECT phone FROM users").splitlines() if p}
+            used_usernames = {u for u in psql("SELECT username FROM users").splitlines() if u}
+
+            phone_seq = 100
+            created = 0
+            skipped = 0
+
+            def esc(s: str) -> str:
+                return s.replace("'", "''")
+
+            def split_name(u):
+                given = (u.get("given_name") or "").strip()
+                family = (u.get("family_name") or "").strip()
+                full = (u.get("name") or "").strip()
+                if given or family:
+                    first = given or "User"
+                    last = family or "Account"
+                elif full:
+                    parts = full.split()
+                    first = parts[0]
+                    last = " ".join(parts[1:]) if len(parts) > 1 else "Account"
+                else:
+                    local = (u.get("email") or "user").split("@")[0]
+                    first = local[:40] or "User"
+                    last = "Account"
+                return first[:80], last[:80], f"{first} {last}".strip()[:160]
+
+            def username_for(first, last, email):
+                base = re.sub(r"[^a-z0-9]+", ".", f"{first}.{last}".lower()).strip(".")
+                if not base or base == ".":
+                    base = re.sub(r"[^a-z0-9]+", ".", (email or "user").split("@")[0].lower()).strip(".") or "user"
+                base = base[:40]
+                candidate = base
+                n = 2
+                while candidate in used_usernames:
+                    candidate = f"{base}.{n}"[:60]
+                    n += 1
+                used_usernames.add(candidate)
+                return candidate
+
+            def allocate_phone(u):
+                global phone_seq
+                meta = u.get("user_metadata") or {}
+                candidates = [
+                    u.get("phone_number"),
+                    meta.get("phone"),
+                    meta.get("phone_number"),
+                ]
+                for c in candidates:
+                    if isinstance(c, str) and re.fullmatch(r"\+[1-9]\d{6,14}", c) and c not in used_phones:
+                        used_phones.add(c)
+                        return c
+                while True:
+                    candidate = f"+1555010{phone_seq:03d}"
+                    phone_seq += 1
+                    if candidate not in used_phones:
+                        used_phones.add(candidate)
+                        return candidate
+
+            for u in users:
+                email = (u.get("email") or "").strip().lower()
+                subject = (u.get("user_id") or "").strip()
+                if not email or not subject:
+                    skipped += 1
+                    continue
+                if email in existing_emails or subject in existing_subjects:
+                    skipped += 1
+                    continue
+
+                first, last, full = split_name(u)
+                username = username_for(first, last, email)
+                phone = allocate_phone(u)
+                email_verified = "true" if u.get("email_verified") else "false"
+                if subject.startswith("google-oauth2|"):
+                    provider = "google-oauth2"
+                else:
+                    provider = "auth0"
+
+                sql = f"""
+                WITH new_user AS (
+                  INSERT INTO users (
+                    full_name, first_name, last_name, username, email, phone,
+                    email_verified, phone_verified, onboarding_step, account_type,
+                    role_hint, status, auth_provider, auth_subject
+                  ) VALUES (
+                    '{esc(full)}', '{esc(first)}', '{esc(last)}', '{esc(username)}',
+                    '{esc(email)}', '{esc(phone)}',
+                    {email_verified}, false, 'select_account_type', 'individual',
+                    'client', 'active', '{esc(provider)}', '{esc(subject)}'
+                  )
+                  RETURNING id
+                )
+                INSERT INTO user_roles (user_id, role)
+                SELECT id, 'client' FROM new_user;
+                """
+                psql(sql)
+                created += 1
+                print(f"CREATED {email} subject={subject} phone={phone} username={username}")
+
+            print(f"DONE created={created} skipped={skipped} auth0_total={len(users)}")
+            print("--- users now ---")
+            print(psql("SELECT email || ' | ' || coalesce(auth_provider,'') || ' | ' || phone FROM users ORDER BY created_at DESC"))
+            PY
