@@ -1,0 +1,57 @@
+name: Debug Staging Users
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Inspect users table vs Auth0
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            echo '=== DB totals ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT count(*) AS users FROM users;"
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT status, count(*) FROM users GROUP BY status ORDER BY 1;"
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT email_verified, phone_verified, count(*) FROM users GROUP BY 1,2 ORDER BY 1,2;"
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT coalesce(r.role,'(none)') AS role, count(DISTINCT u.id) FROM users u LEFT JOIN user_roles r ON r.user_id = u.id GROUP BY 1 ORDER BY 1;"
+            echo '=== All users (newest first) ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c "SELECT u.email, u.status, u.email_verified AS ev, u.phone_verified AS pv, u.onboarding_step, u.auth_provider, u.created_at::timestamptz(0) AS created, coalesce(string_agg(r.role, ',' ORDER BY r.role), '(none)') AS roles FROM users u LEFT JOIN user_roles r ON r.user_id = u.id GROUP BY u.id ORDER BY u.created_at DESC;"
+            echo '=== Auth0 user count (first page) ==='
+            cd /home/ubuntu/BLD/stage
+            eval "$(grep -E '^(AUTH0_DOMAIN|AUTH0_MGMT_CLIENT_ID|AUTH0_MGMT_CLIENT_SECRET)=' .env | tr -d '\r')"
+            TOKEN=$(curl -sS -X POST "https://${AUTH0_DOMAIN}/oauth/token" \
+              -H 'content-type: application/json' \
+              -d "{\"client_id\":\"${AUTH0_MGMT_CLIENT_ID}\",\"client_secret\":\"${AUTH0_MGMT_CLIENT_SECRET}\",\"audience\":\"https://${AUTH0_DOMAIN}/api/v2/\",\"grant_type\":\"client_credentials\"}" \
+              | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))')
+            if [ -z "$TOKEN" ]; then
+              echo 'Auth0 token failed'
+            else
+              curl -sS -D - -o /tmp/auth0-users.json \
+                -H "Authorization: Bearer ${TOKEN}" \
+                "https://${AUTH0_DOMAIN}/api/v2/users?per_page=100&page=0&include_totals=true&fields=email,user_id,created_at,identities&include_fields=true" \
+                | head -n 20
+              python3 - <<'PY'
+            import json
+            raw=open('/tmp/auth0-users.json').read()
+            try:
+              data=json.loads(raw)
+            except Exception as e:
+              print('parse fail', e, raw[:300]); raise SystemExit
+            if isinstance(data, dict) and 'users' in data:
+              users=data['users']; total=data.get('total')
+              print(f"Auth0 total={total} page_len={len(users)}")
+            elif isinstance(data, list):
+              users=data; print(f"Auth0 page_len={len(users)} (no totals)")
+            else:
+              print('unexpected', type(data), str(data)[:300]); raise SystemExit
+            for u in users:
+              print(u.get('email'), u.get('user_id'), u.get('created_at'))
+            PY
+            fi
