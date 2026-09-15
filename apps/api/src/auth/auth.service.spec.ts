@@ -252,6 +252,53 @@ describe('AuthService', () => {
       attachSpy.mockRestore();
       hydrateSpy.mockRestore();
     });
+
+    it('adds a second role when Auth0 password grant is blocked and no local verifier exists', async () => {
+      const existing = makeUser({
+        id: 'existing',
+        authProvider: 'auth0',
+        authSubject: 'auth0|legacy',
+        passwordVerifier: null,
+      });
+      prisma.user.findFirst
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValueOnce(null);
+      prisma.userRole.findMany
+        .mockResolvedValueOnce([{ role: 'client' }])
+        .mockResolvedValueOnce([{ role: 'client' }, { role: 'surveyor' }]);
+      prisma.userRole.upsert.mockResolvedValue({});
+      prisma.user.update.mockResolvedValue(existing);
+      identity.login.mockRejectedValue(
+        new UnauthorizedException("Grant type 'password-realm' not allowed for the client"),
+      );
+      identity.ensurePasswordCredential.mockResolvedValue({
+        accessToken: 'fp-tok',
+        tokenType: 'Bearer',
+        expiresIn: 3600,
+      });
+
+      const attachSpy = jest
+        .spyOn(service as unknown as { attachMarketplaceRole: AuthService['attachMarketplaceRole'] }, 'attachMarketplaceRole')
+        .mockResolvedValue(existing);
+      const hydrateSpy = jest
+        .spyOn(service as unknown as { hydrateUser: AuthService['hydrateUser'] }, 'hydrateUser')
+        .mockResolvedValue({
+          id: 'existing',
+          email: existing.email,
+          roles: ['client', 'surveyor'],
+        } as never);
+
+      const result = await service.signup({ ...signupInput, roleHint: 'surveyor' });
+
+      expect(identity.ensurePasswordCredential).toHaveBeenCalledWith({
+        email: signupInput.email,
+        password: signupInput.password,
+        primarySubject: 'auth0|legacy',
+      });
+      expect(result.session.accessToken).toBe('fp-tok');
+      attachSpy.mockRestore();
+      hydrateSpy.mockRestore();
+    });
   });
 
   describe('verifyPhone', () => {

@@ -335,17 +335,33 @@ export class AuthService {
       }
       return this.loginLocalDevUser(user.email, password);
     }
+
+    const email = normalizeEmail(user.email);
     try {
-      return await this.identity.login(normalizeEmail(user.email), password);
+      return await this.identity.login(email, password);
     } catch (err) {
-      if (user.authSubject && verifyPassword(password, user.passwordVerifier)) {
-        return issueFirstPartySession(this.config, {
-          subject: user.authSubject,
-          email: normalizeEmail(user.email),
-          emailVerified: user.emailVerified,
+      const detail = err instanceof Error ? err.message : String(err);
+
+      // Prefer the local verifier (same as staff / marketplace login fallback).
+      const localSession = await this.tryLocalPasswordSession(user, password, detail);
+      if (localSession) return localSession;
+
+      // Auth0 password-realm is off and this account never got a local verifier
+      // (created before that feature). Re-attach credentials so dual-role signup
+      // can finish instead of dead-ending on a grant Auth0 won't issue.
+      if (isAuth0GrantMisconfigured(detail) && user.authSubject && !user.passwordVerifier) {
+        this.logger.warn(
+          `Add-role Auth0 grant blocked for ${email} with no local verifier; syncing password credential`,
+        );
+        const session = await this.identity.ensurePasswordCredential({
+          email,
+          password,
+          primarySubject: user.authSubject,
         });
+        await this.persistPasswordVerifier(user.id, password);
+        return session;
       }
-      // Remap Auth0's generic "Invalid email or password" — this is add-role, not login.
+
       throw new UnauthorizedException(
         'Email already registered. Enter the same password as that account to add this role.',
       );
