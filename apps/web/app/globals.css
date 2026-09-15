@@ -9249,19 +9249,27 @@ textarea {
 
 /* ===== Live password strength (Create account) ===== */
 .pwd-strength {
-  margin-top: 10px;
+  margin-top: 8px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
+}
+
+.pwd-strength-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .pwd-strength-meter {
+  flex: 1;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
+  min-width: 0;
 }
 
 .pwd-strength-seg {
-  height: 4px;
+  height: 3px;
   border-radius: 999px;
   background: rgba(15, 29, 50, 0.1);
   transition: background 0.2s ease;
@@ -9282,9 +9290,11 @@ textarea {
 
 .pwd-strength-label {
   margin: 0;
-  font-size: 12px;
+  flex-shrink: 0;
+  font-size: 11px;
   font-weight: 600;
   color: #4a5870;
+  white-space: nowrap;
 }
 
 .pwd-strength--weak .pwd-strength-label strong {
@@ -9304,17 +9314,19 @@ textarea {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
 }
 
 .pwd-strength-list li {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 11px;
   font-weight: 550;
-  line-height: 1.3;
+  line-height: 1.2;
   transition: color 0.15s ease;
 }
 

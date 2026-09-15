@@ -5,6 +5,8 @@ import { Check, Circle } from 'lucide-react';
 export type PasswordRule = {
   id: string;
   label: string;
+  /** Compact label for the one-line checklist. */
+  shortLabel: string;
   test: (password: string) => boolean;
 };
 
@@ -13,26 +15,31 @@ export const PASSWORD_RULES: PasswordRule[] = [
   {
     id: 'length',
     label: 'At least 8 characters',
+    shortLabel: '8+',
     test: (p) => p.length >= 8,
   },
   {
     id: 'lower',
     label: 'One lowercase letter',
+    shortLabel: 'a–z',
     test: (p) => /[a-z]/.test(p),
   },
   {
     id: 'upper',
     label: 'One uppercase letter',
+    shortLabel: 'A–Z',
     test: (p) => /[A-Z]/.test(p),
   },
   {
     id: 'number',
     label: 'One number',
+    shortLabel: '0–9',
     test: (p) => /\d/.test(p),
   },
   {
     id: 'special',
     label: 'One symbol (!@#$…)',
+    shortLabel: 'symbol',
     test: (p) => /[^A-Za-z0-9]/.test(p),
   },
 ];
@@ -54,6 +61,7 @@ type Props = {
 
 /**
  * Live password checklist for Create account — updates as the user types.
+ * Kept to ~2 lines: meter + strength, then a compact rule row.
  */
 export function PasswordStrength({ password, showWhenEmpty = false }: Props) {
   if (!password && !showWhenEmpty) return null;
@@ -66,28 +74,30 @@ export function PasswordStrength({ password, showWhenEmpty = false }: Props) {
 
   return (
     <div className={`pwd-strength pwd-strength--${tone}`} aria-live="polite">
-      <div className="pwd-strength-meter" aria-hidden>
-        {PASSWORD_RULES.map((rule, i) => (
-          <span
-            key={rule.id}
-            className={`pwd-strength-seg${i < score ? ' is-on' : ''}`}
-          />
-        ))}
+      <div className="pwd-strength-top">
+        <div className="pwd-strength-meter" aria-hidden>
+          {PASSWORD_RULES.map((rule, i) => (
+            <span
+              key={rule.id}
+              className={`pwd-strength-seg${i < score ? ' is-on' : ''}`}
+            />
+          ))}
+        </div>
+        <p className="pwd-strength-label">
+          Strength: <strong>{password ? label : '—'}</strong>
+        </p>
       </div>
-      <p className="pwd-strength-label">
-        Strength: <strong>{password ? label : '—'}</strong>
-      </p>
-      <ul className="pwd-strength-list">
+      <ul className="pwd-strength-list" aria-label="Password requirements">
         {PASSWORD_RULES.map((rule) => {
           const ok = rule.test(password);
           return (
-            <li key={rule.id} className={ok ? 'is-ok' : 'is-miss'}>
+            <li key={rule.id} className={ok ? 'is-ok' : 'is-miss'} title={rule.label}>
               {ok ? (
-                <Check size={14} strokeWidth={2.5} aria-hidden />
+                <Check size={12} strokeWidth={2.5} aria-hidden />
               ) : (
-                <Circle size={14} strokeWidth={2} aria-hidden />
+                <Circle size={12} strokeWidth={2} aria-hidden />
               )}
-              <span>{rule.label}</span>
+              <span>{rule.shortLabel}</span>
             </li>
           );
         })}
