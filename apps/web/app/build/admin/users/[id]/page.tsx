@@ -18,6 +18,7 @@ import {
 import type { AdminUserDetail } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../../lib/api';
 import { toastError, toastSuccess } from '../../../../../lib/action-toast';
+import { displayPhone, isPlaceholderPhone } from '../../../../../lib/country-codes';
 import { StatusBadge } from '../../../../../components/status';
 import {
   defaultPhoneInput,
@@ -110,7 +111,11 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       const row = await api.getAdminUser(id);
       setUser(row);
       setForm(formFromUser(row));
-      setPhone(phoneInputFromE164(row.phone) ?? defaultPhoneInput());
+      setPhone(
+        isPlaceholderPhone(row.phone)
+          ? defaultPhoneInput()
+          : (phoneInputFromE164(row.phone) ?? defaultPhoneInput()),
+      );
       setForbidden(false);
       setError(null);
     } catch (err) {
@@ -463,10 +468,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
             <div>
               <dt>Phone</dt>
               <dd style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <Phone size={13} aria-hidden /> {user.phone}
-                {user.phoneVerified ? (
+                <Phone size={13} aria-hidden /> {displayPhone(user.phone)}
+                {user.phoneVerified && !isPlaceholderPhone(user.phone) ? (
                   <span className="admin-dossier-ok">Verified</span>
-                ) : isSuperAdmin ? (
+                ) : isSuperAdmin && !isPlaceholderPhone(user.phone) ? (
                   <button
                     type="button"
                     className="btn secondary sm"
@@ -478,6 +483,8 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
                   >
                     Verify phone
                   </button>
+                ) : isPlaceholderPhone(user.phone) ? (
+                  <span style={{ opacity: 0.7 }}>Not set</span>
                 ) : (
                   <span style={{ opacity: 0.7 }}>Unverified</span>
                 )}

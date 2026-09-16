@@ -108,6 +108,16 @@ export function e164ToPhoneInput(phone: string): PhoneInputValue {
   return { countryIso: DEFAULT_COUNTRY_ISO, national: digits };
 }
 
-export function isPlaceholderPhone(phone: string): boolean {
-  return !phone || phone === '+10000000001' || phone === '+1' || phone.length < 8;
+export function isPlaceholderPhone(phone: string | null | undefined): boolean {
+  if (!phone) return true;
+  if (phone === '+10000000001' || phone === '+1') return true;
+  if (phone.startsWith('pending:') || phone.startsWith('clerk:')) return true;
+  // Auth0 orphan sync used reserved +1555010xxx placeholders
+  if (/^\+1555010\d{3}$/.test(phone)) return true;
+  return phone.length < 8;
+}
+
+/** Human-readable phone for admin tables; hides internal placeholders. */
+export function displayPhone(phone: string | null | undefined): string {
+  return isPlaceholderPhone(phone) ? '—' : (phone as string);
 }

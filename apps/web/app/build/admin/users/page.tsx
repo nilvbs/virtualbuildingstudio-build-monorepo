@@ -8,6 +8,7 @@ import { Eye, Loader2, Pencil, Search, ShieldAlert, Trash2, Users, X } from 'luc
 import type { AdminUser, MembershipRole, UserStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 import { toastError, toastSuccess } from '../../../../lib/action-toast';
+import { displayPhone } from '../../../../lib/country-codes';
 import { StatusBadge } from '../../../../components/status';
 
 function initials(name: string) {
@@ -402,7 +403,7 @@ function AdminUsersPageInner() {
                           <span className="admin-users-mono">{u.email}</span>
                         </td>
                         <td>
-                          <span className="admin-users-mono">{u.phone}</span>
+                          <span className="admin-users-mono">{displayPhone(u.phone)}</span>
                         </td>
                         <td>{u.city ?? '—'}</td>
                         <td>
