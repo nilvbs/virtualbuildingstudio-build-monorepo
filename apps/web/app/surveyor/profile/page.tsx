@@ -190,6 +190,7 @@ export default function SurveyorProfilePage() {
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState(0);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [showFieldErrors, setShowFieldErrors] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>('individual');
 
   const [services, setServices] = useState<SurveyService[]>([]);
@@ -294,6 +295,12 @@ export default function SurveyorProfilePage() {
     [stepFill],
   );
 
+  const missingKeys = useMemo(() => new Set(liveCompletion.missing), [liveCompletion.missing]);
+
+  useEffect(() => {
+    if (!stepFill[step]?.incomplete) setShowFieldErrors(false);
+  }, [stepFill, step]);
+
   const canSubmit = services.length > 0 && !busy;
   const currentStep = PROFILE_STEPS[step]!;
   const isLastStep = step === PROFILE_STEPS.length - 1;
@@ -354,6 +361,27 @@ export default function SurveyorProfilePage() {
     travelRef.current = false;
     setStep(clamped);
     setFigureMood(liveCompletion.complete ? 'done' : 'waiting');
+  }
+
+  function scrollToFirstInvalid() {
+    requestAnimationFrame(() => {
+      document
+        .querySelector('.svy-profile-form .is-invalid')
+        ?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+    });
+  }
+
+  /** Continue only advances when the current stage has its required fields. */
+  function tryContinue() {
+    if (stepFill[step]?.incomplete) {
+      setShowFieldErrors(true);
+      setError('Fill the highlighted fields before continuing.');
+      scrollToFirstInvalid();
+      return;
+    }
+    setShowFieldErrors(false);
+    setError(null);
+    goToStep(step + 1);
   }
 
   function onWalkerArrived() {
@@ -589,7 +617,11 @@ export default function SurveyorProfilePage() {
 
   function continueIncompletePortfolio() {
     setShowIncompleteModal(false);
-    if (firstIncompleteStep >= 0) goToStep(firstIncompleteStep);
+    setShowFieldErrors(true);
+    if (firstIncompleteStep >= 0) {
+      goToStep(firstIncompleteStep);
+      window.setTimeout(() => scrollToFirstInvalid(), reduceMotion ? 0 : 350);
+    }
   }
 
   if (loading) {
@@ -681,7 +713,15 @@ export default function SurveyorProfilePage() {
               <button
                 type="button"
                 className={`svy-stepper-item${i === step ? ' is-active' : ''}${fill.complete ? ' is-complete' : ''}${fill.incomplete ? ' is-incomplete' : ''}`}
-                onClick={() => goToStep(i)}
+                onClick={() => {
+                  if (i === step && fill.incomplete) {
+                    setShowFieldErrors(true);
+                    setError('Fill the highlighted fields to complete this stage.');
+                    scrollToFirstInvalid();
+                    return;
+                  }
+                  goToStep(i);
+                }}
                 disabled={figureMood === 'running'}
                 aria-label={
                   fill.incomplete
@@ -933,15 +973,24 @@ export default function SurveyorProfilePage() {
               </div>
             </section>
 
-            <section className="svy-panel svy-panel-side">
+            <section
+              className={`svy-panel svy-panel-side${showFieldErrors && missingKeys.has('availability') ? ' is-invalid' : ''}`}
+            >
               <div className="svy-panel-head">
                 <span className="svy-q-num">3</span>
                 <div>
-                  <h2>Availability</h2>
+                  <h2>
+                    Availability <span className="req">*</span>
+                  </h2>
                   <p>How soon you can start</p>
                 </div>
               </div>
-              <div className="svy-avail">
+              {showFieldErrors && missingKeys.has('availability') ? (
+                <p className="field-error" style={{ marginTop: 0, marginBottom: 10 }}>
+                  Choose your availability
+                </p>
+              ) : null}
+              <div className={`svy-avail${showFieldErrors && missingKeys.has('availability') ? ' is-invalid' : ''}`}>
                 {AVAILABILITY_OPTIONS.map((option) => {
                   const selected = details.availability === option;
                   return (
@@ -1021,29 +1070,42 @@ export default function SurveyorProfilePage() {
                     onChange={(e) => patchDetails({ currency: e.target.value.toUpperCase() })}
                   />
                 </div>
-                <div className="field">
-                  <label htmlFor="hourly">Hourly rate</label>
+                <div
+                  className={`field${showFieldErrors && missingKeys.has('pricing') ? ' is-invalid' : ''}`}
+                >
+                  <label htmlFor="hourly">
+                    Hourly rate <span className="req">*</span>
+                  </label>
                   <div className="svy-money">
                     <span>$</span>
                     <input
                       id="hourly"
                       type="number"
                       min={0}
+                      aria-invalid={showFieldErrors && missingKeys.has('pricing')}
                       value={dollarsFromCents(details.hourlyRateCents)}
                       onChange={(e) =>
                         patchDetails({ hourlyRateCents: centsFromDollars(e.target.value) })
                       }
                     />
                   </div>
+                  {showFieldErrors && missingKeys.has('pricing') ? (
+                    <p className="field-error">Enter an hourly or daily rate</p>
+                  ) : null}
                 </div>
-                <div className="field">
-                  <label htmlFor="dayRate">Daily rate</label>
+                <div
+                  className={`field${showFieldErrors && missingKeys.has('pricing') ? ' is-invalid' : ''}`}
+                >
+                  <label htmlFor="dayRate">
+                    Daily rate <span className="req">*</span>
+                  </label>
                   <div className="svy-money">
                     <span>$</span>
                     <input
                       id="dayRate"
                       type="number"
                       min={0}
+                      aria-invalid={showFieldErrors && missingKeys.has('pricing')}
                       value={dayRate}
                       onChange={(e) => setDayRate(e.target.value)}
                     />
@@ -1126,16 +1188,25 @@ export default function SurveyorProfilePage() {
               </div>
             </section>
 
-            <section className="svy-panel svy-panel-span">
+            <section
+              className={`svy-panel svy-panel-span${showFieldErrors && missingKeys.has('equipment') ? ' is-invalid' : ''}`}
+            >
               <div className="svy-panel-head">
                 <span className="svy-panel-ico">
                   <LordIcon name="tools" size={22} trigger="in" />
                 </span>
                 <div>
-                  <h2>5. Equipment</h2>
+                  <h2>
+                    5. Equipment <span className="req">*</span>
+                  </h2>
                   <p>Select from catalog</p>
                 </div>
               </div>
+              {showFieldErrors && missingKeys.has('equipment') ? (
+                <p className="field-error" style={{ marginTop: 0, marginBottom: 10 }}>
+                  Select at least one piece of equipment
+                </p>
+              ) : null}
               {EQUIPMENT_GROUPS.map((group) => (
                 <div key={group.id} className="svy-group">
                   <h3 className="svy-group-title">{group.label}</h3>
@@ -1316,13 +1387,23 @@ export default function SurveyorProfilePage() {
                 type="button"
                 className={`btn svy-save${services.length > 0 ? ' is-pulse' : ''}`}
                 disabled={figureMood === 'running'}
-                onClick={() => goToStep(step + 1)}
+                onClick={() => tryContinue()}
               >
                 Continue
                 <ArrowRight size={16} />
               </button>
             ) : (
-              <button className="btn svy-save" type="submit" disabled={!canSubmit}>
+              <button
+                className="btn svy-save"
+                type="submit"
+                disabled={!canSubmit}
+                onClick={() => {
+                  if (!liveCompletion.complete) {
+                    setShowFieldErrors(true);
+                    scrollToFirstInvalid();
+                  }
+                }}
+              >
                 {busy ? <span className="spin" /> : <LordIcon name="briefcase" size={20} trigger="in" />}
                 {busy ? 'Saving…' : mode === 'edit' ? 'Save portfolio' : 'Create portfolio'}
               </button>

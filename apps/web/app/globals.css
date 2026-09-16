@@ -5559,6 +5559,38 @@ lord-icon {
   background: #fff;
 }
 
+.svy-profile-form .field.is-invalid .svy-money,
+.svy-profile-form .field.is-invalid input:not(.MuiInputBase-input) {
+  border-color: #dc2626;
+  background: #fff8f8;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.svy-profile-form .field.is-invalid > label {
+  color: #b91c1c;
+}
+
+.svy-profile-form .field-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.svy-panel.is-invalid {
+  box-shadow: inset 0 0 0 2px #fca5a5;
+}
+
+.svy-avail.is-invalid .svy-opt:not(.is-on) {
+  border-color: #fca5a5;
+}
+
+.svy-profile-form .req {
+  color: #dc2626;
+  font-weight: 700;
+}
+
 .svy-panel-ico lord-icon {
   width: 18px !important;
   height: 18px !important;
