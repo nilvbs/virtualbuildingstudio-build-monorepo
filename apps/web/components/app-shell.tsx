@@ -72,18 +72,6 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
     items: [
       { href: '/build/admin/queue', label: 'Overview', icon: 'chart', exact: true },
       {
-        href: '/build/admin/clients',
-        label: 'Clients',
-        icon: 'avatar',
-        requiresPermission: 'clients:view',
-      },
-      {
-        href: '/build/admin/surveyors',
-        label: 'Surveyors',
-        icon: 'account',
-        requiresPermission: 'surveyors:view',
-      },
-      {
         href: '/build/admin/users',
         label: 'Users',
         icon: 'avatar',
@@ -172,20 +160,14 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     if (pathname.startsWith('/build/admin/clients/') && pathname !== '/build/admin/clients') {
       return { label: 'Client profile', sub: 'Personal details and projects' };
     }
-    if (pathname.startsWith('/build/admin/clients')) {
-      return { label: 'Clients', sub: 'Everyone posting survey work' };
-    }
     if (pathname.startsWith('/build/admin/surveyors/') && pathname !== '/build/admin/surveyors') {
       return { label: 'Surveyor profile', sub: 'Portfolio, contact, and map location' };
-    }
-    if (pathname.startsWith('/build/admin/surveyors')) {
-      return { label: 'Surveyors', sub: 'Expert network' };
     }
     if (pathname.startsWith('/build/admin/users/') && pathname !== '/build/admin/users') {
       return { label: 'User profile', sub: 'View and edit account details' };
     }
     if (pathname.startsWith('/build/admin/users')) {
-      return { label: 'Users', sub: 'All accounts — view, edit, or delete' };
+      return { label: 'Users', sub: 'Clients, surveyors, and accounts — filter by role' };
     }
     if (/^\/build\/admin\/projects\/[^/]+/.test(pathname)) {
       return { label: 'Project workspace', sub: 'Status, matches, and assignment' };

@@ -15019,6 +15019,45 @@ a.plain:hover {
   min-width: 980px;
 }
 
+.admin-users-role-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f3f1fb;
+  border: 1px solid #e6e2f5;
+}
+
+.admin-users-role-pill {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #5c5678;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  padding: 7px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  line-height: 1;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.admin-users-role-pill:hover {
+  color: #2a2558;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.admin-users-role-pill.is-on {
+  background: #fff;
+  color: #3f37c9;
+  box-shadow: 0 1px 2px rgba(42, 37, 88, 0.08);
+}
+
 .admin-users-person {
   display: flex;
   align-items: center;

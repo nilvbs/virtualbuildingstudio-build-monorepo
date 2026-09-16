@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, Pencil, Search, ShieldAlert, Trash2, Users } from 'lucide-react';
 import type { AdminUser, MembershipRole, UserStatus } from '@surveylink/types';
@@ -18,6 +18,11 @@ function initials(name: string) {
 function roleLabel(roles: MembershipRole[]) {
   if (roles.length === 0) return '—';
   return roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(' · ');
+}
+
+function roleFromQuery(value: string | null): 'all' | MembershipRole {
+  if (value === 'client' || value === 'surveyor' || value === 'admin') return value;
+  return 'all';
 }
 
 function LoadingState() {
@@ -50,18 +55,52 @@ function LoadingState() {
   );
 }
 
+const ROLE_FILTERS: { id: 'all' | MembershipRole; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'client', label: 'Clients' },
+  { id: 'surveyor', label: 'Surveyors' },
+  { id: 'admin', label: 'Admin' },
+];
+
 export default function AdminUsersPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <AdminUsersPageInner />
+    </Suspense>
+  );
+}
+
+function AdminUsersPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [role, setRole] = useState<'all' | MembershipRole>('all');
+  const [role, setRole] = useState<'all' | MembershipRole>(() =>
+    roleFromQuery(searchParams.get('role')),
+  );
   const [status, setStatus] = useState<'all' | UserStatus>('all');
   const [canManage, setCanManage] = useState(false);
   const [selfId, setSelfId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRole(roleFromQuery(searchParams.get('role')));
+  }, [searchParams]);
+
+  const setRoleFilter = useCallback(
+    (next: 'all' | MembershipRole) => {
+      setRole(next);
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === 'all') params.delete('role');
+      else params.set('role', next);
+      const qs = params.toString();
+      router.replace(qs ? `/build/admin/users?${qs}` : '/build/admin/users');
+    },
+    [router, searchParams],
+  );
 
   const loadUsers = useCallback(() => {
     setLoading(true);
@@ -109,6 +148,15 @@ export default function AdminUsersPage() {
     );
   }, [users, q]);
 
+  const headingLabel =
+    role === 'client'
+      ? 'client'
+      : role === 'surveyor'
+        ? 'surveyor'
+        : role === 'admin'
+          ? 'admin'
+          : 'user';
+
   async function onDelete(u: AdminUser) {
     if (!canManage) return;
     if (u.id === selfId) {
@@ -143,13 +191,26 @@ export default function AdminUsersPage() {
             <h2 className="admin-cli-heading">
               {loading && !users
                 ? 'Loading users…'
-                : `${filtered.length} user${filtered.length === 1 ? '' : 's'}`}
+                : `${filtered.length} ${headingLabel}${filtered.length === 1 ? '' : 's'}`}
             </h2>
             <p className="admin-cli-lede">
-              View accounts, edit details, suspend access, or delete marketplace users.
+              Clients and surveyors in one list — filter by role, then view, edit, or delete.
             </p>
           </div>
           <div className="admin-cli-filters" style={{ flexWrap: 'wrap' }}>
+            <div className="admin-users-role-pills" role="group" aria-label="Filter by role">
+              {ROLE_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`admin-users-role-pill${role === f.id ? ' is-on' : ''}`}
+                  aria-pressed={role === f.id}
+                  onClick={() => setRoleFilter(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
             <label className="admin-cli-search">
               <Search size={15} strokeWidth={2} aria-hidden />
               <input
@@ -160,18 +221,6 @@ export default function AdminUsersPage() {
                 aria-label="Search users"
               />
             </label>
-            <select
-              className="input"
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'all' | MembershipRole)}
-              aria-label="Filter by role"
-              style={{ minWidth: 130 }}
-            >
-              <option value="all">All roles</option>
-              <option value="client">Client</option>
-              <option value="surveyor">Surveyor</option>
-              <option value="admin">Admin</option>
-            </select>
             <select
               className="input"
               value={status}
@@ -247,62 +296,50 @@ export default function AdminUsersPage() {
                             </span>
                             <span className="admin-users-person-text">
                               <strong>{u.fullName}</strong>
-                              <span>@{u.username}</span>
+                              {u.companyName ? <small>{u.companyName}</small> : null}
                             </span>
                           </Link>
                         </td>
                         <td>{roleLabel(u.roles)}</td>
                         <td>
-                          <a href={`mailto:${u.email}`} className="plain admin-users-contact">
-                            {u.email}
-                          </a>
+                          <span className="admin-users-mono">{u.email}</span>
                         </td>
                         <td>
-                          <span className="admin-users-contact">{u.phone}</span>
+                          <span className="admin-users-mono">{u.phone}</span>
                         </td>
-                        <td>{u.city || '—'}</td>
+                        <td>{u.city ?? '—'}</td>
                         <td>
                           <StatusBadge status={u.status} />
                         </td>
-                        <td>
-                          <time dateTime={u.createdAt}>
-                            {new Date(u.createdAt).toLocaleDateString()}
-                          </time>
-                        </td>
+                        <td>{new Date(u.createdAt).toLocaleDateString()}</td>
                         <td>
                           <div className="admin-users-actions">
                             <Link
                               href={`/build/admin/users/${u.id}`}
-                              className="admin-users-action"
+                              className="btn secondary sm"
                               title="View"
-                              aria-label={`View ${u.fullName}`}
                             >
-                              <Eye size={15} strokeWidth={2} />
+                              <Eye size={14} />
                             </Link>
                             <Link
                               href={`/build/admin/users/${u.id}#edit`}
-                              className="admin-users-action"
+                              className="btn secondary sm"
                               title="Edit"
-                              aria-label={`Edit ${u.fullName}`}
                             >
-                              <Pencil size={15} strokeWidth={2} />
+                              <Pencil size={14} />
                             </Link>
-                            <button
-                              type="button"
-                              className="admin-users-action admin-users-action--danger"
-                              title={
-                                canDelete
-                                  ? 'Delete'
-                                  : u.roles.includes('admin')
-                                    ? 'Remove staff access first'
-                                    : 'Delete not allowed'
-                              }
-                              aria-label={`Delete ${u.fullName}`}
-                              disabled={!canDelete || busyId === u.id}
-                              onClick={() => void onDelete(u)}
-                            >
-                              <Trash2 size={15} strokeWidth={2} />
-                            </button>
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                className="btn secondary sm"
+                                title="Delete"
+                                disabled={busyId === u.id}
+                                onClick={() => void onDelete(u)}
+                                style={{ color: 'var(--danger, #b42318)' }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            ) : null}
                           </div>
                         </td>
                       </tr>
