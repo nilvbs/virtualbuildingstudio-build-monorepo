@@ -3,9 +3,10 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, Pencil, Search, ShieldAlert, Trash2, Users } from 'lucide-react';
+import { Eye, Loader2, Pencil, Search, ShieldAlert, Trash2, Users, X } from 'lucide-react';
 import type { AdminUser, MembershipRole, UserStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
+import { toastError, toastSuccess } from '../../../../lib/action-toast';
 import { StatusBadge } from '../../../../components/status';
 
 function initials(name: string) {
@@ -85,6 +86,7 @@ function AdminUsersPageInner() {
   const [canManage, setCanManage] = useState(false);
   const [selfId, setSelfId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     setRole(roleFromQuery(searchParams.get('role')));
@@ -157,27 +159,34 @@ function AdminUsersPageInner() {
           ? 'admin'
           : 'user';
 
-  async function onDelete(u: AdminUser) {
+  function requestDelete(u: AdminUser) {
     if (!canManage) return;
     if (u.id === selfId) {
-      setError('You cannot delete your own account.');
+      toastError('Cannot delete', 'You cannot delete your own account.');
       return;
     }
     if (u.roles.includes('admin')) {
-      setError('Staff accounts must be removed from Staff first.');
+      toastError('Cannot delete', 'Staff accounts must be removed from Staff first.');
       return;
     }
-    const ok = window.confirm(
-      `Delete ${u.fullName}? This removes their account and related data. This cannot be undone.`,
-    );
-    if (!ok) return;
+    setError(null);
+    setPendingDelete(u);
+  }
+
+  async function confirmDelete() {
+    const u = pendingDelete;
+    if (!u || !canManage) return;
     setBusyId(u.id);
     setError(null);
     try {
       await api.deleteAdminUser(u.id);
       setUsers((prev) => (prev ? prev.filter((row) => row.id !== u.id) : prev));
+      setPendingDelete(null);
+      toastSuccess('User deleted', `${u.fullName} was removed.`);
     } catch (err) {
-      setError(errorMessage(err));
+      const message = errorMessage(err);
+      setError(message);
+      toastError('Delete failed', message);
     } finally {
       setBusyId(null);
     }
@@ -185,6 +194,68 @@ function AdminUsersPageInner() {
 
   return (
     <div className="admin-cli">
+      {pendingDelete ? (
+        <div className="sheet-modal" role="presentation">
+          <button
+            type="button"
+            className="sheet-modal-backdrop"
+            aria-label="Dismiss"
+            disabled={busyId === pendingDelete.id}
+            onClick={() => setPendingDelete(null)}
+          />
+          <div
+            className="sheet-modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-delete-user-title"
+          >
+            <button
+              type="button"
+              className="sheet-modal-close"
+              onClick={() => setPendingDelete(null)}
+              disabled={busyId === pendingDelete.id}
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+            <p className="kicker" style={{ marginBottom: 6 }}>
+              Delete account
+            </p>
+            <h2 id="admin-delete-user-title" className="sheet-modal-title">
+              Delete {pendingDelete.fullName}?
+            </h2>
+            <p className="sheet-modal-copy">
+              This removes their account and related data. This cannot be undone.
+            </p>
+            <div className="sheet-modal-actions">
+              <button
+                type="button"
+                className="btn block"
+                disabled={busyId === pendingDelete.id}
+                onClick={() => void confirmDelete()}
+                style={{ background: 'var(--danger, #b42318)', borderColor: 'transparent' }}
+              >
+                {busyId === pendingDelete.id ? (
+                  <>
+                    <Loader2 size={16} className="hd-action-toast-spin" aria-hidden />
+                    Deleting…
+                  </>
+                ) : (
+                  'Delete user'
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn secondary block"
+                disabled={busyId === pendingDelete.id}
+                onClick={() => setPendingDelete(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {!forbidden && (
         <div className="admin-cli-bar">
           <div className="admin-cli-summary">
@@ -334,10 +405,14 @@ function AdminUsersPageInner() {
                                 className="btn secondary sm"
                                 title="Delete"
                                 disabled={busyId === u.id}
-                                onClick={() => void onDelete(u)}
+                                onClick={() => requestDelete(u)}
                                 style={{ color: 'var(--danger, #b42318)' }}
                               >
-                                <Trash2 size={14} />
+                                {busyId === u.id ? (
+                                  <Loader2 size={14} className="hd-action-toast-spin" aria-hidden />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
                               </button>
                             ) : null}
                           </div>

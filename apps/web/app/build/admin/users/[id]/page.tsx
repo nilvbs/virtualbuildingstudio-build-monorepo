@@ -6,14 +6,17 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Building2,
+  Loader2,
   Mail,
   MapPin,
   Phone,
   ShieldAlert,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { AdminUserDetail } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../../lib/api';
+import { toastError, toastSuccess } from '../../../../../lib/action-toast';
 import { StatusBadge } from '../../../../../components/status';
 import {
   defaultPhoneInput,
@@ -93,6 +96,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [canManage, setCanManage] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [verifyChannel, setVerifyChannel] = useState<'email' | 'phone' | null>(null);
@@ -201,23 +205,24 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
     }
   }
 
-  async function onDelete() {
+  async function confirmDelete() {
     if (!user) return;
-    const ok = window.confirm(
-      `Delete ${user.fullName}? This removes their account, projects, and related data. This cannot be undone.`,
-    );
-    if (!ok) return;
     setDeleting(true);
     setError(null);
     try {
       await api.deleteAdminUser(user.id);
+      toastSuccess('User deleted', `${user.fullName} was removed.`);
+      setConfirmDeleteOpen(false);
       router.replace('/build/admin/users');
     } catch (err) {
+      const message = errorMessage(err);
       if (err instanceof ApiError && err.status === 403) {
         setCanManage(false);
         setError('You can view this user but do not have permission to delete.');
+        toastError('Delete failed', 'You do not have permission to delete this user.');
       } else {
-        setError(errorMessage(err));
+        setError(message);
+        toastError('Delete failed', message);
       }
       setDeleting(false);
     }
@@ -258,6 +263,68 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="admin-dossier">
+      {confirmDeleteOpen ? (
+        <div className="sheet-modal" role="presentation">
+          <button
+            type="button"
+            className="sheet-modal-backdrop"
+            aria-label="Dismiss"
+            disabled={deleting}
+            onClick={() => setConfirmDeleteOpen(false)}
+          />
+          <div
+            className="sheet-modal-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-delete-user-detail-title"
+          >
+            <button
+              type="button"
+              className="sheet-modal-close"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={deleting}
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+            <p className="kicker" style={{ marginBottom: 6 }}>
+              Delete account
+            </p>
+            <h2 id="admin-delete-user-detail-title" className="sheet-modal-title">
+              Delete {user.fullName}?
+            </h2>
+            <p className="sheet-modal-copy">
+              This removes their account, projects, and related data. This cannot be undone.
+            </p>
+            <div className="sheet-modal-actions">
+              <button
+                type="button"
+                className="btn block"
+                disabled={deleting}
+                onClick={() => void confirmDelete()}
+                style={{ background: 'var(--danger, #b42318)', borderColor: 'transparent' }}
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 size={16} className="hd-action-toast-spin" aria-hidden />
+                    Deleting…
+                  </>
+                ) : (
+                  'Delete user'
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn secondary block"
+                disabled={deleting}
+                onClick={() => setConfirmDeleteOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <Link href="/build/admin/users" className="admin-dossier-back plain">
         <ArrowLeft size={15} /> Users
       </Link>
@@ -282,11 +349,15 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
             <button
               type="button"
               className="btn secondary sm"
-              onClick={() => void onDelete()}
+              onClick={() => setConfirmDeleteOpen(true)}
               disabled={deleting}
               style={{ color: 'var(--danger, #b42318)' }}
             >
-              <Trash2 size={14} />
+              {deleting ? (
+                <Loader2 size={14} className="hd-action-toast-spin" aria-hidden />
+              ) : (
+                <Trash2 size={14} />
+              )}
               {deleting ? 'Deleting…' : 'Delete'}
             </button>
           ) : null}
