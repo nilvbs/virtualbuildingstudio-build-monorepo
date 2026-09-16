@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -97,6 +98,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [canManage, setCanManage] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [verifyChannel, setVerifyChannel] = useState<'email' | 'phone' | null>(null);
@@ -123,6 +125,24 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   useEffect(() => {
     void load();
   }, [id, router]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!confirmDeleteOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !deleting) setConfirmDeleteOpen(false);
+    }
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [confirmDeleteOpen, deleting]);
 
   useEffect(() => {
     void api
@@ -261,70 +281,76 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
   const roles = user.roles.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(' · ');
 
-  return (
-    <div className="admin-dossier">
-      {confirmDeleteOpen ? (
-        <div className="sheet-modal" role="presentation">
-          <button
-            type="button"
-            className="sheet-modal-backdrop"
-            aria-label="Dismiss"
-            disabled={deleting}
-            onClick={() => setConfirmDeleteOpen(false)}
-          />
-          <div
-            className="sheet-modal-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-delete-user-detail-title"
-          >
+  const deleteModal =
+    confirmDeleteOpen && mounted
+      ? createPortal(
+          <div className="sheet-modal" role="presentation">
             <button
               type="button"
-              className="sheet-modal-close"
-              onClick={() => setConfirmDeleteOpen(false)}
+              className="sheet-modal-backdrop"
+              aria-label="Dismiss"
               disabled={deleting}
-              aria-label="Close"
+              onClick={() => setConfirmDeleteOpen(false)}
+            />
+            <div
+              className="sheet-modal-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="admin-delete-user-detail-title"
             >
-              <X size={16} />
-            </button>
-            <p className="kicker" style={{ marginBottom: 6 }}>
-              Delete account
-            </p>
-            <h2 id="admin-delete-user-detail-title" className="sheet-modal-title">
-              Delete {user.fullName}?
-            </h2>
-            <p className="sheet-modal-copy">
-              This removes their account, projects, and related data. This cannot be undone.
-            </p>
-            <div className="sheet-modal-actions">
               <button
                 type="button"
-                className="btn block"
-                disabled={deleting}
-                onClick={() => void confirmDelete()}
-                style={{ background: 'var(--danger, #b42318)', borderColor: 'transparent' }}
-              >
-                {deleting ? (
-                  <>
-                    <Loader2 size={16} className="hd-action-toast-spin" aria-hidden />
-                    Deleting…
-                  </>
-                ) : (
-                  'Delete user'
-                )}
-              </button>
-              <button
-                type="button"
-                className="btn secondary block"
-                disabled={deleting}
+                className="sheet-modal-close"
                 onClick={() => setConfirmDeleteOpen(false)}
+                disabled={deleting}
+                aria-label="Close"
               >
-                Cancel
+                <X size={16} />
               </button>
+              <p className="kicker" style={{ marginBottom: 6 }}>
+                Delete account
+              </p>
+              <h2 id="admin-delete-user-detail-title" className="sheet-modal-title">
+                Delete {user.fullName}?
+              </h2>
+              <p className="sheet-modal-copy">
+                This removes their account, projects, and related data. This cannot be undone.
+              </p>
+              <div className="sheet-modal-actions">
+                <button
+                  type="button"
+                  className="btn block"
+                  disabled={deleting}
+                  onClick={() => void confirmDelete()}
+                  style={{ background: 'var(--danger, #b42318)', borderColor: 'transparent' }}
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 size={16} className="hd-action-toast-spin" aria-hidden />
+                      Deleting…
+                    </>
+                  ) : (
+                    'Delete user'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary block"
+                  disabled={deleting}
+                  onClick={() => setConfirmDeleteOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div className="admin-dossier">
+      {deleteModal}
       <Link href="/build/admin/users" className="admin-dossier-back plain">
         <ArrowLeft size={15} /> Users
       </Link>

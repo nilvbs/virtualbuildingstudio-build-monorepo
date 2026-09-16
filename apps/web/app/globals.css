@@ -3847,7 +3847,8 @@ lord-icon {
 .sheet-modal {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  /* Above shell topbar (200) / usermenu (300); match drawer overlays */
+  z-index: 1200;
   display: grid;
   place-items: center;
   padding: 20px;

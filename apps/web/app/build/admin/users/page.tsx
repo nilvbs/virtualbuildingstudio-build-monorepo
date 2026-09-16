@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, Loader2, Pencil, Search, ShieldAlert, Trash2, Users, X } from 'lucide-react';
@@ -87,10 +88,29 @@ function AdminUsersPageInner() {
   const [selfId, setSelfId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     setRole(roleFromQuery(searchParams.get('role')));
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && busyId == null) setPendingDelete(null);
+    }
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [pendingDelete, busyId]);
 
   const setRoleFilter = useCallback(
     (next: 'all' | MembershipRole) => {
@@ -192,70 +212,76 @@ function AdminUsersPageInner() {
     }
   }
 
-  return (
-    <div className="admin-cli">
-      {pendingDelete ? (
-        <div className="sheet-modal" role="presentation">
-          <button
-            type="button"
-            className="sheet-modal-backdrop"
-            aria-label="Dismiss"
-            disabled={busyId === pendingDelete.id}
-            onClick={() => setPendingDelete(null)}
-          />
-          <div
-            className="sheet-modal-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-delete-user-title"
-          >
+  const deleteModal =
+    pendingDelete && mounted
+      ? createPortal(
+          <div className="sheet-modal" role="presentation">
             <button
               type="button"
-              className="sheet-modal-close"
-              onClick={() => setPendingDelete(null)}
+              className="sheet-modal-backdrop"
+              aria-label="Dismiss"
               disabled={busyId === pendingDelete.id}
-              aria-label="Close"
+              onClick={() => setPendingDelete(null)}
+            />
+            <div
+              className="sheet-modal-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="admin-delete-user-title"
             >
-              <X size={16} />
-            </button>
-            <p className="kicker" style={{ marginBottom: 6 }}>
-              Delete account
-            </p>
-            <h2 id="admin-delete-user-title" className="sheet-modal-title">
-              Delete {pendingDelete.fullName}?
-            </h2>
-            <p className="sheet-modal-copy">
-              This removes their account and related data. This cannot be undone.
-            </p>
-            <div className="sheet-modal-actions">
               <button
                 type="button"
-                className="btn block"
-                disabled={busyId === pendingDelete.id}
-                onClick={() => void confirmDelete()}
-                style={{ background: 'var(--danger, #b42318)', borderColor: 'transparent' }}
-              >
-                {busyId === pendingDelete.id ? (
-                  <>
-                    <Loader2 size={16} className="hd-action-toast-spin" aria-hidden />
-                    Deleting…
-                  </>
-                ) : (
-                  'Delete user'
-                )}
-              </button>
-              <button
-                type="button"
-                className="btn secondary block"
-                disabled={busyId === pendingDelete.id}
+                className="sheet-modal-close"
                 onClick={() => setPendingDelete(null)}
+                disabled={busyId === pendingDelete.id}
+                aria-label="Close"
               >
-                Cancel
+                <X size={16} />
               </button>
+              <p className="kicker" style={{ marginBottom: 6 }}>
+                Delete account
+              </p>
+              <h2 id="admin-delete-user-title" className="sheet-modal-title">
+                Delete {pendingDelete.fullName}?
+              </h2>
+              <p className="sheet-modal-copy">
+                This removes their account and related data. This cannot be undone.
+              </p>
+              <div className="sheet-modal-actions">
+                <button
+                  type="button"
+                  className="btn block"
+                  disabled={busyId === pendingDelete.id}
+                  onClick={() => void confirmDelete()}
+                  style={{ background: 'var(--danger, #b42318)', borderColor: 'transparent' }}
+                >
+                  {busyId === pendingDelete.id ? (
+                    <>
+                      <Loader2 size={16} className="hd-action-toast-spin" aria-hidden />
+                      Deleting…
+                    </>
+                  ) : (
+                    'Delete user'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary block"
+                  disabled={busyId === pendingDelete.id}
+                  onClick={() => setPendingDelete(null)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div className="admin-cli">
+      {deleteModal}
       {!forbidden && (
         <div className="admin-cli-bar">
           <div className="admin-cli-summary">
