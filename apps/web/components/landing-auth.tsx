@@ -213,7 +213,14 @@ export function LandingAuthOverlay({
       setLoginEmail(signup.email);
       setLoginPassword('');
       setSignupPhone(defaultPhoneInput());
-      router.push('/onboarding');
+      // Dual-role add: if this identity already finished onboarding, go straight
+      // to the workspace instead of forcing Terms again.
+      const onboarding = await api.getOnboarding().catch(() => null);
+      router.push(
+        onboarding && onboarding.step !== 'done'
+          ? '/onboarding'
+          : homePathForWorkspace(session.activeRole ?? role),
+      );
     } catch (err) {
       setSignupError(errorMessage(err));
     } finally {

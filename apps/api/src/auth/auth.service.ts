@@ -812,7 +812,7 @@ export class AuthService {
   /**
    * Returning Google user: honor the workspace chosen on the landing auth step
    * (add membership if missing) so "Sign up as surveyor" does not land on /client.
-   * Adding a *new* client/surveyor role restarts full onboarding like a new user.
+   * Adding a new client/surveyor role keeps shared onboarding progress.
    */
   private async googleResultForExistingUser(
     existing: User,
@@ -841,32 +841,46 @@ export class AuthService {
   }
 
   /**
-   * Ensure marketplace membership exists. When the role is newly attached,
-   * restart the full new-user onboarding for that workspace (account type →
-   * terms/NDA → phone → profile → portfolio when needed).
+   * Ensure marketplace membership exists. Client + surveyor share one identity —
+   * never wipe terms / phone / onboarding when adding the second role (that made
+   * surveyor login land on Terms after a partial client signup).
+   *
+   * If core onboarding is already done and the new role needs portfolio, advance
+   * only that far.
    */
   private async attachMarketplaceRole(userId: string, role: MembershipRole): Promise<User> {
     const before = await listMemberships(this.prisma, userId);
     const isNew = !before.includes(role);
     await ensureMembership(this.prisma, userId, role);
 
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!isNew || (role !== 'client' && role !== 'surveyor')) {
-      return this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+      return user;
     }
 
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        accountType: 'individual',
-        accountTypeSelectedAt: null,
-        termsAcceptedAt: null,
-        ndaAcceptedAt: null,
-        phoneVerified: false,
-        // Unique placeholder so contact step requires a fresh number entry.
-        phone: `pending:${userId.replace(/-/g, '')}`,
-        onboardingStep: 'select_account_type',
-      },
-    });
+    const memberships = await listMemberships(this.prisma, userId);
+    const coreDone =
+      user.onboardingStep === 'done' ||
+      (Boolean(user.accountTypeSelectedAt) &&
+        Boolean(user.termsAcceptedAt) &&
+        Boolean(user.ndaAcceptedAt) &&
+        user.phoneVerified);
+
+    if (coreDone) {
+      const needsPortfolio = await this.surveyorNeedsPortfolioStep(userId, memberships);
+      if (needsPortfolio && (user.onboardingStep === 'done' || user.onboardingStep === 'portfolio')) {
+        if (user.onboardingStep !== 'portfolio') {
+          return this.prisma.user.update({
+            where: { id: userId },
+            data: { onboardingStep: 'portfolio' },
+          });
+        }
+      }
+      return user;
+    }
+
+    // Mid-onboarding: keep current step; membership alone is enough.
+    return user;
   }
 
   /**
@@ -1277,6 +1291,30 @@ export class AuthService {
     return 'verify_contact';
   }
 
+  /**
+   * Derive the step clients should see. Prefer stored progress, but never send
+   * someone back to account-type/terms when those gates are already satisfied
+   * (can happen after older dual-role resets left step lagging behind facts).
+   */
+  private resolveOnboardingStep(user: User): OnboardingStep {
+    const stored = user.onboardingStep as OnboardingStep;
+    if (stored === 'done') return 'done';
+
+    if (!user.accountTypeSelectedAt) {
+      // Gate only when still on/before account type — don't clobber later steps.
+      if (!stored || stored === 'select_account_type') return 'select_account_type';
+      return stored;
+    }
+
+    if (user.termsAcceptedAt && user.ndaAcceptedAt) {
+      if (stored === 'select_account_type' || stored === 'accept_terms') {
+        return user.phoneVerified ? 'complete_profile' : 'verify_contact';
+      }
+    }
+
+    return stored;
+  }
+
   private stepAfterContactVerified(user: User): OnboardingStep {
     // Only advance once mobile is verified (email alone is not enough).
     if (!user.phoneVerified) {
@@ -1318,9 +1356,7 @@ export class AuthService {
         user.phone.startsWith('pending:') ||
         user.phone.length < 10);
 
-    const effectiveStep: OnboardingStep = !user.accountTypeSelectedAt
-      ? 'select_account_type'
-      : (user.onboardingStep as OnboardingStep);
+    const effectiveStep = this.resolveOnboardingStep(user);
 
     return {
       step: effectiveStep,
@@ -1422,7 +1458,7 @@ export class AuthService {
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
       avatarKey: this.media.resolveSignedUrl(user.avatarKey),
-      onboardingStep: user.onboardingStep as OnboardingStep,
+      onboardingStep: this.resolveOnboardingStep(user),
       accountType: user.accountType as AccountType,
       roleHint: hintFromMemberships(merged),
       memberships: merged,
