@@ -16,6 +16,8 @@ type MapboxFeature = {
   id?: string;
   place_name?: string;
   text?: string;
+  /** House number when place_type includes address */
+  address?: string;
   center?: [number, number];
   bbox?: [number, number, number, number];
   place_type?: string[];
@@ -29,6 +31,27 @@ type MapboxGeocode = {
 export type GeocodeHit = {
   lat: number;
   lng: number;
+  placeName: string;
+};
+
+/** Parsed postal address from geocoding (line1 + city/state/postal/country). */
+export type AddressSuggestion = {
+  id: string;
+  label: string;
+  line1: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  lat: number | null;
+  lng: number | null;
+};
+
+export type PostalLookupResult = {
+  city: string;
+  state: string;
+  country: string;
+  postalCode: string;
   placeName: string;
 };
 
@@ -159,6 +182,194 @@ export function kmBetween(lat1: number, lng1: number, lat2: number, lng2: number
 
 function contextByPrefix(context: MapboxContext[] | undefined, prefix: string): MapboxContext | undefined {
   return context?.find((c) => typeof c.id === 'string' && c.id.startsWith(`${prefix}.`));
+}
+
+function parseMapboxAddress(feature: MapboxFeature): AddressSuggestion {
+  const ctx = feature.context ?? [];
+  const place =
+    contextByPrefix(ctx, 'place')?.text?.trim() ||
+    contextByPrefix(ctx, 'locality')?.text?.trim() ||
+    contextByPrefix(ctx, 'neighborhood')?.text?.trim() ||
+    '';
+  const region = contextByPrefix(ctx, 'region')?.text?.trim() || '';
+  const postcode = contextByPrefix(ctx, 'postcode')?.text?.trim() || '';
+  const country = contextByPrefix(ctx, 'country')?.text?.trim() || '';
+
+  const house = feature.address?.trim() || '';
+  const street = feature.text?.trim() || '';
+  const isAddress = feature.place_type?.includes('address');
+  const line1 = isAddress
+    ? [house, street].filter(Boolean).join(' ').trim()
+    : street || feature.place_name?.split(',')[0]?.trim() || '';
+
+  const center = feature.center;
+  return {
+    id: feature.id || feature.place_name || line1,
+    label: feature.place_name?.trim() || line1,
+    line1,
+    city: place,
+    state: region,
+    postalCode: postcode,
+    country,
+    lat: center && Number.isFinite(center[1]) ? center[1] : null,
+    lng: center && Number.isFinite(center[0]) ? center[0] : null,
+  };
+}
+
+/**
+ * Address autocomplete suggestions while the user types line 1.
+ * Prefers Mapbox; falls back to Nominatim.
+ */
+export async function suggestAddresses(
+  query: string,
+  signal?: AbortSignal,
+): Promise<AddressSuggestion[]> {
+  const q = query.trim();
+  if (q.length < 3) return [];
+  const token = mapboxToken();
+
+  if (token) {
+    const url = new URL(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json`);
+    url.searchParams.set('access_token', token);
+    url.searchParams.set('autocomplete', 'true');
+    url.searchParams.set('limit', '6');
+    url.searchParams.set('types', 'address,place,locality,neighborhood,postcode');
+    const res = await fetch(url.toString(), { signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) return [];
+    const data = (await res.json()) as MapboxGeocode;
+    return (data.features ?? []).map(parseMapboxAddress);
+  }
+
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('q', q);
+  url.searchParams.set('limit', '6');
+  url.searchParams.set('addressdetails', '1');
+  const res = await fetch(url.toString(), {
+    signal,
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'BLD-SurveyLink/1.0 (address-autocomplete)',
+    },
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as Array<{
+    place_id?: number;
+    display_name?: string;
+    lat?: string;
+    lon?: string;
+    address?: {
+      house_number?: string;
+      road?: string;
+      pedestrian?: string;
+      neighbourhood?: string;
+      suburb?: string;
+      city?: string;
+      town?: string;
+      village?: string;
+      municipality?: string;
+      state?: string;
+      postcode?: string;
+      country?: string;
+    };
+  }>;
+
+  return data.map((hit) => {
+    const a = hit.address ?? {};
+    const line1 = [a.house_number, a.road || a.pedestrian].filter(Boolean).join(' ').trim()
+      || hit.display_name?.split(',')[0]?.trim()
+      || '';
+    const city = a.city || a.town || a.village || a.municipality || a.suburb || a.neighbourhood || '';
+    return {
+      id: String(hit.place_id ?? hit.display_name ?? line1),
+      label: hit.display_name?.trim() || line1,
+      line1,
+      city,
+      state: a.state || '',
+      postalCode: a.postcode || '',
+      country: a.country || '',
+      lat: Number.isFinite(Number(hit.lat)) ? Number(hit.lat) : null,
+      lng: Number.isFinite(Number(hit.lon)) ? Number(hit.lon) : null,
+    };
+  });
+}
+
+/**
+ * Resolve city / state / country from a postal / ZIP code.
+ */
+export async function lookupPostalAddress(
+  postalInput: string,
+  signal?: AbortSignal,
+): Promise<PostalLookupResult | null> {
+  const postal = postalInput.trim();
+  if (postal.length < 3) return null;
+  const token = mapboxToken();
+
+  if (token) {
+    const url = new URL(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(postal)}.json`,
+    );
+    url.searchParams.set('access_token', token);
+    url.searchParams.set('types', 'postcode');
+    url.searchParams.set('limit', '1');
+    const usZip = normalizeUsZip(postal);
+    if (usZip) url.searchParams.set('country', 'US');
+    const res = await fetch(url.toString(), { signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const data = (await res.json()) as MapboxGeocode;
+    const feature = data.features?.[0];
+    if (!feature) return null;
+    const parsed = parseMapboxAddress(feature);
+    // For postcode features, text is often the ZIP itself.
+    const city =
+      parsed.city ||
+      contextByPrefix(feature.context, 'place')?.text?.trim() ||
+      contextByPrefix(feature.context, 'locality')?.text?.trim() ||
+      '';
+    return {
+      city,
+      state: parsed.state,
+      country: parsed.country,
+      postalCode: usZip || parsed.postalCode || feature.text?.trim() || postal,
+      placeName: feature.place_name?.trim() || postal,
+    };
+  }
+
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('postalcode', postal);
+  url.searchParams.set('limit', '1');
+  url.searchParams.set('addressdetails', '1');
+  const res = await fetch(url.toString(), {
+    signal,
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'BLD-SurveyLink/1.0 (postal-lookup)',
+    },
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as Array<{
+    display_name?: string;
+    address?: {
+      city?: string;
+      town?: string;
+      village?: string;
+      municipality?: string;
+      state?: string;
+      postcode?: string;
+      country?: string;
+    };
+  }>;
+  const hit = data[0];
+  if (!hit?.address) return null;
+  const a = hit.address;
+  return {
+    city: a.city || a.town || a.village || a.municipality || '',
+    state: a.state || '',
+    country: a.country || '',
+    postalCode: a.postcode || postal,
+    placeName: hit.display_name?.trim() || postal,
+  };
 }
 
 function normalizeUsZip(raw: string): string | null {

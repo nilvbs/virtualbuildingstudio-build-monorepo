@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { AccountType, AuthenticatedUser, OnboardingStatus, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
+import { AddressFields } from './address-fields';
 
 const EMPTY_ADDRESS = {
   line1: '',
@@ -320,71 +321,15 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
               </>
             )}
 
-            <div className="field">
-              <label htmlFor="personal-line1">{isCompany ? 'Company address' : 'Base address'}</label>
-              <input
-                id="personal-line1"
-                value={address.line1}
-                onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))}
-                disabled={!editing}
-                required={editing}
-                placeholder={editing ? 'Address line 1' : '—'}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="personal-line2">Address line 2 (optional)</label>
-              <input
-                id="personal-line2"
-                value={address.line2}
-                onChange={(e) => setAddress((a) => ({ ...a, line2: e.target.value }))}
-                disabled={!editing}
-                placeholder={editing ? 'Optional' : '—'}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="personal-city">City</label>
-              <input
-                id="personal-city"
-                value={address.city}
-                onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))}
-                disabled={!editing}
-                required={editing}
-                placeholder={editing ? 'City' : '—'}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="personal-state">State / region</label>
-              <input
-                id="personal-state"
-                value={address.state}
-                onChange={(e) => setAddress((a) => ({ ...a, state: e.target.value }))}
-                disabled={!editing}
-                required={editing}
-                placeholder={editing ? 'State / region' : '—'}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="personal-postal">Postal code</label>
-              <input
-                id="personal-postal"
-                value={address.postalCode}
-                onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value }))}
-                disabled={!editing}
-                required={editing}
-                placeholder={editing ? 'Postal code' : '—'}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="personal-country">Country</label>
-              <input
-                id="personal-country"
-                value={address.country}
-                onChange={(e) => setAddress((a) => ({ ...a, country: e.target.value }))}
-                disabled={!editing}
-                required={editing}
-                placeholder={editing ? 'Country' : '—'}
-              />
-            </div>
+            <AddressFields
+              value={address}
+              onChange={setAddress}
+              variant="plain"
+              line1Label={isCompany ? 'Company address' : 'Base address'}
+              disabled={!editing}
+              required={editing}
+              idPrefix="personal"
+            />
 
             {editing && (
               <div className="personal-details-actions">

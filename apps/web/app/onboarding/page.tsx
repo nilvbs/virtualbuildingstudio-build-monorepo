@@ -21,6 +21,7 @@ import {
   defaultPhoneInput,
   type PhoneInputValue,
 } from '../../components/onboarding-phone-verify';
+import { AddressFields } from '../../components/address-fields';
 
 const ONBOARDING_STEPS: { id: OnboardingStep; label: string }[] = [
   { id: 'select_account_type', label: 'Account type' },
@@ -60,6 +61,7 @@ export default function OnboardingPage() {
   const [accountType, setAccountType] = useState<AccountType>('individual');
   const [phoneInput, setPhoneInput] = useState<PhoneInputValue>(defaultPhoneInput());
   const [emailCode, setEmailCode] = useState('');
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
   const [phoneCode, setPhoneCode] = useState('');
   const [workEmail, setWorkEmail] = useState('');
   const [workEmailCode, setWorkEmailCode] = useState('');
@@ -545,31 +547,48 @@ export default function OnboardingPage() {
                     <LordIcon name="mail" size={20} trigger="in" />
                     <span className="onboarding-channel-copy">
                       <strong>Email</strong>
-                      <small>Enter the OTP sent to your inbox</small>
+                      <small>
+                        {emailCodeSent
+                          ? 'Enter the OTP sent to your inbox'
+                          : 'Request a code, then enter it below'}
+                      </small>
                     </span>
                   </div>
-                  <input
-                    className="input onboarding-input"
-                    value={emailCode}
-                    onChange={(e) => setEmailCode(e.target.value)}
-                    placeholder="Email verification code"
-                    inputMode="numeric"
-                  />
+                  {emailCodeSent ? (
+                    <>
+                      <input
+                        className="input onboarding-input"
+                        value={emailCode}
+                        onChange={(e) => setEmailCode(e.target.value)}
+                        placeholder="Email verification code"
+                        inputMode="numeric"
+                      />
+                      <button
+                        type="button"
+                        className="btn block"
+                        disabled={busy === 'email'}
+                        onClick={() => void run('email', () => api.verifyEmail(emailCode))}
+                      >
+                        {busy === 'email' ? 'Verifying…' : 'Verify email'}
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     type="button"
-                    className="btn block"
-                    disabled={busy === 'email'}
-                    onClick={() => void run('email', () => api.verifyEmail(emailCode))}
-                  >
-                    {busy === 'email' ? 'Verifying…' : 'Verify email'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn secondary block"
+                    className={`btn ${emailCodeSent ? 'secondary' : ''} block`}
                     disabled={busy === 'email-start'}
-                    onClick={() => void run('email-start', () => api.startEmailVerification())}
+                    onClick={() =>
+                      void run('email-start', async () => {
+                        await api.startEmailVerification();
+                        setEmailCodeSent(true);
+                      })
+                    }
                   >
-                    {busy === 'email-start' ? 'Sending…' : 'Resend email code'}
+                    {busy === 'email-start'
+                      ? 'Sending…'
+                      : emailCodeSent
+                        ? 'Resend email code'
+                        : 'Send email code'}
                   </button>
                 </div>
               )}
@@ -811,76 +830,13 @@ export default function OnboardingPage() {
                 </div>
 
                 <div className="ob-profile-col ob-address">
-              <div className="field">
-                <label htmlFor="line1">{isCompany ? 'Company address' : 'Base address'}</label>
-                  <div className="input-icon">
-                    <LordIcon name="location" size={18} trigger="hover" />
-                    <input
-                      id="line1"
-                      type="text"
-                      value={address.line1}
-                      onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))}
-                      placeholder="Address line 1"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="field">
-                  <label htmlFor="line2">Address line 2 (optional)</label>
-                  <input
-                    id="line2"
-                    className="input onboarding-input"
-                    type="text"
-                    value={address.line2}
-                    onChange={(e) => setAddress((a) => ({ ...a, line2: e.target.value }))}
+                  <AddressFields
+                    value={address}
+                    onChange={setAddress}
+                    variant="onboarding"
+                    line1Label={isCompany ? 'Company address' : 'Base address'}
+                    idPrefix="ob"
                   />
-                </div>
-                <div className="onboarding-address-grid">
-                  <div className="field">
-                    <label htmlFor="city">City</label>
-                    <input
-                      id="city"
-                      className="input onboarding-input"
-                      type="text"
-                      value={address.city}
-                      onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="state">State / region</label>
-                    <input
-                      id="state"
-                      className="input onboarding-input"
-                      type="text"
-                      value={address.state}
-                      onChange={(e) => setAddress((a) => ({ ...a, state: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="postalCode">Postal code</label>
-                    <input
-                      id="postalCode"
-                      className="input onboarding-input"
-                      type="text"
-                      value={address.postalCode}
-                      onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="country">Country</label>
-                    <input
-                      id="country"
-                      className="input onboarding-input"
-                      type="text"
-                      value={address.country}
-                      onChange={(e) => setAddress((a) => ({ ...a, country: e.target.value }))}
-                      required
-                    />
-                  </div>
-                </div>
                 </div>
               </div>
 

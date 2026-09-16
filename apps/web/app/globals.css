@@ -2849,6 +2849,114 @@ lord-icon {
   }
 }
 
+.addr-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.addr-line1-field {
+  position: relative;
+}
+
+.addr-line1-plain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border, rgba(42, 37, 88, 0.14));
+  border-radius: 10px;
+  padding: 0 12px;
+  background: #fff;
+}
+
+.addr-line1-plain input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  padding: 11px 0;
+  font: inherit;
+}
+
+.addr-line1-ico {
+  color: #6b668c;
+  flex-shrink: 0;
+}
+
+.addr-suggest {
+  position: absolute;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 12px;
+  border: 1px solid rgba(113, 104, 246, 0.18);
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(42, 37, 88, 0.12);
+  max-height: 260px;
+  overflow: auto;
+}
+
+.addr-suggest-empty {
+  padding: 10px 12px;
+  color: #6b668c;
+  font-size: 13px;
+}
+
+.addr-suggest-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #2a2558;
+}
+
+.addr-suggest-item:hover,
+.addr-suggest-item:focus-visible {
+  background: #f4f2ff;
+  outline: none;
+}
+
+.addr-suggest-item strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.addr-suggest-item small {
+  display: block;
+  margin-top: 2px;
+  color: #6b668c;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.addr-postal-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6b668c;
+}
+
+.addr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+
+@media (max-width: 560px) {
+  .addr-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* =========================================================================
    FULL-SCREEN ONBOARDING
 ========================================================================= */

@@ -141,7 +141,7 @@ describe('AuthService', () => {
   });
 
   describe('signup', () => {
-    it('creates the identity + local user, starts OTPs, and returns a session', async () => {
+    it('creates the identity + local user and returns a session without sending OTPs', async () => {
       prisma.user.findFirst.mockResolvedValue(null);
       identity.createIdentity.mockResolvedValue({ subject: 'auth0|123', emailVerified: false });
       prisma.user.create.mockResolvedValue(makeUser({ onboardingStep: 'select_account_type' }));
@@ -168,8 +168,8 @@ describe('AuthService', () => {
           }),
         }),
       );
-      expect(emailOtp.start).toHaveBeenCalledWith('user-uuid', signupInput.email);
-      expect(phone.startVerification).toHaveBeenCalledWith('user-uuid', signupInput.phone);
+      expect(emailOtp.start).not.toHaveBeenCalled();
+      expect(phone.startVerification).not.toHaveBeenCalled();
       expect(identity.login).toHaveBeenCalledWith(signupInput.email, signupInput.password);
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -187,9 +187,9 @@ describe('AuthService', () => {
 
     it('still returns a session when Auth0 password grant is disabled', async () => {
       prisma.user.findFirst.mockResolvedValue(null);
-      identity.createIdentity.mockResolvedValue({ subject: 'auth0|123', emailVerified: true });
+      identity.createIdentity.mockResolvedValue({ subject: 'auth0|123', emailVerified: false });
       prisma.user.create.mockResolvedValue(
-        makeUser({ onboardingStep: 'select_account_type', emailVerified: true }),
+        makeUser({ onboardingStep: 'select_account_type', emailVerified: false }),
       );
       identity.login.mockRejectedValue(
         new UnauthorizedException("Grant type 'password-realm' not allowed for the client"),
@@ -197,10 +197,13 @@ describe('AuthService', () => {
 
       const result = await service.signup(signupInput);
 
+      expect(emailOtp.start).not.toHaveBeenCalled();
+      expect(phone.startVerification).not.toHaveBeenCalled();
       expect(result.session.accessToken).toBeTruthy();
       expect(result.session.accessToken).not.toBe('tok');
       expect(result.session.tokenType).toBe('Bearer');
       expect(result.user.email).toBe(signupInput.email);
+      expect(result.user.emailVerified).toBe(false);
     });
 
     it('rejects signing up again for a role the account already has', async () => {

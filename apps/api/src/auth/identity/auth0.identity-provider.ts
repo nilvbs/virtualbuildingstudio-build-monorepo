@@ -182,8 +182,8 @@ export class Auth0IdentityProvider implements IdentityProvider, OnModuleInit {
 
   async createIdentity(input: CreateIdentityInput): Promise<CreatedIdentity> {
     try {
-      // Mark email verified in Auth0 so Resource Owner Password Grant can issue a
-      // session immediately. Marketplace still runs its own email/phone OTP gates.
+      // Auth0 marks email_verified for ROPG login only. Marketplace still requires
+      // its own email OTP, so we report emailVerified: false to the app layer.
       const { data } = await this.mgmt().users.create({
         connection: this.connection,
         email: input.email,
@@ -195,7 +195,7 @@ export class Auth0IdentityProvider implements IdentityProvider, OnModuleInit {
       if (!data.user_id) {
         throw new ServiceUnavailableException('Auth0 did not return a user id');
       }
-      return { subject: data.user_id, emailVerified: Boolean(data.email_verified) };
+      return { subject: data.user_id, emailVerified: false };
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
       if (status === 409) {

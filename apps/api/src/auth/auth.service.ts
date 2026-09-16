@@ -111,8 +111,8 @@ export class AuthService {
   ) {}
 
   /**
-   * Create the account, issue a session, and start email + phone OTP.
-   * Non-Google users land on `verify_contact` until at least one channel is verified.
+   * Create the account and issue a session. Email/phone OTPs are sent only when
+   * the user requests them from onboarding Verify contact — not at signup.
    */
   async signup(input: SignupInput): Promise<SignupResult> {
     const membershipRole = input.roleHint as MembershipRole;
@@ -159,14 +159,16 @@ export class AuthService {
           phone: input.phone,
           roleHint: legacyHint,
           accountType: input.accountType ?? 'individual',
-          emailVerified: true,
-          phoneVerified: true,
+          // Form signup must still verify email + phone via OTP (same as Auth0 path).
+          emailVerified: false,
+          phoneVerified: false,
           onboardingStep: 'select_account_type',
           authProvider: 'dev',
           authSubject: subject,
         },
       });
       await ensureMembership(this.prisma, user.id, membershipRole);
+      // OTPs are requested from onboarding Verify contact — not here.
       const hydrated = await this.hydrateUser(user, []);
       const session: AuthSession = {
         accessToken: issueDevUserToken(subject),
@@ -184,7 +186,7 @@ export class AuthService {
       password: input.password,
     });
 
-    const emailAlreadyVerified = identity.emailVerified;
+    // Password signup verifies email + phone later on Verify contact.
     const user = await this.prisma.user.create({
       data: {
         ...names,
@@ -192,7 +194,7 @@ export class AuthService {
         phone: input.phone,
         roleHint: legacyHint,
         accountType: input.accountType ?? 'individual',
-        emailVerified: emailAlreadyVerified,
+        emailVerified: false,
         // Account type is chosen on the first onboarding screen.
         onboardingStep: 'select_account_type',
         authProvider: AUTH_PROVIDER_NAME,
@@ -200,11 +202,6 @@ export class AuthService {
       },
     });
     await ensureMembership(this.prisma, user.id, membershipRole);
-
-    await Promise.allSettled([
-      emailAlreadyVerified ? Promise.resolve() : this.emailOtp.start(user.id, email),
-      this.phone.startVerification(user.id, input.phone),
-    ]);
 
     await this.persistPasswordVerifier(user.id, input.password);
 
@@ -221,7 +218,7 @@ export class AuthService {
       session = issueFirstPartySession(this.config, {
         subject: identity.subject,
         email,
-        emailVerified: emailAlreadyVerified,
+        emailVerified: false,
       });
     }
 
@@ -955,8 +952,7 @@ export class AuthService {
     });
     await ensureMembership(this.prisma, user.id, workspaceRole);
 
-    // Best-effort, consistent with signup: missing Twilio config must not fail this.
-    await Promise.allSettled([this.phone.startVerification(user.id, input.phone)]);
+    // Phone OTP is sent from onboarding Verify contact when the user asks — not here.
 
     return this.hydrateUser(user, principal.roles);
   }
