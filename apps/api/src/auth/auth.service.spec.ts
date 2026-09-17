@@ -256,6 +256,12 @@ describe('AuthService', () => {
       expect(identity.createIdentity).not.toHaveBeenCalled();
       expect(attachSpy).toHaveBeenCalled();
       expect(result.session.accessToken).toBe('tok');
+      expect(result.accountNotice).toEqual({
+        kind: 'role_added',
+        existingRole: 'client',
+        addedRole: 'surveyor',
+        message: expect.stringContaining('currently set up as a Client'),
+      });
       attachSpy.mockRestore();
       hydrateSpy.mockRestore();
     });

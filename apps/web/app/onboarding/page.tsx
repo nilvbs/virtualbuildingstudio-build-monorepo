@@ -22,6 +22,7 @@ import {
   type PhoneInputValue,
 } from '../../components/onboarding-phone-verify';
 import { AddressFields } from '../../components/address-fields';
+import { AccountNoticeBanner } from '../../components/account-notice-banner';
 
 const ONBOARDING_STEPS: { id: OnboardingStep; label: string }[] = [
   { id: 'select_account_type', label: 'Account type' },
@@ -422,6 +423,8 @@ export default function OnboardingPage() {
 
         <div className="ob-scroll">
           <div className="ob-content">
+            <AccountNoticeBanner />
+
             <div className="ob-head">
               {canGoBack ? (
                 <button type="button" className="ob-back" onClick={goBack}>

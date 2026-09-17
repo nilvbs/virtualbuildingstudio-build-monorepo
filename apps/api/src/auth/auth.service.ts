@@ -126,7 +126,7 @@ export class AuthService {
     // Phone-only hits a *different* email → block (phone stays unique on users).
     const byEmail = await this.findUserByEmail(email);
     if (byEmail) {
-      const { user, session } = await this.addRoleToExistingUser(
+      const { user, session, accountNotice } = await this.addRoleToExistingUser(
         byEmail,
         { ...input, email },
         membershipRole,
@@ -134,6 +134,7 @@ export class AuthService {
       return {
         session: { ...session, activeRole: legacyHint },
         user,
+        accountNotice,
       };
     }
 
@@ -245,7 +246,11 @@ export class AuthService {
     existing: User,
     input: SignupInput,
     membershipRole: MembershipRole,
-  ): Promise<{ user: AuthenticatedUser; session: AuthSession }> {
+  ): Promise<{
+    user: AuthenticatedUser;
+    session: AuthSession;
+    accountNotice: SignupResult['accountNotice'];
+  }> {
     const emailMatch = normalizeEmail(existing.email) === normalizeEmail(input.email);
     if (!emailMatch) {
       throw new ConflictException(
@@ -255,10 +260,17 @@ export class AuthService {
 
     const memberships = await listMemberships(this.prisma, existing.id);
     if (memberships.includes(membershipRole)) {
+      const label = membershipRole === 'surveyor' ? 'Surveyor' : 'Client';
       throw new ConflictException(
-        `This account already has the ${membershipRole} role. Sign in to that workspace instead.`,
+        `An account with this email is already registered as a ${label}. Please sign in to continue.`,
       );
     }
+
+    const existingMarketplace: 'client' | 'surveyor' | null = memberships.includes('client')
+      ? 'client'
+      : memberships.includes('surveyor')
+        ? 'surveyor'
+        : null;
 
     const session = await this.assertPasswordForUser(existing, input.password);
     await this.persistPasswordVerifier(existing.id, input.password);
@@ -287,7 +299,34 @@ export class AuthService {
     const refreshed = await this.attachMarketplaceRole(existing.id, membershipRole);
     const next = await listMemberships(this.prisma, existing.id);
     const user = await this.hydrateUser(refreshed, next.includes('admin') ? ['admin'] : []);
-    return { user, session };
+
+    const addedRole =
+      membershipRole === 'client' || membershipRole === 'surveyor' ? membershipRole : null;
+    const accountNotice =
+      existingMarketplace && addedRole
+        ? {
+            kind: 'role_added' as const,
+            existingRole: existingMarketplace,
+            addedRole,
+            message: this.dualRoleSignupMessage(existingMarketplace, addedRole),
+          }
+        : undefined;
+
+    return { user, session, accountNotice };
+  }
+
+  /** Professional copy when Create account attaches a second marketplace workspace. */
+  private dualRoleSignupMessage(
+    existingRole: 'client' | 'surveyor',
+    addedRole: 'client' | 'surveyor',
+  ): string {
+    const existingLabel = existingRole === 'client' ? 'Client' : 'Surveyor';
+    const addedLabel = addedRole === 'client' ? 'Client' : 'Surveyor';
+    return (
+      `We recognized an existing BLD account for this email, currently set up as a ${existingLabel}. ` +
+      `Your ${addedLabel} workspace has been added to the same profile. ` +
+      `Verification and account details you already completed remain in place.`
+    );
   }
 
   private async assertPasswordForUser(user: User, password: string): Promise<AuthSession> {

@@ -292,10 +292,24 @@ export interface AuthSession {
   activeRole?: WorkspaceRole;
 }
 
+/**
+ * Returned when Create account attaches a second marketplace role to an
+ * existing identity (same email) instead of creating a new user.
+ */
+export interface SignupAccountNotice {
+  kind: 'role_added';
+  existingRole: WorkspaceRole;
+  addedRole: WorkspaceRole;
+  /** Professional copy for the client UI. */
+  message: string;
+}
+
 /** Result of password signup — session is issued so OTP screens can run authenticated. */
 export interface SignupResult {
   session: AuthSession;
   user: AuthenticatedUser;
+  /** Present when signup linked a new role onto an existing account. */
+  accountNotice?: SignupAccountNotice;
 }
 
 /** Minimal profile resolved from a social login, used to prefill signup. */

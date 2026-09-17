@@ -13,6 +13,7 @@ import { IncompleteProfileModal, SidebarProfileMeter } from './profile-completio
 import { ActionToasts } from './action-toasts';
 import { NotificationToasts } from './notification-toasts';
 import { NotificationBell } from './notification-bell';
+import { AccountNoticeBanner } from './account-notice-banner';
 
 type Section = 'client' | 'surveyor' | 'admin';
 
@@ -459,6 +460,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
               : ''
           }`}
         >
+          <AccountNoticeBanner />
           {children}
         </div>
       </div>

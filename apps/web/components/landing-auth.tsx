@@ -13,6 +13,7 @@ import { AlertCircle, ArrowLeft, Building2, HardHat, Info } from 'lucide-react';
 import { LordIcon } from './lord-icon';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
+import { stashAccountNotice } from '../lib/account-notice';
 import { homePathForUser, homePathForWorkspace } from '../lib/home';
 import { isAuthenticated, setSession } from '../lib/session';
 import { GoogleButton } from './google-button';
@@ -199,7 +200,7 @@ export function LandingAuthOverlay({
     setSignupBusy(true);
     try {
       const e164 = phoneInputToE164(signupPhone);
-      const { session } = await api.signup({
+      const { session, accountNotice } = await api.signup({
         ...signup,
         phone: e164,
         roleHint: role,
@@ -210,6 +211,9 @@ export function LandingAuthOverlay({
         expiresAt: Date.now() + session.expiresIn * 1000,
         activeRole: session.activeRole ?? role,
       });
+      if (accountNotice) {
+        stashAccountNotice(accountNotice);
+      }
       setLoginEmail(signup.email);
       setLoginPassword('');
       setSignupPhone(defaultPhoneInput());
