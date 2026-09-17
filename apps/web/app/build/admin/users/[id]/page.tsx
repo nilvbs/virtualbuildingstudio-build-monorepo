@@ -240,6 +240,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       setConfirmDeleteOpen(false);
       router.replace('/build/admin/users');
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        // Global onUnauthorized already clears session + redirects to login.
+        return;
+      }
       const message = errorMessage(err);
       if (err instanceof ApiError && err.status === 403) {
         setCanManage(false);

@@ -205,6 +205,10 @@ function AdminUsersPageInner() {
       setPendingDelete(null);
       toastSuccess('User deleted', `${u.fullName} was removed.`);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        // Global onUnauthorized already clears session + redirects to login.
+        return;
+      }
       const message = errorMessage(err);
       setError(message);
       toastError('Delete failed', message);

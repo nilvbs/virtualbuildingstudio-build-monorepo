@@ -189,6 +189,12 @@ export interface ApiClientOptions {
   baseUrl: string;
   /** Optional bearer token / session accessor, resolved per-request. */
   getAuthToken?: () => string | undefined | Promise<string | undefined>;
+  /**
+   * Called when an authenticated request returns 401 (token was sent).
+   * Use to clear session and send the user to sign-in. Not invoked for
+   * unauthenticated calls (e.g. wrong password on login).
+   */
+  onUnauthorized?: () => void | Promise<void>;
   fetch?: typeof fetch;
 }
 
@@ -773,6 +779,13 @@ export class SurveyLinkClient {
 
     const payload = await res.json().catch(() => undefined);
     if (!res.ok) {
+      if (res.status === 401 && token) {
+        try {
+          await this.options.onUnauthorized?.();
+        } catch {
+          /* redirect/cleanup must not mask the ApiError */
+        }
+      }
       throw new ApiError(
         `Request failed: ${method} ${path} (${res.status})`,
         res.status,

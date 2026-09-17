@@ -1,14 +1,33 @@
 'use client';
 
 import { createClient, ApiError } from '@surveylink/api-client';
-import { getToken } from './session';
+import { clearSession, getToken } from './session';
 
 const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+let redirectingToLogin = false;
+
+/** Clear the session and hard-navigate to the matching sign-in screen. */
+export function redirectToLogin(): void {
+  if (typeof window === 'undefined' || redirectingToLogin) return;
+  redirectingToLogin = true;
+  clearSession();
+  const path = window.location.pathname;
+  const target = path.startsWith('/build/admin')
+    ? '/build/admin'
+    : path.startsWith('/onboarding') || path.startsWith('/client') || path.startsWith('/surveyor')
+      ? '/?auth=login'
+      : '/login';
+  window.location.assign(target);
+}
 
 /** Browser API client that attaches the current access token per-request. */
 export const api = createClient({
   baseUrl,
   getAuthToken: () => getToken(),
+  onUnauthorized: () => {
+    redirectToLogin();
+  },
 });
 
 export { ApiError };
