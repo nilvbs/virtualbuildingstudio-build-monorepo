@@ -19,20 +19,20 @@ export class TwilioEmailSender implements EmailSender {
   private readonly fromName: string;
   private readonly configured: boolean;
 
-  constructor(config: ConfigService) {
+  constructor(private readonly config: ConfigService) {
     const apiKey = (
-      config.get<string>('SENDGRID_API_KEY') ||
-      config.get<string>('TWILIO_SENDGRID_API_KEY') ||
+      this.config.get<string>('SENDGRID_API_KEY') ||
+      this.config.get<string>('TWILIO_SENDGRID_API_KEY') ||
       ''
     ).trim();
     this.from = (
-      config.get<string>('TWILIO_EMAIL_FROM') ||
-      config.get<string>('SENDGRID_FROM_EMAIL') ||
+      this.config.get<string>('TWILIO_EMAIL_FROM') ||
+      this.config.get<string>('SENDGRID_FROM_EMAIL') ||
       ''
     ).trim() || undefined;
     this.fromName = (
-      config.get<string>('TWILIO_EMAIL_FROM_NAME') ||
-      config.get<string>('SENDGRID_FROM_NAME') ||
+      this.config.get<string>('TWILIO_EMAIL_FROM_NAME') ||
+      this.config.get<string>('SENDGRID_FROM_NAME') ||
       'BLD'
     ).trim();
     this.configured = Boolean(apiKey && this.from);
