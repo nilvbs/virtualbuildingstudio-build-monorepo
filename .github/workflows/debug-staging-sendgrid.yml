@@ -1,0 +1,51 @@
+name: Debug Staging SendGrid
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Inspect SendGrid env + recent email logs
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/BLD/stage
+            echo '=== SendGrid keys present (prefixes only) ==='
+            for k in SENDGRID_API_KEY TWILIO_SENDGRID_API_KEY TWILIO_EMAIL_FROM SENDGRID_FROM_EMAIL TWILIO_EMAIL_FROM_NAME; do
+              line=$(grep -E "^${k}=" .env || true)
+              val=${line#*=}
+              if [ -z "$val" ]; then
+                echo "$k=MISSING"
+              else
+                echo "$k=${val:0:8}... len=${#val}"
+              fi
+            done
+            echo '=== Container env (prefixes) ==='
+            docker exec bld-api sh -c 'for k in SENDGRID_API_KEY TWILIO_EMAIL_FROM TWILIO_EMAIL_FROM_NAME; do
+              eval "v=\${$k-}"
+              if [ -z "$v" ]; then echo "$k=MISSING_IN_CONTAINER"; else echo "$k=${v:0:8}... len=${#v}"; fi
+            done'
+            echo '=== Boot / SendGrid lines ==='
+            docker logs bld-api --tail 200 2>&1 | grep -Ei 'SendGrid|stub email|EMAIL|TwilioEmail|noreply' || true
+            echo '=== Recent verify-email requests ==='
+            docker logs bld-api --tail 400 2>&1 | grep -Ei 'verify-email|SendGrid send|stub email|Welcome to BLD' || true
+            echo '=== Probe SendGrid mail send API ==='
+            KEY=$(grep -E '^SENDGRID_API_KEY=' .env | head -1 | cut -d= -f2-)
+            FROM=$(grep -E '^TWILIO_EMAIL_FROM=' .env | head -1 | cut -d= -f2-)
+            if [ -n "$KEY" ] && [ -n "$FROM" ]; then
+              curl -sS -o /tmp/sg-probe.json -w 'HTTP %{http_code}\n' -X POST 'https://api.sendgrid.com/v3/mail/send' \
+                -H "Authorization: Bearer ${KEY}" \
+                -H 'Content-Type: application/json' \
+                -d "{\"personalizations\":[{\"to\":[{\"email\":\"${FROM}\"}]}],\"from\":{\"email\":\"${FROM}\",\"name\":\"BLD Probe\"},\"subject\":\"BLD staging SendGrid probe\",\"content\":[{\"type\":\"text/plain\",\"value\":\"Probe from staging debug workflow.\"}]}"
+              echo 'Body:'
+              head -c 800 /tmp/sg-probe.json; echo
+            else
+              echo 'Skip probe — missing key/from'
+            fi
