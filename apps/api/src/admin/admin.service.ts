@@ -939,6 +939,8 @@ export class AdminService {
       // Clear match FKs that would block project / user deletes.
       if (surveyorProfileId) {
         await tx.match.deleteMany({ where: { surveyorId: surveyorProfileId } });
+        // surveyor_profiles.user_id has no ON DELETE CASCADE — must remove profile first.
+        await tx.surveyorProfile.delete({ where: { id: surveyorProfileId } });
       }
       const projectIds = (
         await tx.project.findMany({ where: { clientId: userId }, select: { id: true } })
