@@ -1,0 +1,29 @@
+name: Debug Staging SendGrid Activity
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Query SendGrid sender auth + suppressions
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer ${SENDGRID_API_KEY}" -H "Content-Type: application/json")
+          echo '=== Verified senders ==='
+          curl -sS "${auth[@]}" 'https://api.sendgrid.com/v3/verified_senders' | python3 -m json.tool | head -n 80
+          echo '=== Domain authentication ==='
+          curl -sS "${auth[@]}" 'https://api.sendgrid.com/v3/whitelabel/domains' | python3 -m json.tool | head -n 80
+          echo '=== Suppression blocks ==='
+          curl -sS -w '\nHTTP %{http_code}\n' "${auth[@]}" 'https://api.sendgrid.com/v3/suppression/blocks?limit=20' | head -c 2000; echo
+          echo '=== Suppression bounces ==='
+          curl -sS -w '\nHTTP %{http_code}\n' "${auth[@]}" 'https://api.sendgrid.com/v3/suppression/bounces?limit=20' | head -c 2000; echo
+          echo '=== Suppression invalid emails ==='
+          curl -sS -w '\nHTTP %{http_code}\n' "${auth[@]}" 'https://api.sendgrid.com/v3/suppression/invalid_emails?limit=20' | head -c 2000; echo
+          echo '=== Email activity (messages API) ==='
+          curl -sS -w '\nHTTP %{http_code}\n' "${auth[@]}" \
+            'https://api.sendgrid.com/v3/messages?limit=10&query=subject%3D%22Your%20BLD%20verification%20code%22' | head -c 4000; echo
