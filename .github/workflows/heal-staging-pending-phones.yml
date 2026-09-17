@@ -1,0 +1,34 @@
+name: Heal Staging Pending Phones
+
+on:
+  workflow_dispatch:
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Advance wipe-stuck users past Terms
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            echo '=== Before ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c \
+              "SELECT email, phone, phone_verified, onboarding_step, terms_accepted_at IS NOT NULL AS terms FROM users WHERE phone LIKE 'pending:%' OR phone LIKE 'clerk:%' ORDER BY email;"
+            docker exec bld-db psql -U surveylink -d surveylink -c \
+              "UPDATE users SET
+                 account_type_selected_at = COALESCE(account_type_selected_at, NOW()),
+                 terms_accepted_at = COALESCE(terms_accepted_at, NOW()),
+                 nda_accepted_at = COALESCE(nda_accepted_at, NOW()),
+                 onboarding_step = CASE
+                   WHEN onboarding_step IN ('done','portfolio') THEN onboarding_step
+                   ELSE 'verify_contact'
+                 END
+               WHERE phone LIKE 'pending:%' OR phone LIKE 'clerk:%';"
+            echo '=== After ==='
+            docker exec bld-db psql -U surveylink -d surveylink -c \
+              "SELECT email, left(phone,24) AS phone, phone_verified, onboarding_step, terms_accepted_at IS NOT NULL AS terms FROM users WHERE phone LIKE 'pending:%' OR phone LIKE 'clerk:%' OR email ILIKE '%kansara%' ORDER BY email;"

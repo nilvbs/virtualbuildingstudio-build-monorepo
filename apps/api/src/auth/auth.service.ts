@@ -263,8 +263,10 @@ export class AuthService {
       rememberDevSignup(normalizeEmail(input.email), input.password, existing.authSubject);
     }
 
-    // Optional: adopt the phone from this signup if it isn't already taken elsewhere.
-    if (input.phone && input.phone !== existing.phone) {
+    // Only adopt the signup phone when the stored one is a placeholder (pending:/
+    // clerk:/dev stubs). Never overwrite a real verified number — that felt like
+    // a dual-role "reset" and cleared phoneVerified on every Create account.
+    if (input.phone && this.isPlaceholderPhone(existing.phone) && input.phone !== existing.phone) {
       const phoneTaken = await this.prisma.user.findFirst({
         where: { phone: input.phone, NOT: { id: existing.id } },
         select: { id: true },
@@ -850,7 +852,8 @@ export class AuthService {
     const isNew = !before.includes(role);
     await ensureMembership(this.prisma, userId, role);
 
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    let user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    user = await this.healLegacyDualRoleWipe(user);
     if (!isNew || (role !== 'client' && role !== 'surveyor')) {
       return user;
     }
@@ -878,6 +881,35 @@ export class AuthService {
 
     // Mid-onboarding: keep current step; membership alone is enough.
     return user;
+  }
+
+  /**
+   * Older dual-role attach wiped terms + replaced the phone with pending:<id>.
+   * That code is gone; repair leftover rows so users only re-enter a real phone.
+   */
+  private async healLegacyDualRoleWipe(user: User): Promise<User> {
+    if (!this.isPlaceholderPhone(user.phone)) return user;
+    const stuckEarly =
+      !user.accountTypeSelectedAt ||
+      !user.termsAcceptedAt ||
+      !user.ndaAcceptedAt ||
+      user.onboardingStep === 'select_account_type' ||
+      user.onboardingStep === 'accept_terms';
+    if (!stuckEarly) return user;
+
+    const now = new Date();
+    return this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        accountTypeSelectedAt: user.accountTypeSelectedAt ?? now,
+        termsAcceptedAt: user.termsAcceptedAt ?? now,
+        ndaAcceptedAt: user.ndaAcceptedAt ?? now,
+        onboardingStep:
+          user.onboardingStep === 'done' || user.onboardingStep === 'portfolio'
+            ? user.onboardingStep
+            : 'verify_contact',
+      },
+    });
   }
 
   /**
@@ -1287,6 +1319,15 @@ export class AuthService {
     return 'verify_contact';
   }
 
+  /** Internal stubs used when phone is required/unique but not collected yet. */
+  private isPlaceholderPhone(phone: string | null | undefined): boolean {
+    if (!phone) return true;
+    if (phone === '+10000000001' || phone === '+1') return true;
+    if (phone.startsWith('pending:') || phone.startsWith('clerk:')) return true;
+    if (/^\+1555010\d{3}$/.test(phone)) return true;
+    return phone.length < 10;
+  }
+
   /**
    * Derive the step clients should see. Prefer stored progress, but never send
    * someone back to account-type/terms when those gates are already satisfied
@@ -1344,13 +1385,7 @@ export class AuthService {
     };
 
     const phoneNeedsEntry =
-      !user.phoneVerified &&
-      (!user.phone ||
-        user.phone === '+10000000001' ||
-        user.phone === '+1' ||
-        user.phone.startsWith('clerk:') ||
-        user.phone.startsWith('pending:') ||
-        user.phone.length < 10);
+      !user.phoneVerified && this.isPlaceholderPhone(user.phone);
 
     const effectiveStep = this.resolveOnboardingStep(user);
 
@@ -1396,7 +1431,7 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('No local account is linked to this identity');
     }
-    return user;
+    return this.healLegacyDualRoleWipe(user);
   }
 
   private async hydrateUser(user: User, roles: AppRole[]): Promise<AuthenticatedUser> {
