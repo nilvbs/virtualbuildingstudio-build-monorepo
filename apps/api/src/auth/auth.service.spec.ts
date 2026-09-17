@@ -1,4 +1,4 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import type { AuthPrincipal } from '@surveylink/types';
 import type { SignupInput } from '@surveylink/validation';
@@ -118,6 +118,9 @@ describe('AuthService', () => {
       start: jest.fn().mockResolvedValue(undefined),
       check: jest.fn(),
     };
+    const mail = {
+      send: jest.fn().mockResolvedValue(undefined),
+    };
     const config = {
       get: (key: string) => (key === 'AUTH0_CLIENT_SECRET' ? 'test-session-secret' : undefined),
     } as unknown as import('@nestjs/config').ConfigService;
@@ -133,6 +136,7 @@ describe('AuthService', () => {
       prisma as any,
       identity,
       phone,
+      mail as any,
       emailOtp as any,
       config,
       media as any,
@@ -354,7 +358,7 @@ describe('AuthService', () => {
       emailOtp.check.mockResolvedValue(false);
 
       await expect(service.verifyEmail(principal, '000000')).rejects.toBeInstanceOf(
-        UnauthorizedException,
+        BadRequestException,
       );
       expect(prisma.user.update).not.toHaveBeenCalled();
     });

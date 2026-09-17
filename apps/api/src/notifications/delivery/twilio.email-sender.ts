@@ -48,7 +48,15 @@ export class TwilioEmailSender implements EmailSender {
 
   async send(msg: EmailMessage): Promise<void> {
     if (!this.configured || !this.from) {
-      this.logger.log(`[stub email] to=${msg.to} subject="${msg.subject}"`);
+      this.logger.warn(`[stub email] to=${msg.to} subject="${msg.subject}"`);
+      const allowStub =
+        this.config.get<string>('AUTH_DEV_MODE') === 'true' ||
+        this.config.get<string>('NODE_ENV') !== 'production';
+      if (!allowStub) {
+        throw new Error(
+          'Email delivery is not configured on the server. Set SENDGRID_API_KEY and TWILIO_EMAIL_FROM.',
+        );
+      }
       return;
     }
 
@@ -66,6 +74,7 @@ export class TwilioEmailSender implements EmailSender {
         (err as { response?: { body?: unknown } })?.response?.body ??
         (err as Error).message;
       this.logger.warn(`SendGrid send to ${msg.to} failed: ${JSON.stringify(detail)}`);
+      throw new Error('Could not send email right now. Try again in a moment.');
     }
   }
 }

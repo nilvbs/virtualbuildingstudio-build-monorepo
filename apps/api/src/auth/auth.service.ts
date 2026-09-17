@@ -46,6 +46,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IDENTITY_PROVIDER, type IdentityProvider } from './identity/identity-provider';
 import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.identity-provider';
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
+import { EMAIL_SENDER, type EmailSender } from '../notifications/delivery/email-sender';
 import { EmailOtpService } from './email/email-otp.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import {
@@ -104,6 +105,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     @Inject(IDENTITY_PROVIDER) private readonly identity: IdentityProvider,
     @Inject(PHONE_VERIFIER) private readonly phone: PhoneVerifier,
+    @Inject(EMAIL_SENDER) private readonly mail: EmailSender,
     private readonly emailOtp: EmailOtpService,
     private readonly config: ConfigService,
     private readonly media: S3MediaStorageService,
@@ -113,6 +115,7 @@ export class AuthService {
   /**
    * Create the account and issue a session. Email/phone OTPs are sent only when
    * the user requests them from onboarding Verify contact — not at signup.
+   * A welcome email is attempted after a new account is created.
    */
   async signup(input: SignupInput): Promise<SignupResult> {
     const membershipRole = input.roleHint as MembershipRole;
@@ -169,6 +172,7 @@ export class AuthService {
       });
       await ensureMembership(this.prisma, user.id, membershipRole);
       // OTPs are requested from onboarding Verify contact — not here.
+      void this.sendWelcomeEmail(email, names.fullName, membershipRole);
       const hydrated = await this.hydrateUser(user, []);
       const session: AuthSession = {
         accessToken: issueDevUserToken(subject),
@@ -204,6 +208,7 @@ export class AuthService {
     await ensureMembership(this.prisma, user.id, membershipRole);
 
     await this.persistPasswordVerifier(user.id, input.password);
+    void this.sendWelcomeEmail(email, names.fullName, membershipRole);
 
     // Prefer Auth0 tokens; if password-realm is off, mint an API session so
     // Create account never strands the user (same outcome as Google OAuth).
@@ -569,6 +574,26 @@ export class AuthService {
     }
 
     return null;
+  }
+
+  /** Best-effort welcome note after Create account (never blocks signup). */
+  private async sendWelcomeEmail(
+    email: string,
+    fullName: string,
+    role: MembershipRole,
+  ): Promise<void> {
+    const roleLabel = role === 'surveyor' ? 'surveyor' : role === 'client' ? 'client' : role;
+    try {
+      await this.mail.send({
+        to: email,
+        subject: 'Welcome to BLD',
+        text: `Hi ${fullName},\n\nWelcome to BLD. Your ${roleLabel} account is ready — finish Verify contact in onboarding to unlock your workspace.\n\n— BLD`,
+        html: `<p>Hi ${fullName},</p><p>Welcome to BLD. Your <strong>${roleLabel}</strong> account is ready — finish <strong>Verify contact</strong> in onboarding to unlock your workspace.</p><p>— BLD</p>`,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Welcome email skipped for ${email}: ${detail}`);
+    }
   }
 
   /** Case-insensitive email lookup; rewrites legacy mixed-case rows to lowercase. */
@@ -1006,7 +1031,17 @@ export class AuthService {
     if (user.emailVerified) {
       return { ok: true };
     }
-    await this.emailOtp.start(user.id, user.email);
+    try {
+      await this.emailOtp.start(user.id, user.email);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Email OTP send failed for ${user.email}: ${detail}`);
+      throw new ServiceUnavailableException(
+        detail.includes('not configured')
+          ? 'Email delivery is not configured on the server yet. Ask an admin to set SendGrid keys.'
+          : 'Could not send the verification email. Try again in a moment.',
+      );
+    }
     return { ok: true };
   }
 
@@ -1048,7 +1083,7 @@ export class AuthService {
     const user = await this.requireUser(principal.sub);
     const approved = await this.emailOtp.check(user.id, user.email, code);
     if (!approved) {
-      throw new UnauthorizedException('Invalid or expired verification code');
+      throw new BadRequestException('Invalid or expired email verification code');
     }
     const withEmail = { ...user, emailVerified: true };
     const nextStep = this.stepAfterContactVerified(withEmail as User);

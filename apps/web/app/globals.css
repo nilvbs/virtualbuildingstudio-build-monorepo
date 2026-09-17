@@ -3174,8 +3174,8 @@ lord-icon {
 }
 
 .ob-step-stage {
-  min-height: 240px;
-  padding: 22px;
+  min-height: 0;
+  padding: 18px;
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(113, 104, 246, 0.12);
@@ -3236,7 +3236,7 @@ lord-icon {
 
 .onboarding-form {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ob-profile-form {
@@ -3525,15 +3525,16 @@ lord-icon {
 
 .onboarding-channel-block {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 12px;
   border: 1px solid rgba(113, 104, 246, 0.14);
-  border-radius: 16px;
+  border-radius: 14px;
   background: linear-gradient(180deg, #ffffff, #f7f8ff);
+  align-content: start;
 }
 
 .onboarding-channel-block.is-compact {
-  padding: 14px;
+  padding: 12px;
   border: 1px solid rgba(113, 104, 246, 0.14);
   background: linear-gradient(180deg, #ffffff, #f7f8ff);
 }
@@ -3541,7 +3542,13 @@ lord-icon {
 .onboarding-channel {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
+}
+
+.onboarding-channel lord-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
 }
 
 .onboarding-channel.is-verified {

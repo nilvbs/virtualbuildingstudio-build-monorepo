@@ -1,0 +1,61 @@
+name: Sync Staging SendGrid Env
+
+# Writes SENDGRID_* / TWILIO_EMAIL_* from GitHub staging secrets into EC2 .env
+# and restarts the API. Add these staging environment secrets first:
+#   SENDGRID_API_KEY, TWILIO_EMAIL_FROM, TWILIO_EMAIL_FROM_NAME (optional)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Require SendGrid secrets
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          TWILIO_EMAIL_FROM: ${{ secrets.TWILIO_EMAIL_FROM }}
+        run: |
+          if [ -z "$SENDGRID_API_KEY" ] || [ -z "$TWILIO_EMAIL_FROM" ]; then
+            echo 'Add staging environment secrets SENDGRID_API_KEY and TWILIO_EMAIL_FROM, then re-run.'
+            exit 1
+          fi
+
+      - name: Write SendGrid keys on EC2 and restart API
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: SENDGRID_API_KEY,TWILIO_EMAIL_FROM,TWILIO_EMAIL_FROM_NAME
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/BLD/stage
+            touch .env
+            python3 - <<'PY'
+            import os, re
+            path = ".env"
+            text = open(path, "r", encoding="utf-8", errors="ignore").read()
+            updates = {
+              "SENDGRID_API_KEY": os.environ["SENDGRID_API_KEY"].strip(),
+              "TWILIO_EMAIL_FROM": os.environ["TWILIO_EMAIL_FROM"].strip(),
+              "TWILIO_EMAIL_FROM_NAME": (os.environ.get("TWILIO_EMAIL_FROM_NAME") or "BLD").strip(),
+            }
+            for key, val in updates.items():
+              pattern = re.compile(rf"^{re.escape(key)}=.*$", re.M)
+              line = f"{key}={val}"
+              if pattern.search(text):
+                text = pattern.sub(line, text)
+              else:
+                text = text.rstrip() + "\n" + line + "\n"
+            open(path, "w", encoding="utf-8").write(text)
+            print("Updated:", ", ".join(updates.keys()))
+            PY
+            docker compose up -d api
+            sleep 4
+            docker logs bld-api --tail 40 2>&1 | grep -Ei 'SendGrid|EMAIL|stub email|email enabled' || true
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          TWILIO_EMAIL_FROM: ${{ secrets.TWILIO_EMAIL_FROM }}
+          TWILIO_EMAIL_FROM_NAME: ${{ secrets.TWILIO_EMAIL_FROM_NAME }}

@@ -23,6 +23,8 @@ interface PhoneInputProps {
   onChange: (next: PhoneInputValue) => void;
   required?: boolean;
   disabled?: boolean;
+  /** Show dialling example under the inputs. Default off. */
+  showExample?: boolean;
 }
 
 export function PhoneInput({
@@ -32,6 +34,7 @@ export function PhoneInput({
   onChange,
   required,
   disabled,
+  showExample = false,
 }: PhoneInputProps) {
   const autoId = useId();
   const phoneId = id ?? autoId;
@@ -71,9 +74,11 @@ export function PhoneInput({
           />
         </div>
       </div>
-      <span className="hint">
-        Example: {country.dial} {country.example}
-      </span>
+      {showExample ? (
+        <span className="hint">
+          Example: {country.dial} {country.example}
+        </span>
+      ) : null}
     </div>
   );
 }
