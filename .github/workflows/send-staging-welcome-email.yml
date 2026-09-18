@@ -42,6 +42,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @surveylink/types build
+      - run: pnpm --filter @surveylink/validation build
+      - run: pnpm --filter @surveylink/api run prisma:generate
       - run: pnpm --filter @surveylink/api build
 
       - name: Send branded welcome email
