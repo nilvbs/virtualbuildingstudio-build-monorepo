@@ -1,0 +1,33 @@
+---
+description: Keep docs/BUSINESS_LOGIC.md current when marketplace business logic or product flows change
+alwaysApply: true
+---
+
+# Living business logic docs
+
+Canonical flow doc: **`docs/BUSINESS_LOGIC.md`** (diagrams + role/project/match/onboarding flows).
+Data shape companion: `apps/api/prisma/DATA_MODEL.md`.
+
+## When you MUST update `docs/BUSINESS_LOGIC.md`
+
+After any change that alters **product behavior**, including:
+
+- Auth / signup / dual-role / onboarding steps
+- Project or match status transitions / auto-match / working hours
+- Surveyor portfolio eligibility or client project posting rules
+- Notifications / OTP / welcome email behavior (channels or triggers)
+- Helpdesk, feedback, admin pipeline, or permission rules
+- New marketplace modules or public API flows
+
+Also update when you remove or rename a flow (delete stale diagram steps).
+
+## How to update
+
+1. Edit the matching section; keep mermaid diagrams accurate.
+2. Add a row to the **Changelog** with today’s date and a one-line business summary.
+3. If schema changed, update `DATA_MODEL.md` too.
+4. Do **not** dump implementation trivia (renames, CSS, refactors with no behavior change).
+
+## When creating PRs / finishing features
+
+Before claiming done: skim `docs/BUSINESS_LOGIC.md` and confirm it still matches the code you shipped.
