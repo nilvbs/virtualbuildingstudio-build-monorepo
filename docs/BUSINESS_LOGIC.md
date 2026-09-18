@@ -1,7 +1,7 @@
 # BLD business logic
 
 > **Living document.** Update this file whenever marketplace / auth / matching / admin / helpdesk / notification behavior changes.
-> Data shape details live in [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
+> Data shape / ERD: [`docs/DATA_VISUAL.md`](./DATA_VISUAL.md) · narrative: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Status enums & transitions: [`packages/types/src/index.ts`](../packages/types/src/index.ts).
 
 Last reviewed: 2026-09-18

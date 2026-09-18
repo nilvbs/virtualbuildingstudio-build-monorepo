@@ -1,0 +1,31 @@
+---
+description: Keep docs/DATA_VISUAL.md current when Prisma schema or table relations change
+alwaysApply: true
+---
+
+# Living data visual (ERD)
+
+Canonical visual schema: **`docs/DATA_VISUAL.md`** (mermaid ERD of internal tables + relations).
+Prose companion: `apps/api/prisma/DATA_MODEL.md`.
+Product flows: `docs/BUSINESS_LOGIC.md`.
+
+## When you MUST update `docs/DATA_VISUAL.md`
+
+After any change to:
+
+- `apps/api/prisma/schema.prisma`
+- New / altered migrations that add tables, columns, or FKs
+- Cascade / delete behavior for relations
+- Status enums stored on tables (if values or meaning change)
+
+## How to update
+
+1. Refresh the **Full schema** `erDiagram` so entities and relationships match Prisma.
+2. Adjust domain group diagrams, inventory table, and cascade notes if needed.
+3. Set **Last synced** to today; add a **Changelog** row.
+4. Update `DATA_MODEL.md` grouping prose when tables are added/removed.
+5. Skip pure index renames or comment-only schema edits with no structural change.
+
+## Preview
+
+Open `docs/DATA_VISUAL.md` in the editor preview to see the live diagram.

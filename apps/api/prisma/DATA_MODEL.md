@@ -1,6 +1,8 @@
 # How the database is organised
 
-There are **11 tables**. Think in **four groups**. Everything hangs off **one person** (`users`).
+> **Visual ERD (tables + relations):** see [`docs/DATA_VISUAL.md`](../../docs/DATA_VISUAL.md) — open it in preview for the live diagram. Keep that file updated when the schema changes.
+
+There are multiple tables hanging off **one person** (`users`). Think in groups:
 
 ```
 Person (users)
