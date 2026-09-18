@@ -44,7 +44,7 @@ export function buildWelcomeEmail(input: {
 
   if (input.role === 'surveyor') {
     const profileUrl = `${base}/onboarding`;
-    const unsubscribeUrl = `mailto:surveyors@bld.com?subject=${encodeURIComponent('Unsubscribe from BLD emails')}`;
+    const unsubscribeUrl = `mailto:support@bld.online?subject=${encodeURIComponent('Unsubscribe from BLD emails')}`;
     const text = [
       `Welcome to BLD, ${name}`,
       '',
@@ -54,7 +54,7 @@ export function buildWelcomeEmail(input: {
       '',
       `Complete your profile: ${profileUrl}`,
       '',
-      'Questions? Reply to this email or reach us at surveyors@bld.com.',
+      'Questions? Reply to this email or reach us at support@bld.online.',
       '',
       '— The BLD team',
     ].join('\n');
@@ -71,7 +71,7 @@ export function buildWelcomeEmail(input: {
   }
 
   const dashboardUrl = `${base}/onboarding`;
-  const unsubscribeUrl = `mailto:support@bld.com?subject=${encodeURIComponent('Unsubscribe from BLD emails')}`;
+  const unsubscribeUrl = `mailto:support@bld.online?subject=${encodeURIComponent('Unsubscribe from BLD emails')}`;
   const text = [
     `Welcome to BLD, ${name}`,
     '',
@@ -81,7 +81,7 @@ export function buildWelcomeEmail(input: {
     '',
     `Post your first project: ${dashboardUrl}`,
     '',
-    'Need a hand? Reply to this email or reach us at support@bld.com.',
+    'Need a hand? Reply to this email or reach us at support@bld.online.',
     '',
     '— The BLD team',
   ].join('\n');
@@ -321,7 +321,7 @@ ${EMAIL_CSS}
                           <p style="margin:0 0 6px 0; font-size:14.5px; font-weight:700; color:#2A2558;">Need a hand getting started?</p>
                           <p style="margin:0; font-size:13.5px; line-height:21px; color:#6B668C;">
                             Just reply to this email, or reach us at
-                            <a href="mailto:support@bld.com" style="color:#7168F6; font-weight:600;">support@bld.com</a>.
+                            <a href="mailto:support@bld.online" style="color:#7168F6; font-weight:600;">support@bld.online</a>.
                           </p>
                         </td>
                       </tr>
@@ -539,8 +539,8 @@ ${EMAIL_CSS}
                         <td align="center" style="font-family:'DM Sans',Arial,sans-serif;">
                           <p style="margin:0 0 6px 0; font-size:14.5px; font-weight:700; color:#2A2558;">Questions about getting started?</p>
                           <p style="margin:0; font-size:13.5px; line-height:21px; color:#6B668C;">
-                            Just reply to this email, or reach our surveyor team at
-                            <a href="mailto:surveyors@bld.com" style="color:#7168F6; font-weight:600;">surveyors@bld.com</a>.
+                            Just reply to this email, or reach us at
+                            <a href="mailto:support@bld.online" style="color:#7168F6; font-weight:600;">support@bld.online</a>.
                           </p>
                         </td>
                       </tr>
