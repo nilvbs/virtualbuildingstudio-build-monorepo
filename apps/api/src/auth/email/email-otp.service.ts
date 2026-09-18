@@ -2,6 +2,7 @@ import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EMAIL_SENDER, type EmailSender } from '../../notifications/delivery/email-sender';
+import { buildVerifyEmail } from '../../notifications/delivery/verify-email';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 
@@ -36,11 +37,20 @@ export class EmailOtpService {
       },
     });
 
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { fullName: true, firstName: true },
+    });
+    const content = buildVerifyEmail({
+      fullName: user?.fullName || user?.firstName,
+      otpCode: code,
+    });
+
     await this.email.send({
       to: email,
-      subject: 'Your BLD verification code',
-      text: `Your verification code is ${code}. It expires in 10 minutes.`,
-      html: `<p>Your verification code is <strong>${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
     });
   }
 
