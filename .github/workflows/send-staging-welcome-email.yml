@@ -1,0 +1,150 @@
+name: Send Staging Welcome Email
+
+# Sends the polished BLD welcome template to a given address using
+# SendGrid credentials already present on the staging EC2 host.
+
+on:
+  workflow_dispatch:
+    inputs:
+      to_email:
+        description: Recipient email
+        required: true
+        type: string
+      full_name:
+        description: Recipient display name
+        required: false
+        default: Neeyal
+        type: string
+      role:
+        description: client or surveyor
+        required: false
+        default: client
+        type: choice
+        options:
+          - client
+          - surveyor
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Send welcome via EC2 SendGrid
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          TO_EMAIL: ${{ inputs.to_email }}
+          FULL_NAME: ${{ inputs.full_name }}
+          ROLE: ${{ inputs.role }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: TO_EMAIL,FULL_NAME,ROLE
+          script: |
+            set -euo pipefail
+            cd /home/ubuntu/BLD/stage
+            export APP_URL='https://staging.bld.online'
+            export KEY=$(grep -E '^SENDGRID_API_KEY=' .env | head -1 | cut -d= -f2-)
+            export FROM=$(grep -E '^TWILIO_EMAIL_FROM=' .env | head -1 | cut -d= -f2-)
+            export FROM_NAME=$(grep -E '^TWILIO_EMAIL_FROM_NAME=' .env | head -1 | cut -d= -f2-)
+            export FROM_NAME=${FROM_NAME:-BLD}
+            if [ -z "${KEY:-}" ] || [ -z "${FROM:-}" ]; then
+              echo "::error::SENDGRID_API_KEY or TWILIO_EMAIL_FROM missing on EC2 .env — run Sync Staging SendGrid Env first"
+              exit 1
+            fi
+            echo "KEY prefix=${KEY:0:6}... FROM=$FROM TO=$TO_EMAIL ROLE=$ROLE"
+            python3 <<'PY'
+            import json, os, urllib.error, urllib.request
+
+            to_email = os.environ["TO_EMAIL"].strip()
+            full_name = (os.environ.get("FULL_NAME") or "there").strip()
+            role = (os.environ.get("ROLE") or "client").strip().lower()
+            app_url = os.environ["APP_URL"].rstrip("/")
+            key = os.environ["KEY"].strip()
+            from_email = os.environ["FROM"].strip()
+            from_name = (os.environ.get("FROM_NAME") or "BLD").strip()
+
+            first = full_name.split()[0] if full_name else "there"
+            if role == "surveyor":
+                label = "Surveyor"
+                blurb = "Complete a few quick steps, then build your portfolio so the right projects can find you."
+            else:
+                label = "Client"
+                blurb = "Complete a few quick steps, then you can post projects and get matched with vetted surveyors."
+
+            continue_url = f"{app_url}/onboarding"
+            subject = f"Welcome to BLD, {first}"
+
+            def esc(s: str) -> str:
+                return (
+                    s.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;")
+                )
+
+            text = "\n".join(
+                [
+                    f"Hello {first},",
+                    "",
+                    "Welcome to BLD — we're glad you're here.",
+                    "",
+                    f"Your {label} account is set up. {blurb}",
+                    "",
+                    f"Continue setup: {continue_url}",
+                    "",
+                    "If you did not create this account, you can ignore this message.",
+                    "",
+                    "Warm regards,",
+                    "The BLD team",
+                ]
+            )
+
+            html = f"""<!DOCTYPE html>
+            <html lang="en"><body style="margin:0;padding:0;background:#f4f6f9;font-family:Georgia,serif;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:32px 16px;">
+            <tr><td align="center">
+            <table role="presentation" width="100%" style="max-width:560px;background:#fff;border-radius:12px;border:1px solid #e6ebf2;">
+            <tr><td style="background:#0b1f3a;padding:28px 32px;">
+            <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#9fb4d9;">BLD</p>
+            <h1 style="margin:10px 0 0;font-size:26px;font-weight:400;color:#fff;">Welcome aboard</h1>
+            </td></tr>
+            <tr><td style="padding:32px;">
+            <p style="margin:0 0 16px;font-size:17px;color:#1a2332;">Hello {esc(first)},</p>
+            <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Welcome to BLD — we're glad you're here.</p>
+            <p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#334155;">Your <strong>{esc(label)}</strong> account is ready. {esc(blurb)}</p>
+            <a href="{esc(continue_url)}" style="display:inline-block;padding:14px 22px;background:#0b1f3a;border-radius:8px;font-family:Arial,sans-serif;font-size:14px;font-weight:600;color:#fff;text-decoration:none;">Continue account setup</a>
+            </td></tr>
+            <tr><td style="padding:0 32px 28px;">
+            <p style="margin:0;font-size:15px;color:#334155;">Warm regards,<br/><strong>The BLD team</strong></p>
+            </td></tr>
+            </table></td></tr></table></body></html>"""
+
+            payload = {
+                "personalizations": [{"to": [{"email": to_email}]}],
+                "from": {"email": from_email, "name": from_name},
+                "subject": subject,
+                "content": [
+                    {"type": "text/plain", "value": text},
+                    {"type": "text/html", "value": html},
+                ],
+            }
+            req = urllib.request.Request(
+                "https://api.sendgrid.com/v3/mail/send",
+                data=json.dumps(payload).encode(),
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    print(f"SendGrid HTTP {resp.status}")
+                    print(f"Sent welcome to {to_email} ({label})")
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="replace")
+                print(f"SendGrid HTTP {e.code}")
+                print(body[:1200])
+                raise SystemExit(1)
+            PY
