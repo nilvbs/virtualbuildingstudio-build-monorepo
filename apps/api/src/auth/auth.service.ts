@@ -47,6 +47,7 @@ import { IDENTITY_PROVIDER, type IdentityProvider } from './identity/identity-pr
 import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.identity-provider';
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import { EMAIL_SENDER, type EmailSender } from '../notifications/delivery/email-sender';
+import { buildWelcomeEmail } from '../notifications/delivery/welcome-email';
 import { EmailOtpService } from './email/email-otp.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import {
@@ -621,14 +622,19 @@ export class AuthService {
     fullName: string,
     role: MembershipRole,
   ): Promise<void> {
-    const roleLabel = role === 'surveyor' ? 'surveyor' : role === 'client' ? 'client' : role;
+    const content = buildWelcomeEmail({
+      fullName,
+      role,
+      appUrl: this.webAppUrl,
+    });
     try {
       await this.mail.send({
         to: email,
-        subject: 'Welcome to BLD',
-        text: `Hi ${fullName},\n\nWelcome to BLD. Your ${roleLabel} account is ready — finish Verify contact in onboarding to unlock your workspace.\n\n— BLD`,
-        html: `<p>Hi ${fullName},</p><p>Welcome to BLD. Your <strong>${roleLabel}</strong> account is ready — finish <strong>Verify contact</strong> in onboarding to unlock your workspace.</p><p>— BLD</p>`,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
       });
+      this.logger.log(`Welcome email sent to ${email}`);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Welcome email skipped for ${email}: ${detail}`);
@@ -1049,6 +1055,7 @@ export class AuthService {
     await ensureMembership(this.prisma, user.id, workspaceRole);
 
     // Phone OTP is sent from onboarding Verify contact when the user asks — not here.
+    void this.sendWelcomeEmail(email, names.fullName, workspaceRole as MembershipRole);
 
     return this.hydrateUser(user, principal.roles);
   }

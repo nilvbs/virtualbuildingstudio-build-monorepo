@@ -98,11 +98,14 @@ jobs:
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
           TWILIO_VERIFY_SERVICE_SID: ${{ secrets.TWILIO_VERIFY_SERVICE_SID }}
           TWILIO_MESSAGING_SERVICE_SID: ${{ secrets.TWILIO_MESSAGING_SERVICE_SID }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          TWILIO_EMAIL_FROM: ${{ secrets.TWILIO_EMAIL_FROM }}
+          TWILIO_EMAIL_FROM_NAME: ${{ secrets.TWILIO_EMAIL_FROM_NAME }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ steps.dirs.outputs.user }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,TWILIO_VERIFY_SERVICE_SID,TWILIO_MESSAGING_SERVICE_SID
+          envs: TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,TWILIO_VERIFY_SERVICE_SID,TWILIO_MESSAGING_SERVICE_SID,SENDGRID_API_KEY,TWILIO_EMAIL_FROM,TWILIO_EMAIL_FROM_NAME
           script: |
             set -euo pipefail
             APP_DIR="${{ steps.dirs.outputs.app_dir }}"
@@ -122,7 +125,7 @@ jobs:
               exit 1
             fi
 
-            # Upsert Twilio SMS credentials into host .env (compose env_file).
+            # Upsert Twilio SMS + SendGrid email credentials into host .env (compose env_file).
             upsert_env() {
               key="$1"
               val="$2"
@@ -146,6 +149,9 @@ jobs:
             upsert_env TWILIO_FROM_NUMBER "${TWILIO_FROM_NUMBER:-}"
             upsert_env TWILIO_VERIFY_SERVICE_SID "${TWILIO_VERIFY_SERVICE_SID:-}"
             upsert_env TWILIO_MESSAGING_SERVICE_SID "${TWILIO_MESSAGING_SERVICE_SID:-}"
+            upsert_env SENDGRID_API_KEY "${SENDGRID_API_KEY:-}"
+            upsert_env TWILIO_EMAIL_FROM "${TWILIO_EMAIL_FROM:-}"
+            upsert_env TWILIO_EMAIL_FROM_NAME "${TWILIO_EMAIL_FROM_NAME:-}"
             if grep -q '^TWILIO_ACCOUNT_SID=AC' "$APP_DIR/.env"; then
               echo "Twilio SMS env present on EC2 .env"
             else
@@ -160,6 +166,16 @@ jobs:
               echo "Twilio Messaging Service SID present on EC2 .env"
             else
               echo "WARN: TWILIO_MESSAGING_SERVICE_SID not set on EC2 .env"
+            fi
+            if grep -q '^SENDGRID_API_KEY=SG\.' "$APP_DIR/.env" || grep -q '^SENDGRID_API_KEY=SG' "$APP_DIR/.env"; then
+              echo "SendGrid API key present on EC2 .env"
+            else
+              echo "WARN: SENDGRID_API_KEY not set on EC2 .env — welcome/OTP email will not deliver"
+            fi
+            if grep -q '^TWILIO_EMAIL_FROM=.\+@' "$APP_DIR/.env"; then
+              echo "SendGrid from-address present on EC2 .env"
+            else
+              echo "WARN: TWILIO_EMAIL_FROM not set on EC2 .env"
             fi
 
             # PostGIS DB + migrate on the compose network (@db), then API.
