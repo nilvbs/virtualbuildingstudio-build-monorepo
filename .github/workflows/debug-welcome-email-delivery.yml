@@ -1,0 +1,87 @@
+name: Debug Welcome Email Delivery
+
+on:
+  workflow_dispatch:
+    inputs:
+      to_email:
+        description: Recipient to investigate
+        required: true
+        default: neeyal.jain@virtualbuildingstudio.com
+        type: string
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Inspect welcome delivery for recipient
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          TO_EMAIL: ${{ inputs.to_email }}
+        run: |
+          set -euo pipefail
+          auth=(-H "Authorization: Bearer ${SENDGRID_API_KEY}" -H "Content-Type: application/json")
+          TO_ENC=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["TO_EMAIL"]))')
+
+          echo "=== Domain auth detail ==="
+          curl -sS "${auth[@]}" 'https://api.sendgrid.com/v3/whitelabel/domains' | python3 -c '
+          import json,sys
+          data=json.load(sys.stdin)
+          for d in data if isinstance(data,list) else data.get("result",data if isinstance(data,list) else []):
+            if isinstance(d,dict):
+              print({k:d.get(k) for k in ["id","domain","subdomain","valid","legacy","default"]})
+              dns=d.get("dns") or {}
+              for name,info in dns.items():
+                print(name, {k:info.get(k) for k in ["valid","type","host"]})
+          '
+
+          echo "=== Bounce for recipient ==="
+          curl -sS -w "\nHTTP %{http_code}\n" "${auth[@]}" "https://api.sendgrid.com/v3/suppression/bounces/${TO_ENC}" | head -c 1500; echo
+
+          echo "=== Block for recipient ==="
+          curl -sS -w "\nHTTP %{http_code}\n" "${auth[@]}" "https://api.sendgrid.com/v3/suppression/blocks/${TO_ENC}" | head -c 1500; echo
+
+          echo "=== Spam reports for recipient ==="
+          curl -sS -w "\nHTTP %{http_code}\n" "${auth[@]}" "https://api.sendgrid.com/v3/suppression/spam_reports/${TO_ENC}" | head -c 1500; echo
+
+          echo "=== Messages to recipient (any subject) ==="
+          curl -sS -G "${auth[@]}" \
+            --data-urlencode "limit=20" \
+            --data-urlencode "query=to_email=\"${TO_EMAIL}\"" \
+            'https://api.sendgrid.com/v3/messages' | python3 -m json.tool | head -n 200
+
+          echo "=== Messages subject contains Welcome ==="
+          curl -sS -G "${auth[@]}" \
+            --data-urlencode "limit=20" \
+            --data-urlencode "query=subject LIKE \"Welcome%\"" \
+            'https://api.sendgrid.com/v3/messages' | python3 -m json.tool | head -n 200
+
+          echo "=== Resend plain welcome now ==="
+          FROM=$(curl -sS "${auth[@]}" 'https://api.sendgrid.com/v3/whitelabel/domains' | python3 -c 'import json,sys; print("noreply@bld.online")')
+          payload=$(python3 - <<PY
+          import json, os
+          print(json.dumps({
+            "personalizations":[{"to":[{"email":os.environ["TO_EMAIL"]}]}],
+            "from":{"email":"noreply@bld.online","name":"BLD"},
+            "subject":"Welcome to BLD, Neeyal",
+            "content":[
+              {"type":"text/plain","value":"Hello Neeyal,\n\nWelcome to BLD — we are glad you are here.\n\nYour Client account is ready. Continue setup: https://staging.bld.online/onboarding\n\nWarm regards,\nThe BLD team"},
+              {"type":"text/html","value":"<p>Hello Neeyal,</p><p>Welcome to BLD — we are glad you are here.</p><p>Your <strong>Client</strong> account is ready.</p><p><a href=\"https://staging.bld.online/onboarding\">Continue account setup</a></p><p>Warm regards,<br/>The BLD team</p>"}
+            ],
+            "categories":["welcome","debug"],
+            "mail_settings":{"sandbox_mode":{"enable":False}}
+          }))
+          PY
+          )
+          curl -sS -o /tmp/sg-resend.json -w "HTTP %{http_code}\n" -X POST 'https://api.sendgrid.com/v3/mail/send' \
+            -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            -d "$payload"
+          head -c 800 /tmp/sg-resend.json; echo
+          echo "X-Message-Id header is only in response headers; checking recent messages in 20s..."
+          sleep 20
+          echo "=== Messages after resend ==="
+          curl -sS -G "${auth[@]}" \
+            --data-urlencode "limit=10" \
+            --data-urlencode "query=to_email=\"${TO_EMAIL}\"" \
+            'https://api.sendgrid.com/v3/messages' | python3 -m json.tool | head -n 120
