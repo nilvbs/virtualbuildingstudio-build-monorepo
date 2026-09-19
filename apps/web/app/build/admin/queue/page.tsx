@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  ArrowUpRight,
   Briefcase,
   CheckCircle2,
   Inbox,
@@ -46,44 +47,48 @@ function Metric({
   href,
 }: {
   icon: ReactNode;
-  tone?: string;
+  tone?: 'sky' | 'sage' | 'peach' | 'lilac' | 'butter';
   value: number;
   label: string;
   detail?: string;
   href?: string;
 }) {
+  const className = `ops-metric${tone ? ` tone-${tone}` : ''}${href ? ' ops-metric-link' : ''}`;
   const body = (
     <>
       <div className="ops-metric-top">
         <span className="ops-metric-ico" aria-hidden>
           {icon}
         </span>
-        <span className="ops-metric-label">{label}</span>
+        {href ? (
+          <span className="ops-metric-go" aria-hidden>
+            <ArrowUpRight size={14} />
+          </span>
+        ) : null}
       </div>
+      <p className="ops-metric-label">{label}</p>
       <div className="ops-metric-value">{value.toLocaleString()}</div>
       {detail ? <p className="ops-metric-detail">{detail}</p> : null}
     </>
   );
   if (href) {
     return (
-      <Link href={href} className={`ops-metric ops-metric-link${tone ? ` tone-${tone}` : ''}`}>
+      <Link href={href} className={className}>
         {body}
       </Link>
     );
   }
-  return (
-    <article className={`ops-metric${tone ? ` tone-${tone}` : ''}`}>{body}</article>
-  );
+  return <article className={className}>{body}</article>;
 }
 
 function LoadingState() {
   return (
     <div className="ops-metric-grid">
-      {[0, 1, 2, 3].map((i) => (
+      {[0, 1, 2, 3, 4].map((i) => (
         <div className="ops-metric" key={i} aria-hidden>
-          <div className="skeleton" style={{ width: 36, height: 36, borderRadius: 10 }} />
-          <div className="skeleton sk-line" style={{ width: '42%', height: 28, marginTop: 14 }} />
-          <div className="skeleton sk-line" style={{ width: '58%' }} />
+          <div className="skeleton" style={{ width: 40, height: 40, borderRadius: 12 }} />
+          <div className="skeleton sk-line" style={{ width: '48%', height: 12, marginTop: 16 }} />
+          <div className="skeleton sk-line" style={{ width: '36%', height: 28, marginTop: 8 }} />
         </div>
       ))}
     </div>
@@ -97,8 +102,8 @@ function ActivityTrendChart({
   trend: AdminOverviewStats['trend'];
 }) {
   const width = 720;
-  const height = 260;
-  const pad = { top: 18, right: 16, bottom: 36, left: 36 };
+  const height = 280;
+  const pad = { top: 22, right: 18, bottom: 40, left: 40 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
 
@@ -109,8 +114,8 @@ function ActivityTrendChart({
 
   const n = Math.max(trend.length, 1);
   const groupW = innerW / n;
-  const barW = Math.max(2, Math.min(10, groupW / 4));
-  const gap = barW * 0.2;
+  const barW = Math.max(2.5, Math.min(11, groupW / 4));
+  const gap = barW * 0.25;
 
   const totals = trend.map((d) => d.clients + d.surveyors + d.projects);
   const ma = totals.map((_, i) => {
@@ -120,7 +125,6 @@ function ActivityTrendChart({
   });
   const maxTotal = Math.max(1, ...totals, ...ma);
 
-  const yFor = (v: number) => pad.top + innerH - (v / maxVal) * innerH;
   const yTotal = (v: number) => pad.top + innerH - (v / maxTotal) * innerH;
 
   const trendPath = ma
@@ -131,7 +135,7 @@ function ActivityTrendChart({
     })
     .join(' ');
 
-  const tickEvery = Math.max(1, Math.ceil(n / 8));
+  const tickEvery = Math.max(1, Math.ceil(n / 7));
 
   if (trend.length === 0) {
     return <div className="ops-empty">No trend data for the current filters.</div>;
@@ -145,6 +149,13 @@ function ActivityTrendChart({
         role="img"
         aria-label="Daily clients, surveyors, and projects with trend line"
       >
+        <defs>
+          <linearGradient id="opsTrendFade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#d4b5a0" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#d4b5a0" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
         {[0, 0.25, 0.5, 0.75, 1].map((t) => {
           const y = pad.top + innerH * (1 - t);
           return (
@@ -156,7 +167,7 @@ function ActivityTrendChart({
                 y2={y}
                 className="ops-chart-grid"
               />
-              <text x={pad.left - 8} y={y + 3} className="ops-chart-axis" textAnchor="end">
+              <text x={pad.left - 10} y={y + 3.5} className="ops-chart-axis" textAnchor="end">
                 {Math.round(maxVal * t)}
               </text>
             </g>
@@ -182,8 +193,8 @@ function ActivityTrendChart({
                     x={x}
                     y={y}
                     width={barW}
-                    height={Math.max(h, b.v > 0 ? 1.5 : 0)}
-                    rx={1.5}
+                    height={Math.max(h, b.v > 0 ? 2 : 0)}
+                    rx={2}
                     className={b.cls}
                   >
                     <title>{`${d.date}: ${b.v}`}</title>
@@ -193,7 +204,7 @@ function ActivityTrendChart({
               {i % tickEvery === 0 || i === n - 1 ? (
                 <text
                   x={pad.left + groupW * i + groupW / 2}
-                  y={height - 10}
+                  y={height - 12}
                   className="ops-chart-axis"
                   textAnchor="middle"
                 >
@@ -210,7 +221,7 @@ function ActivityTrendChart({
             key={trend[i]?.date ?? i}
             cx={pad.left + groupW * i + groupW / 2}
             cy={yTotal(v)}
-            r={2.2}
+            r={2.4}
             className="ops-chart-trend-dot"
           />
         ))}
@@ -243,7 +254,7 @@ function ServicesBarChart({
   }
 
   const max = Math.max(1, ...services.map((s) => Math.max(s.surveyors, s.projects)));
-  const rows = services.slice(0, 12);
+  const rows = services.slice(0, 10);
 
   return (
     <div className="ops-svc-chart">
@@ -255,13 +266,13 @@ function ServicesBarChart({
               {label}
             </div>
             <div className="ops-svc-bars">
-              <div className="ops-svc-track">
+              <div className="ops-svc-track" title={`${row.surveyors} surveyors`}>
                 <span
                   className="ops-svc-fill surveyors"
                   style={{ width: `${(row.surveyors / max) * 100}%` }}
                 />
               </div>
-              <div className="ops-svc-track">
+              <div className="ops-svc-track" title={`${row.projects} projects`}>
                 <span
                   className="ops-svc-fill projects"
                   style={{ width: `${(row.projects / max) * 100}%` }}
@@ -269,8 +280,8 @@ function ServicesBarChart({
               </div>
             </div>
             <div className="ops-svc-counts">
-              <span title="Surveyors offering">{row.surveyors}</span>
-              <span title="Projects requesting">{row.projects}</span>
+              <span>{row.surveyors}</span>
+              <span>{row.projects}</span>
             </div>
           </div>
         );
@@ -371,10 +382,18 @@ export default function AdminOverviewPage() {
       <header className="ops-toolbar">
         <div className="ops-toolbar-copy">
           <p className="ops-kicker">Operations</p>
-          <h1 className="ops-title">Network analytics</h1>
+          <h1 className="ops-title">Overview</h1>
           <p className="ops-lede">
-            {periodLabel}
-            {location ? ` · ${displayLocation(location)}` : ' · All regions'}
+            Marketplace pulse for{' '}
+            <strong>{periodLabel.toLowerCase()}</strong>
+            {location ? (
+              <>
+                {' '}
+                in <strong>{displayLocation(location)}</strong>
+              </>
+            ) : (
+              ' · all regions'
+            )}
           </p>
         </div>
 
@@ -451,42 +470,45 @@ export default function AdminOverviewPage() {
         <>
           <section className="ops-block">
             <div className="ops-block-head">
-              <h2 className="ops-block-title">Network snapshot</h2>
-              <p className="ops-block-sub">Current inventory in selected scope</p>
+              <div>
+                <h2 className="ops-block-title">Network snapshot</h2>
+                <p className="ops-block-sub">Live inventory in the selected scope</p>
+              </div>
             </div>
             <div className="ops-metric-grid">
               <Metric
-                icon={<Users size={18} />}
+                icon={<Users size={17} strokeWidth={1.75} />}
+                tone="sky"
                 value={stats.totals.clients}
                 label="Clients"
                 detail="Registered accounts"
               />
               <Metric
-                icon={<UserCheck size={18} />}
-                tone="green"
+                icon={<UserCheck size={17} strokeWidth={1.75} />}
+                tone="sage"
                 value={stats.totals.surveyors}
                 label="Surveyors"
                 detail={`${stats.totals.matchableSurveyors} matchable`}
                 href="/build/admin/surveyors"
               />
               <Metric
-                icon={<CheckCircle2 size={18} />}
-                tone="green"
+                icon={<CheckCircle2 size={17} strokeWidth={1.75} />}
+                tone="lilac"
                 value={stats.totals.completeSurveyors}
                 label="Complete profiles"
                 detail="100% portfolio filled"
                 href="/build/admin/surveyors?quick=complete"
               />
               <Metric
-                icon={<Briefcase size={18} />}
-                tone="violet"
+                icon={<Briefcase size={17} strokeWidth={1.75} />}
+                tone="peach"
                 value={stats.totals.projects}
                 label="Projects"
                 detail="Total volume"
               />
               <Metric
-                icon={<Inbox size={18} />}
-                tone="amber"
+                icon={<Inbox size={17} strokeWidth={1.75} />}
+                tone="butter"
                 value={stats.totals.openProjects}
                 label="Open queue"
                 detail="Pending assignment"
@@ -494,48 +516,55 @@ export default function AdminOverviewPage() {
             </div>
           </section>
 
-          <section className="ops-block">
-            <div className="ops-block-head">
-              <h2 className="ops-block-title">Activity trend</h2>
-              <p className="ops-block-sub">
-                Daily adds with a 7-day moving average · {periodLabel}
-              </p>
-            </div>
-            <ActivityTrendChart trend={stats.trend} />
-          </section>
+          <div className="ops-split">
+            <section className="ops-block ops-panel">
+              <div className="ops-block-head">
+                <div>
+                  <h2 className="ops-block-title">Activity trend</h2>
+                  <p className="ops-block-sub">
+                    Daily adds · 7-day moving average · {periodLabel}
+                  </p>
+                </div>
+              </div>
+              <ActivityTrendChart trend={stats.trend} />
+            </section>
+
+            <section className="ops-block ops-panel">
+              <div className="ops-block-head">
+                <div>
+                  <h2 className="ops-block-title">Services coverage</h2>
+                  <p className="ops-block-sub">Supply vs demand by service</p>
+                </div>
+              </div>
+              <ServicesBarChart services={stats.services} />
+            </section>
+          </div>
 
           <section className="ops-block">
             <div className="ops-block-head">
-              <h2 className="ops-block-title">Services coverage</h2>
-              <p className="ops-block-sub">
-                How many surveyors offer each service vs projects that request it
-              </p>
-            </div>
-            <ServicesBarChart services={stats.services} />
-          </section>
-
-          <section className="ops-block">
-            <div className="ops-block-head">
-              <h2 className="ops-block-title">Period activity</h2>
-              <p className="ops-block-sub">{periodLabel}</p>
+              <div>
+                <h2 className="ops-block-title">Period activity</h2>
+                <p className="ops-block-sub">New records in {periodLabel.toLowerCase()}</p>
+              </div>
             </div>
             <div className="ops-metric-grid ops-metric-grid--3">
               <Metric
-                icon={<Users size={18} />}
+                icon={<Users size={17} strokeWidth={1.75} />}
+                tone="sky"
                 value={stats.period.clientsAdded}
                 label="New clients"
                 detail="Accounts created"
               />
               <Metric
-                icon={<UserCheck size={18} />}
-                tone="green"
+                icon={<UserCheck size={17} strokeWidth={1.75} />}
+                tone="sage"
                 value={stats.period.surveyorsAdded}
                 label="New surveyors"
                 detail="Profiles created"
               />
               <Metric
-                icon={<Briefcase size={18} />}
-                tone="violet"
+                icon={<Briefcase size={17} strokeWidth={1.75} />}
+                tone="peach"
                 value={stats.period.projectsPosted}
                 label="New projects"
                 detail="Jobs posted"
@@ -543,10 +572,12 @@ export default function AdminOverviewPage() {
             </div>
           </section>
 
-          <section className="ops-block">
+          <section className="ops-block ops-panel">
             <div className="ops-block-head">
-              <h2 className="ops-block-title">Regional distribution</h2>
-              <p className="ops-block-sub">Select a row to focus the dashboard</p>
+              <div>
+                <h2 className="ops-block-title">Regional distribution</h2>
+                <p className="ops-block-sub">Select a region to focus the dashboard</p>
+              </div>
             </div>
             {stats.locations.length === 0 ? (
               <div className="ops-empty">No regional data for the current filters.</div>
