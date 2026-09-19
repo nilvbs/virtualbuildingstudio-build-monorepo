@@ -294,7 +294,7 @@ function AdminUsersPageInner() {
               ? 'Loading users…'
               : `${filtered.length} ${headingLabel}${filtered.length === 1 ? '' : 's'}`}
           </h2>
-          <div className="admin-cli-filters admin-cli-filters--inline">
+          <div className="admin-cli-filters admin-cli-filters--inline" role="toolbar" aria-label="User filters">
             <div className="admin-users-role-pills" role="group" aria-label="Filter by role">
               {ROLE_FILTERS.map((f) => (
                 <button
@@ -308,31 +308,33 @@ function AdminUsersPageInner() {
                 </button>
               ))}
             </div>
-            <label className="admin-cli-search admin-cli-search--compact">
-              <Search size={15} strokeWidth={2} aria-hidden />
-              <input
-                type="search"
-                placeholder="Search users"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                aria-label="Search users"
-              />
-            </label>
-            <select
-              className="input admin-cli-status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'all' | UserStatus)}
-              aria-label="Filter by status"
-            >
-              <option value="all">All status</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-            </select>
-            {q.trim() ? (
-              <button type="button" className="btn secondary admin-cli-clear" onClick={() => setQ('')}>
-                Clear
-              </button>
-            ) : null}
+            <div className="admin-cli-tools">
+              <label className="admin-cli-search admin-cli-search--compact">
+                <Search size={15} strokeWidth={2} aria-hidden />
+                <input
+                  type="search"
+                  placeholder="Search users"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  aria-label="Search users"
+                />
+              </label>
+              <select
+                className="admin-cli-status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as 'all' | UserStatus)}
+                aria-label="Filter by status"
+              >
+                <option value="all">All status</option>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+              </select>
+              {q.trim() ? (
+                <button type="button" className="btn secondary admin-cli-clear" onClick={() => setQ('')}>
+                  Clear
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       )}

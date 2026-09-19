@@ -975,40 +975,102 @@ code {
   align-items: center;
   flex-wrap: nowrap;
   gap: 12px 16px;
+  padding: 10px 14px;
 }
 
 .admin-cli-bar--users .admin-cli-heading {
   flex: 0 0 auto;
   white-space: nowrap;
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1;
+  padding: 0;
+  align-self: center;
 }
 
 .admin-cli-filters--inline {
   flex: 1 1 auto;
+  display: flex;
   flex-wrap: nowrap;
+  align-items: center;
   justify-content: flex-end;
   min-width: 0;
+  gap: 10px;
+}
+
+.admin-cli-tools {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .admin-cli-search--compact {
-  flex: 0 1 200px;
-  min-width: 140px;
-  max-width: 220px;
+  flex: 0 0 200px;
+  min-width: 160px;
+  max-width: 200px;
+  margin: 0;
+}
+
+.admin-cli-bar--users .admin-cli-search--compact input {
+  height: 36px;
+  line-height: 36px;
+  padding: 0 12px 0 34px;
+  border-radius: 10px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.admin-cli-bar--users .admin-cli-search--compact svg {
+  left: 11px;
+  width: 14px;
+  height: 14px;
 }
 
 .admin-cli-status {
   flex: 0 0 auto;
-  min-width: 118px;
-  width: auto;
-  height: 42px;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  padding: 0 34px 0 12px !important;
+  line-height: 34px !important;
+  border-radius: 10px;
+  border: 1px solid rgba(113, 104, 246, 0.18);
+  background-color: #fff;
+  color: #2a2558;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.shell--admin .admin-cli-status {
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  line-height: 34px !important;
+  overflow: hidden !important;
+}
+
+.admin-cli-bar--users .admin-cli-clear {
+  height: 36px;
   padding: 0 12px;
-  border-radius: 11px;
+  font-size: 13px;
 }
 
 .admin-cli-bar--users .admin-users-role-pills {
   flex: 0 0 auto;
   flex-wrap: nowrap;
+  align-items: center;
+  padding: 3px;
+  gap: 4px;
+}
+
+.admin-cli-bar--users .admin-users-role-pill {
+  padding: 6px 11px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .admin-cli-list {
@@ -1633,23 +1695,35 @@ code {
 
   .admin-cli-bar--users {
     flex-wrap: wrap;
-    align-items: stretch;
+    align-items: center;
   }
 
   .admin-cli-filters--inline {
     flex-wrap: wrap;
-    justify-content: stretch;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .admin-cli-tools {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .admin-cli-search,
   .admin-proj-search,
   .admin-cli-search--compact {
+    flex: 1 1 auto;
+    min-width: 0;
     max-width: none;
-    flex: 1 1 100%;
+  }
+
+  .admin-cli-bar--users .admin-cli-search--compact {
+    flex: 1 1 auto;
+    max-width: none;
   }
 
   .admin-cli-status {
-    flex: 1 1 auto;
+    flex: 0 0 132px;
   }
 }
 
