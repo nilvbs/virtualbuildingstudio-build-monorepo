@@ -245,6 +245,22 @@ export class SurveyLinkClient {
     return this.request<{ ok: true; message: string }>('POST', '/auth/forgot-password', body);
   }
 
+  /** Peek a reset token (masked email) without consuming it. */
+  async peekResetPassword(
+    token: string,
+  ): Promise<{ ok: true; emailMasked: string } | { ok: false; reason: string }> {
+    const q = new URLSearchParams({ token });
+    return this.request<{ ok: true; emailMasked: string } | { ok: false; reason: string }>(
+      'GET',
+      `/auth/reset-password?${q.toString()}`,
+    );
+  }
+
+  /** Consume the reset token and set a new password for that user. */
+  async resetPassword(body: { token: string; password: string }): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>('POST', '/auth/reset-password', body);
+  }
+
   /** Resolve the "Continue with Google" URL to navigate the browser to. */
   async googleStartUrl(role?: RoleHint, redirectUri?: string): Promise<{ url: string }> {
     const params = new URLSearchParams();

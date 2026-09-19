@@ -125,6 +125,22 @@ export const forgotPasswordSchema = z.object({
 });
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 
+/** Strong password policy (aligned with Create account / Auth0). */
+export const passwordPolicySchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[a-z]/, 'Password must include a lowercase letter')
+  .regex(/[A-Z]/, 'Password must include an uppercase letter')
+  .regex(/\d/, 'Password must include a number')
+  .regex(/[^A-Za-z0-9]/, 'Password must include a symbol');
+
+/** Complete a first-party password reset using the emailed one-time token. */
+export const resetPasswordSchema = z.object({
+  token: z.string().trim().min(20, 'Reset link is invalid or expired'),
+  password: passwordPolicySchema,
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export const addMembershipSchema = z.object({
   role: workspaceRoleSchema,
 });

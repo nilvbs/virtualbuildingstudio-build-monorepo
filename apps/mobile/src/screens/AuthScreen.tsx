@@ -41,10 +41,12 @@ export function AuthScreen({ navigation, route }: Props) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [forgotSent, setForgotSent] = useState(false);
 
   useEffect(() => {
     setError(null);
     setInfo(null);
+    if (mode !== 'forgot') setForgotSent(false);
   }, [mode, role]);
 
   async function enterApp(nextRole: WorkspaceRole) {
@@ -120,14 +122,35 @@ export function AuthScreen({ navigation, route }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.forgotPassword({ email, role });
-      setInfo(res.message);
-      setMode('login');
+      await api.forgotPassword({ email, role });
+      setForgotSent(true);
+      setInfo(null);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onForgotResend() {
+    if (!role) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.forgotPassword({ email, role });
+      setForgotSent(true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function backToLogin() {
+    setForgotSent(false);
+    setError(null);
+    setInfo(null);
+    setMode('login');
   }
 
   async function onGoogle() {
@@ -177,7 +200,11 @@ export function AuthScreen({ navigation, route }: Props) {
   }
 
   function onBack() {
-    if (mode === 'forgot' || mode === 'complete') {
+    if (mode === 'forgot') {
+      backToLogin();
+      return;
+    }
+    if (mode === 'complete') {
       setMode('login');
       return;
     }
@@ -200,7 +227,9 @@ export function AuthScreen({ navigation, route }: Props) {
               <Text style={styles.kicker}>Welcome to BLD</Text>
               <Text style={styles.title}>
                 {mode === 'forgot'
-                  ? 'Forgot password'
+                  ? forgotSent
+                    ? 'Email sent successfully'
+                    : 'Forgot password'
                   : mode === 'complete'
                     ? 'Finish sign up'
                     : mode === 'signup'
@@ -209,7 +238,9 @@ export function AuthScreen({ navigation, route }: Props) {
               </Text>
               <Text style={styles.lede}>
                 {mode === 'forgot'
-                  ? 'Enter the email for your surveyor account.'
+                  ? forgotSent
+                    ? `We sent a password reset link to ${email.trim() || 'your email'}. Open it to choose a new password.`
+                    : 'Enter the email for your surveyor account and we will send a reset link.'
                   : mode === 'complete'
                     ? 'Add your phone number to complete your account.'
                     : 'Continue as a surveyor.'}
@@ -267,6 +298,25 @@ export function AuthScreen({ navigation, route }: Props) {
                   {error ? <AlertBox message={error} /> : null}
                   {info ? <AlertBox tone="success" message={info} /> : null}
 
+                  {mode === 'forgot' && forgotSent ? (
+                    <>
+                      <AlertBox
+                        tone="success"
+                        message="If you don't see the email, check spam — or resend below."
+                      />
+                      <Button
+                        label={busy ? 'Sending…' : 'Resend email'}
+                        busy={busy}
+                        onPress={() => void onForgotResend()}
+                      />
+                      <Button
+                        label="Back to login"
+                        variant="ghost"
+                        onPress={backToLogin}
+                      />
+                    </>
+                  ) : (
+                    <>
                   {mode === 'signup' ? (
                     <>
                       <Field
@@ -309,7 +359,10 @@ export function AuthScreen({ navigation, route }: Props) {
 
                   {mode === 'login' ? (
                     <Pressable
-                      onPress={() => setMode('forgot')}
+                      onPress={() => {
+                        setForgotSent(false);
+                        setMode('forgot');
+                      }}
                       style={{ alignSelf: 'flex-end', marginBottom: 12 }}
                     >
                       <Text style={styles.forgot}>Forgot password?</Text>
@@ -348,6 +401,8 @@ export function AuthScreen({ navigation, route }: Props) {
                       />
                     </>
                   ) : null}
+                    </>
+                  )}
                 </>
               )}
             </ScrollView>

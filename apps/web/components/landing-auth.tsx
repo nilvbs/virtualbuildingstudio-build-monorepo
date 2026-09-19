@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, ArrowLeft, Building2, HardHat, Info } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Building2, CheckCircle2, HardHat, Info } from 'lucide-react';
 import { LordIcon } from './lord-icon';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
@@ -125,6 +125,20 @@ export function LandingAuthOverlay({
       await api.forgotPassword({ email: forgotEmail, role });
       setForgotSent(true);
       setLoginEmail(forgotEmail);
+    } catch (err) {
+      setForgotError(errorMessage(err));
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
+  async function onForgotResend() {
+    if (!role) return;
+    setForgotError(null);
+    setForgotBusy(true);
+    try {
+      await api.forgotPassword({ email: forgotEmail, role });
+      setForgotSent(true);
     } catch (err) {
       setForgotError(errorMessage(err));
     } finally {
@@ -359,50 +373,72 @@ export function LandingAuthOverlay({
                 >
                   {forgotOpen ? (
                     <>
-                      <p className="mkt-auth-lede">
-                        Enter the email for your {workspaceLabel(role).toLowerCase()} account and
-                        we&apos;ll send a reset link.
-                      </p>
                       {forgotSent ? (
-                        <div className="alert success" role="status">
-                          <Info size={17} />
-                          <span>
-                            If an account exists for that email, we sent a password reset link. Check
-                            your inbox, then return to sign in.
-                          </span>
-                        </div>
-                      ) : (
-                        <form onSubmit={onForgot} noValidate>
+                        <>
+                          <p className="mkt-auth-lede">Email sent successfully</p>
+                          <div className="alert success" role="status">
+                            <CheckCircle2 size={17} />
+                            <span>
+                              We sent a password reset link to{' '}
+                              <strong>{forgotEmail.trim() || 'your email'}</strong>. Open it to
+                              choose a new password. If you don&apos;t see it, check spam.
+                            </span>
+                          </div>
                           {forgotError && (
                             <div className="alert error" role="alert">
                               <AlertCircle size={17} />
                               <span>{forgotError}</span>
                             </div>
                           )}
-                          <div className="field">
-                            <label htmlFor="mkt-forgot-email">Email</label>
-                            <div className="input-icon">
-                              <LordIcon name="mail" size={18} trigger="hover" />
-                              <input
-                                id="mkt-forgot-email"
-                                type="email"
-                                autoComplete="email"
-                                required
-                                value={forgotEmail}
-                                onChange={(e) => setForgotEmail(e.target.value)}
-                              />
-                            </div>
-                          </div>
-                          <button className="btn block" type="submit" disabled={forgotBusy}>
+                          <button
+                            type="button"
+                            className="btn block"
+                            disabled={forgotBusy}
+                            onClick={() => void onForgotResend()}
+                          >
                             {forgotBusy ? <span className="spin" /> : null}
-                            {forgotBusy ? 'Sending…' : 'Send reset link'}
+                            {forgotBusy ? 'Sending…' : 'Resend email'}
                           </button>
-                        </form>
-                      )}
-                      {forgotSent && (
-                        <button type="button" className="btn block" onClick={closeForgot}>
-                          Back to sign in
-                        </button>
+                          <button type="button" className="btn ghost block" onClick={closeForgot}>
+                            Back to login
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="mkt-auth-lede">
+                            Enter the email for your {workspaceLabel(role).toLowerCase()} account and
+                            we&apos;ll send a reset link.
+                          </p>
+                          <form onSubmit={onForgot} noValidate>
+                            {forgotError && (
+                              <div className="alert error" role="alert">
+                                <AlertCircle size={17} />
+                                <span>{forgotError}</span>
+                              </div>
+                            )}
+                            <div className="field">
+                              <label htmlFor="mkt-forgot-email">Email</label>
+                              <div className="input-icon">
+                                <LordIcon name="mail" size={18} trigger="hover" />
+                                <input
+                                  id="mkt-forgot-email"
+                                  type="email"
+                                  autoComplete="email"
+                                  required
+                                  value={forgotEmail}
+                                  onChange={(e) => setForgotEmail(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <button className="btn block" type="submit" disabled={forgotBusy}>
+                              {forgotBusy ? <span className="spin" /> : null}
+                              {forgotBusy ? 'Sending…' : 'Send reset link'}
+                            </button>
+                          </form>
+                          <button type="button" className="btn ghost block" onClick={closeForgot}>
+                            Back to login
+                          </button>
+                        </>
                       )}
                     </>
                   ) : mode === 'login' ? (

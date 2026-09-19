@@ -402,6 +402,18 @@ export class Auth0IdentityProvider implements IdentityProvider, OnModuleInit {
     }
   }
 
+  /**
+   * Set the Auth0 DB password for this email (create/link if Google-only).
+   * Does not return a session — used by first-party reset-password links.
+   */
+  async setPassword(input: {
+    email: string;
+    password: string;
+    primarySubject: string;
+  }): Promise<void> {
+    await this.ensurePasswordCredential(input);
+  }
+
   async sendEmailVerification(subject: string): Promise<void> {
     await this.mgmt().jobs.verifyEmail({ user_id: subject });
   }

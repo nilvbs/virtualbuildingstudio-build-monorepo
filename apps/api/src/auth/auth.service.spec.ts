@@ -103,6 +103,7 @@ describe('AuthService', () => {
         expiresIn: 3600,
       }),
       requestPasswordReset: jest.fn().mockResolvedValue(undefined),
+      setPassword: jest.fn().mockResolvedValue(undefined),
       sendEmailVerification: jest.fn().mockResolvedValue(undefined),
       getIdentity: jest.fn(),
       deleteIdentity: jest.fn().mockResolvedValue(undefined),

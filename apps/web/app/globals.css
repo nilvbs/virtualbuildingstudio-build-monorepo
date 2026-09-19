@@ -16830,3 +16830,80 @@ a.plain:hover {
     transform: rotate(360deg);
   }
 }
+
+/* ---- Reset password (public) ---- */
+.reset-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background:
+    radial-gradient(900px 480px at 10% -10%, rgba(113, 104, 246, 0.16), transparent 55%),
+    radial-gradient(700px 400px at 100% 0%, rgba(155, 148, 255, 0.14), transparent 50%),
+    #f7f8ff;
+}
+
+.reset-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid rgba(91, 82, 224, 0.14);
+  border-radius: 20px;
+  padding: 28px 26px 26px;
+  box-shadow: 0 18px 44px rgba(42, 37, 88, 0.1);
+}
+
+.reset-brand {
+  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  color: #2a2558;
+  margin-bottom: 18px;
+}
+
+.reset-title {
+  margin: 0 0 8px;
+  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-size: 1.55rem;
+  letter-spacing: -0.02em;
+  color: #2a2558;
+}
+
+.reset-lede {
+  margin: 0 0 18px;
+  color: #6b668c;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.reset-form {
+  display: grid;
+  gap: 14px;
+}
+
+.reset-success-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: #eeeaff;
+  color: #5b52e0;
+  margin-bottom: 14px;
+}
+
+.reset-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #5b52e0;
+}
+
+.reset-back:hover {
+  color: #4a42c9;
+}

@@ -28,6 +28,7 @@ import {
   loginSchema,
   logoutSchema,
   addMembershipSchema,
+  resetPasswordSchema,
   selectAccountTypeSchema,
   signupSchema,
   startPhoneVerificationSchema,
@@ -43,6 +44,7 @@ import {
   type GoogleExchangeInput,
   type LoginInput,
   type LogoutInput,
+  type ResetPasswordInput,
   type SelectAccountTypeInput,
   type SignupInput,
   type StartPhoneVerificationInput,
@@ -82,6 +84,23 @@ export class AuthController {
     @Body(new ZodValidationPipe(forgotPasswordSchema)) body: ForgotPasswordInput,
   ): Promise<{ ok: true; message: string }> {
     return this.auth.forgotPassword(body.email, body.role);
+  }
+
+  /** Validate a reset token and return a masked email for the set-password screen. */
+  @Public()
+  @Get('reset-password')
+  peekResetPassword(@Query('token') token?: string) {
+    return this.auth.peekPasswordResetToken(token ?? '');
+  }
+
+  /** Consume the one-time reset token and set a new password for that user only. */
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordSchema)) body: ResetPasswordInput,
+  ): Promise<{ ok: true }> {
+    return this.auth.resetPassword(body.token, body.password);
   }
 
   @Public()

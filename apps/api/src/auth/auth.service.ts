@@ -10,7 +10,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type {
   AccountType,
@@ -48,6 +48,7 @@ import { AUTH_PROVIDER_NAME, GOOGLE_PROVIDER_NAME } from './identity/auth0.ident
 import { PHONE_VERIFIER, type PhoneVerifier } from './phone/phone-verifier';
 import { EMAIL_SENDER, type EmailSender } from '../notifications/delivery/email-sender';
 import { buildWelcomeEmail } from '../notifications/delivery/welcome-email';
+import { buildResetPasswordEmail } from '../notifications/delivery/reset-password-email';
 import { EmailOtpService } from './email/email-otp.service';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import {
@@ -75,6 +76,18 @@ import {
 import { ensureMembership, hintFromMemberships, listMemberships } from './memberships';
 
 const GOOGLE_CONNECTION = 'google-oauth2';
+const PASSWORD_RESET_CHANNEL = 'password_reset';
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
+function maskEmail(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.indexOf('@');
+  if (at <= 0) return '***';
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${'*'.repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+}
 
 interface OAuthState {
   role: RoleHint;
@@ -525,9 +538,9 @@ export class AuthService {
   }
 
   /**
-   * Marketplace forgot-password. Sends an Auth0 reset email only when the
-   * account has the requested client/surveyor membership. Staff-only accounts
-   * never receive a reset from this path (anti-enumeration still returns ok).
+   * Marketplace forgot-password. Issues a one-time first-party reset link
+   * (bound to that user id) and emails a branded template. Anti-enumeration:
+   * always returns the same ok message. Staff-only accounts are skipped.
    */
   async forgotPassword(
     email: string,
@@ -543,21 +556,158 @@ export class AuthService {
       return { ok: true, message };
     }
 
+    if (user.status !== 'active') {
+      return { ok: true, message };
+    }
+
     const memberships = await listMemberships(this.prisma, user.id);
     if (!memberships.includes(role)) {
       // Wrong workspace or staff-only — do not reset.
       return { ok: true, message };
     }
 
-    // Google-only accounts can still request a reset once a DB password exists;
-    // Auth0 no-ops / anti-enumerates when there is nothing to reset.
-    if (devAuthEnabled(this.config)) {
-      // Local bypass has no outbound email; keep response identical.
-      return { ok: true, message };
+    await this.issuePasswordResetEmail(user);
+    return { ok: true, message };
+  }
+
+  /**
+   * Peek a reset token for the UI (masked email). Does not consume the token.
+   */
+  async peekPasswordResetToken(
+    token: string,
+  ): Promise<{ ok: true; emailMasked: string } | { ok: false; reason: string }> {
+    const row = await this.findValidPasswordReset(token);
+    if (!row) {
+      return { ok: false, reason: 'This reset link is invalid or has expired.' };
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: row.userId },
+      select: { email: true, status: true },
+    });
+    if (!user || user.status !== 'active') {
+      return { ok: false, reason: 'This reset link is invalid or has expired.' };
+    }
+    return { ok: true, emailMasked: maskEmail(user.email) };
+  }
+
+  /**
+   * Consume a one-time reset token and set a new password for that user only.
+   */
+  async resetPassword(token: string, password: string): Promise<{ ok: true }> {
+    const row = await this.findValidPasswordReset(token);
+    if (!row) {
+      throw new BadRequestException('This reset link is invalid or has expired.');
     }
 
-    await this.identity.requestPasswordReset(user.email);
-    return { ok: true, message };
+    const user = await this.prisma.user.findUnique({ where: { id: row.userId } });
+    if (!user || user.status !== 'active') {
+      throw new BadRequestException('This reset link is invalid or has expired.');
+    }
+    if (!user.authSubject) {
+      throw new BadRequestException('This account cannot reset a password. Sign in with Google instead.');
+    }
+
+    // Bind: token row userId is the only account we update.
+    if (devAuthEnabled(this.config)) {
+      rememberDevSignup(normalizeEmail(user.email), password, user.authSubject);
+    } else {
+      try {
+        await this.identity.setPassword({
+          email: user.email,
+          password,
+          primarySubject: user.authSubject,
+        });
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Password reset Auth0 update failed for ${user.id}: ${detail}`);
+        throw new ServiceUnavailableException(
+          'Could not update your password right now. Please try again shortly.',
+        );
+      }
+    }
+
+    await this.persistPasswordVerifier(user.id, password);
+
+    await this.prisma.contactOtp.update({
+      where: { id: row.id },
+      data: { consumedAt: new Date() },
+    });
+    // Invalidate any other outstanding reset tokens for this user.
+    await this.prisma.contactOtp.updateMany({
+      where: {
+        userId: user.id,
+        channel: PASSWORD_RESET_CHANNEL,
+        consumedAt: null,
+        id: { not: row.id },
+      },
+      data: { consumedAt: new Date() },
+    });
+
+    return { ok: true };
+  }
+
+  private async issuePasswordResetEmail(user: User): Promise<void> {
+    const rawToken = randomBytes(32).toString('base64url');
+    const codeHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
+    await this.prisma.contactOtp.updateMany({
+      where: { userId: user.id, channel: PASSWORD_RESET_CHANNEL, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+
+    await this.prisma.contactOtp.create({
+      data: {
+        userId: user.id,
+        channel: PASSWORD_RESET_CHANNEL,
+        destination: normalizeEmail(user.email),
+        codeHash,
+        expiresAt,
+      },
+    });
+
+    const webBase = (this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:3000').replace(
+      /\/$/,
+      '',
+    );
+    const resetUrl = `${webBase}/reset-password?token=${encodeURIComponent(rawToken)}`;
+    const content = buildResetPasswordEmail({
+      fullName: user.fullName || user.firstName,
+      resetUrl,
+      expiresInMinutes: Math.round(PASSWORD_RESET_TTL_MS / 60_000),
+    });
+
+    try {
+      await this.mail.send({
+        to: user.email,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Password reset email failed for ${user.email}: ${detail}`);
+      // Keep anti-enumeration: do not throw to the client.
+    }
+
+    if (devAuthEnabled(this.config)) {
+      this.logger.log(`[AUTH_DEV_MODE] Password reset link for ${user.email}: ${resetUrl}`);
+    }
+  }
+
+  private async findValidPasswordReset(token: string) {
+    const trimmed = token.trim();
+    if (trimmed.length < 20) return null;
+    const codeHash = createHash('sha256').update(trimmed).digest('hex');
+    return this.prisma.contactOtp.findFirst({
+      where: {
+        channel: PASSWORD_RESET_CHANNEL,
+        codeHash,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   /** Persist scrypt verifier so login/signup sessions work without Auth0 ROPG. */

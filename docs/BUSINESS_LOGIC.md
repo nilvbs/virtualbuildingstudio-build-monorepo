@@ -4,7 +4,7 @@
 > Data shape / ERD: [`docs/DATA_VISUAL.md`](./DATA_VISUAL.md) · narrative: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Status enums & transitions: [`packages/types/src/index.ts`](../packages/types/src/index.ts).
 
-Last reviewed: 2026-09-18
+Last reviewed: 2026-09-19
 
 ---
 
@@ -60,8 +60,21 @@ flowchart TD
 - Google: complete registration (phone + role) then same onboarding gates.
 - Welcome email: branded HTML; client vs surveyor templates; SendGrid (`TwilioEmailSender`).
 - Email OTP: branded verify template (`buildVerifyEmail`).
+- **Forgot password (marketplace only):** client/surveyor request → branded reset email with one-time link (`/reset-password?token=…`, 1h TTL, bound to that `userId` via `contact_otps` channel `password_reset`). UI shows success + resend + back to login. Completing the link sets Auth0 + local password verifier for that user only; token is single-use. Staff/admin accounts are never emailed a reset. Anti-enumeration: API always returns the same ok message.
 
-**Key code:** `auth.service.ts`, `email-otp.service.ts`, `welcome-email.ts`, `verify-email.ts`, `twilio.email-sender.ts`
+```mermaid
+flowchart TD
+  Forgot["Forgot password + email + role"] --> Exists{"Active user with that marketplace role?"}
+  Exists -->|No| SameOk["Return generic ok"]
+  Exists -->|Yes| Issue["Store hashed token on contact_otps + email branded link"]
+  Issue --> SameOk
+  SameOk --> Open["User opens /reset-password?token"]
+  Open --> Peek["Show masked email for that user"]
+  Peek --> Save["Set new password for token userId only"]
+  Save --> Consume["Consume token + invalidate other reset tokens"]
+```
+
+**Key code:** `auth.service.ts`, `email-otp.service.ts`, `welcome-email.ts`, `verify-email.ts`, `reset-password-email.ts`, `twilio.email-sender.ts`
 
 ---
 
@@ -228,6 +241,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-19 | Marketplace **forgot password**: branded reset email, success/resend UI, `/reset-password` bound to requesting user only |
 | 2026-09-19 | Onboarding **email + phone** both mandatory to leave Verify contact / complete profile |
 | 2026-09-18 | Dual-role signup notice; branded welcome (client + surveyor); branded email OTP; SendGrid synced on deploy; admin user delete clears surveyor profile |
 | 2026-09-18 | **Doc created** — keep updating this table + diagrams above |

@@ -72,8 +72,18 @@ export interface IdentityProvider {
   /**
    * Trigger the provider's "forgot password" email for a database user.
    * Always resolves when the email is absent (provider anti-enumeration).
+   * @deprecated Prefer first-party reset links via AuthService.forgotPassword.
    */
   requestPasswordReset(email: string): Promise<void>;
+  /**
+   * Set / replace the Auth0 database password for this marketplace identity
+   * (creates a DB credential when the account was Google-only).
+   */
+  setPassword(input: {
+    email: string;
+    password: string;
+    primarySubject: string;
+  }): Promise<void>;
   sendEmailVerification(subject: string): Promise<void>;
   getIdentity(subject: string): Promise<IdentityRecord>;
   /** Best-effort delete of the Auth0 (or provider) identity. */
