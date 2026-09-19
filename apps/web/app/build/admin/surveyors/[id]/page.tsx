@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   AVAILABILITY_LABELS,
+  DAILY_CAPTURE_CAPACITY_LABELS,
   DOCUMENT_TYPE_LABELS,
   EQUIPMENT_LABELS,
   INDUSTRY_LABELS,
@@ -24,6 +25,7 @@ import {
   SURVEYOR_PROFILE_COMPLETION_CHECKS,
   type AdminSurveyorDetail,
   type AvailabilityOption,
+  type DailyCaptureCapacity,
   type DocumentType,
   type EquipmentId,
   type IndustryServed,
@@ -277,7 +279,13 @@ export default function AdminSurveyorDetailPage({ params }: { params: Promise<{ 
             </div>
             <div>
               <dt>Daily capture capacity</dt>
-              <dd>{details.dailyCaptureCapacity ?? '—'}</dd>
+              <dd>
+                {details.dailyCaptureCapacity
+                  ? DAILY_CAPTURE_CAPACITY_LABELS[
+                      details.dailyCaptureCapacity as DailyCaptureCapacity
+                    ]
+                  : '—'}
+              </dd>
             </div>
             <div>
               <dt>Years reality capture</dt>
