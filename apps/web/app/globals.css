@@ -971,6 +971,46 @@ code {
   white-space: nowrap;
 }
 
+.admin-cli-bar--users {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12px 16px;
+}
+
+.admin-cli-bar--users .admin-cli-heading {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 18px;
+}
+
+.admin-cli-filters--inline {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  min-width: 0;
+  gap: 8px;
+}
+
+.admin-cli-search--compact {
+  flex: 0 1 200px;
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.admin-cli-status {
+  flex: 0 0 auto;
+  min-width: 118px;
+  width: auto;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 11px;
+}
+
+.admin-cli-bar--users .admin-users-role-pills {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
 .admin-cli-list {
   display: grid;
   gap: 10px;
@@ -1591,9 +1631,25 @@ code {
     align-items: stretch;
   }
 
+  .admin-cli-bar--users {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .admin-cli-filters--inline {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
   .admin-cli-search,
-  .admin-proj-search {
+  .admin-proj-search,
+  .admin-cli-search--compact {
     max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .admin-cli-status {
+    flex: 1 1 auto;
   }
 }
 

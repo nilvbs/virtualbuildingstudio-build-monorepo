@@ -288,18 +288,13 @@ function AdminUsersPageInner() {
     <div className="admin-cli">
       {deleteModal}
       {!forbidden && (
-        <div className="admin-cli-bar">
-          <div className="admin-cli-summary">
-            <h2 className="admin-cli-heading">
-              {loading && !users
-                ? 'Loading users…'
-                : `${filtered.length} ${headingLabel}${filtered.length === 1 ? '' : 's'}`}
-            </h2>
-            <p className="admin-cli-lede">
-              Clients and surveyors in one list — filter by role, then view, edit, or delete.
-            </p>
-          </div>
-          <div className="admin-cli-filters" style={{ flexWrap: 'wrap' }}>
+        <div className="admin-cli-bar admin-cli-bar--users">
+          <h2 className="admin-cli-heading">
+            {loading && !users
+              ? 'Loading users…'
+              : `${filtered.length} ${headingLabel}${filtered.length === 1 ? '' : 's'}`}
+          </h2>
+          <div className="admin-cli-filters admin-cli-filters--inline">
             <div className="admin-users-role-pills" role="group" aria-label="Filter by role">
               {ROLE_FILTERS.map((f) => (
                 <button
@@ -313,7 +308,7 @@ function AdminUsersPageInner() {
                 </button>
               ))}
             </div>
-            <label className="admin-cli-search">
+            <label className="admin-cli-search admin-cli-search--compact">
               <Search size={15} strokeWidth={2} aria-hidden />
               <input
                 type="search"
@@ -324,11 +319,10 @@ function AdminUsersPageInner() {
               />
             </label>
             <select
-              className="input"
+              className="input admin-cli-status"
               value={status}
               onChange={(e) => setStatus(e.target.value as 'all' | UserStatus)}
               aria-label="Filter by status"
-              style={{ minWidth: 130 }}
             >
               <option value="all">All status</option>
               <option value="active">Active</option>
