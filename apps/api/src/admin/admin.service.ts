@@ -15,6 +15,8 @@ import {
   isValidTransition,
   normalizePortfolioDetails,
   resolveStaffPermissions,
+  surveyorProfileCompletion,
+  SURVEY_SERVICES,
   type AdminClient,
   type AdminClientDetail,
   type AdminClientProjectSummary,
@@ -130,10 +132,26 @@ export class AdminService {
         },
       }),
       this.prisma.surveyorProfile.findMany({
-        select: { id: true, createdAt: true, baseCity: true, isMatchable: true },
+        select: {
+          id: true,
+          createdAt: true,
+          baseCity: true,
+          isMatchable: true,
+          services: true,
+          equipment: true,
+          bio: true,
+          dayRateCents: true,
+          details: true,
+        },
       }),
       this.prisma.project.findMany({
-        select: { id: true, createdAt: true, locationText: true, status: true },
+        select: {
+          id: true,
+          createdAt: true,
+          locationText: true,
+          status: true,
+          services: true,
+        },
       }),
       this.prisma.feedback.findMany({
         select: {
@@ -145,6 +163,11 @@ export class AdminService {
       }),
     ]);
 
+    const surveyorGeo = await this.prisma.$queryRaw<GeoRow[]>`
+      SELECT id::text AS id, ST_X(base_location::geometry) AS lng, ST_Y(base_location::geometry) AS lat
+      FROM surveyor_profiles`;
+    const geoById = new Map(surveyorGeo.map((g) => [g.id, g]));
+
     const clientRows = clients.map((c) => ({
       createdAt: c.createdAt,
       label: locationLabel([
@@ -153,15 +176,33 @@ export class AdminService {
         c.accountProfile?.country,
       ]),
     }));
-    const surveyorRows = surveyors.map((s) => ({
-      createdAt: s.createdAt,
-      isMatchable: s.isMatchable,
-      label: locationLabel([s.baseCity]),
-    }));
+    const surveyorRows = surveyors.map((s) => {
+      const g = geoById.get(s.id);
+      const location =
+        g && g.lng != null && g.lat != null ? { lng: Number(g.lng), lat: Number(g.lat) } : null;
+      const details = normalizePortfolioDetails((s as { details?: unknown }).details ?? {});
+      const completion = surveyorProfileCompletion({
+        services: (s.services as unknown as SurveyService[]) ?? [],
+        equipment: (s.equipment as unknown as string[]) ?? [],
+        bio: s.bio,
+        baseCity: s.baseCity,
+        location,
+        dayRateCents: s.dayRateCents != null ? Number(s.dayRateCents) : null,
+        details,
+      });
+      return {
+        createdAt: s.createdAt,
+        isMatchable: s.isMatchable,
+        label: locationLabel([s.baseCity]),
+        services: (s.services as unknown as SurveyService[]) ?? [],
+        profileComplete: completion.complete,
+      };
+    });
     const projectRows = projects.map((p) => ({
       createdAt: p.createdAt,
       status: p.status,
       label: locationLabelFromText(p.locationText),
+      services: (p.services as unknown as SurveyService[]) ?? [],
     }));
 
     const allLabels = new Set<string>();
@@ -213,6 +254,60 @@ export class AdminService {
       count: feedbackScoped.filter((f) => f.rating === rating).length,
     }));
 
+    // Trend window: explicit range, else last 30 UTC days.
+    const trendTo = to ?? endOfUtcDay(new Date().toISOString().slice(0, 10));
+    const trendFrom =
+      from ??
+      (() => {
+        const d = new Date(trendTo);
+        d.setUTCDate(d.getUTCDate() - 29);
+        return startOfUtcDay(d.toISOString().slice(0, 10));
+      })();
+    const trendDays: AdminOverviewStats['trend'] = [];
+    for (let cursor = new Date(trendFrom); cursor <= trendTo; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+      const key = cursor.toISOString().slice(0, 10);
+      const dayStart = startOfUtcDay(key);
+      const dayEnd = endOfUtcDay(key);
+      const inDay = (d: Date) => d >= dayStart && d <= dayEnd;
+      trendDays.push({
+        date: key,
+        clients: clientsScoped.filter((r) => inDay(r.createdAt)).length,
+        surveyors: surveyorsScoped.filter((r) => inDay(r.createdAt)).length,
+        projects: projectsScoped.filter((r) => inDay(r.createdAt)).length,
+      });
+    }
+
+    const serviceCounts = new Map<string, { surveyors: number; projects: number }>();
+    for (const svc of SURVEY_SERVICES) {
+      serviceCounts.set(svc, { surveyors: 0, projects: 0 });
+    }
+    for (const s of surveyorsScoped) {
+      for (const svc of s.services) {
+        const cur = serviceCounts.get(svc) ?? { surveyors: 0, projects: 0 };
+        cur.surveyors += 1;
+        serviceCounts.set(svc, cur);
+      }
+    }
+    for (const p of projectsScoped) {
+      for (const svc of p.services) {
+        const cur = serviceCounts.get(svc) ?? { surveyors: 0, projects: 0 };
+        cur.projects += 1;
+        serviceCounts.set(svc, cur);
+      }
+    }
+    const services = [...serviceCounts.entries()]
+      .map(([service, counts]) => ({
+        service: service as SurveyService,
+        surveyors: counts.surveyors,
+        projects: counts.projects,
+      }))
+      .filter((row) => row.surveyors > 0 || row.projects > 0)
+      .sort(
+        (a, b) =>
+          b.surveyors + b.projects - (a.surveyors + a.projects) ||
+          a.service.localeCompare(b.service),
+      );
+
     return {
       filters: {
         from: query.from ?? null,
@@ -223,6 +318,7 @@ export class AdminService {
         clients: clientsScoped.length,
         surveyors: surveyorsScoped.length,
         matchableSurveyors: surveyorsScoped.filter((s) => s.isMatchable).length,
+        completeSurveyors: surveyorsScoped.filter((s) => s.profileComplete).length,
         projects: projectsScoped.length,
         openProjects: projectsScoped.filter((p) =>
           OPEN_PROJECT_STATUSES.includes(p.status as ProjectStatus),
@@ -248,6 +344,8 @@ export class AdminService {
       },
       locations,
       availableLocations,
+      trend: trendDays,
+      services,
     };
   }
 
@@ -378,6 +476,7 @@ export class AdminService {
             phone: true,
             emailVerified: true,
             phoneVerified: true,
+            onboardingStep: true,
           },
         },
       },
@@ -390,6 +489,18 @@ export class AdminService {
     const g = geo[0];
     const location =
       g && g.lng != null && g.lat != null ? { lng: Number(g.lng), lat: Number(g.lat) } : null;
+    const services = (s.services as unknown as SurveyService[]) ?? [];
+    const equipment = (s.equipment as unknown as string[]) ?? [];
+    const details = normalizePortfolioDetails((s as { details?: unknown }).details ?? {});
+    const completion = surveyorProfileCompletion({
+      services,
+      equipment,
+      bio: s.bio,
+      baseCity: s.baseCity,
+      location,
+      dayRateCents: s.dayRateCents != null ? Number(s.dayRateCents) : null,
+      details,
+    });
 
     return {
       profileId: s.id,
@@ -400,19 +511,23 @@ export class AdminService {
       emailVerified: s.user.emailVerified,
       phoneVerified: s.user.phoneVerified,
       baseCity: s.baseCity,
-      services: (s.services as unknown as SurveyService[]) ?? [],
-      equipment: (s.equipment as unknown as string[]) ?? [],
+      services,
+      equipment,
       radiusKm: s.radiusKm,
       dayRateCents: s.dayRateCents != null ? Number(s.dayRateCents) : null,
       isMatchable: s.isMatchable,
       location,
       distanceKm: null,
-      bio: s.bio,
-      details: normalizePortfolioDetails((s as { details?: unknown }).details ?? {}),
+      createdAt: s.createdAt.toISOString(),
+      completionPercent: completion.percent,
+      profileComplete: completion.complete,
+      missingChecks: completion.missing,
       bldVerified: s.bldVerified,
       ratingAvg: s.ratingAvg != null ? Number(s.ratingAvg) : null,
       ratingCount: s.ratingCount,
-      createdAt: s.createdAt.toISOString(),
+      onboardingStep: s.user.onboardingStep,
+      bio: s.bio,
+      details,
     };
   }
 
@@ -421,12 +536,52 @@ export class AdminService {
     if (query.service) {
       where.services = { array_contains: query.service };
     }
+    if (query.matchable !== undefined) {
+      where.isMatchable = query.matchable;
+    }
+    if (query.bldVerified !== undefined) {
+      where.bldVerified = query.bldVerified;
+    }
+    if (query.city?.trim()) {
+      where.baseCity = { contains: query.city.trim(), mode: 'insensitive' };
+    }
+    if (query.minDayRateCents != null || query.maxDayRateCents != null) {
+      where.dayRateCents = {
+        ...(query.minDayRateCents != null ? { gte: query.minDayRateCents } : {}),
+        ...(query.maxDayRateCents != null ? { lte: query.maxDayRateCents } : {}),
+      };
+    }
+    if (query.minRating != null) {
+      where.ratingAvg = { gte: query.minRating };
+    }
+
+    const term = query.q?.trim();
+    if (term) {
+      where.user = {
+        OR: [
+          { fullName: { contains: term, mode: 'insensitive' } },
+          { email: { contains: term, mode: 'insensitive' } },
+          { phone: { contains: term, mode: 'insensitive' } },
+        ],
+      };
+    }
 
     const rows = await this.prisma.surveyorProfile.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: 200,
-      include: { user: { select: { fullName: true, email: true, phone: true } } },
+      take: 300,
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            email: true,
+            phone: true,
+            emailVerified: true,
+            phoneVerified: true,
+            onboardingStep: true,
+          },
+        },
+      },
     });
 
     const geo = await this.prisma.$queryRaw<GeoRow[]>`
@@ -444,6 +599,18 @@ export class AdminService {
       const location =
         g && g.lng != null && g.lat != null ? { lng: Number(g.lng), lat: Number(g.lat) } : null;
       const distanceKm = near && location ? haversineKm(near, location) : null;
+      const services = (s.services as unknown as SurveyService[]) ?? [];
+      const equipment = (s.equipment as unknown as string[]) ?? [];
+      const details = normalizePortfolioDetails((s as { details?: unknown }).details ?? {});
+      const completion = surveyorProfileCompletion({
+        services,
+        equipment,
+        bio: s.bio,
+        baseCity: s.baseCity,
+        location,
+        dayRateCents: s.dayRateCents != null ? Number(s.dayRateCents) : null,
+        details,
+      });
       return {
         profileId: s.id,
         userId: s.userId,
@@ -451,16 +618,28 @@ export class AdminService {
         email: s.user.email,
         phone: s.user.phone,
         baseCity: s.baseCity,
-        services: (s.services as unknown as SurveyService[]) ?? [],
-        equipment: (s.equipment as unknown as string[]) ?? [],
+        services,
+        equipment,
         radiusKm: s.radiusKm,
         dayRateCents: s.dayRateCents != null ? Number(s.dayRateCents) : null,
         isMatchable: s.isMatchable,
         location,
         distanceKm,
         createdAt: s.createdAt.toISOString(),
+        completionPercent: completion.percent,
+        profileComplete: completion.complete,
+        bldVerified: s.bldVerified,
+        ratingAvg: s.ratingAvg != null ? Number(s.ratingAvg) : null,
+        ratingCount: s.ratingCount,
+        emailVerified: s.user.emailVerified,
+        phoneVerified: s.user.phoneVerified,
+        onboardingStep: s.user.onboardingStep,
       };
     });
+
+    if (query.complete !== undefined) {
+      result = result.filter((s) => s.profileComplete === query.complete);
+    }
 
     if (near) {
       const radius = query.radiusKm ?? 100;

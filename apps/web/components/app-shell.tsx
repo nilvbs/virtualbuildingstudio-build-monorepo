@@ -79,6 +79,12 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
         requiresPermission: 'users:view',
       },
       {
+        href: '/build/admin/surveyors',
+        label: 'Surveyors',
+        icon: 'briefcase',
+        requiresPermission: 'surveyors:view',
+      },
+      {
         href: '/build/admin/pipeline',
         label: 'Pipeline',
         icon: 'check',
@@ -163,6 +169,9 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
     }
     if (pathname.startsWith('/build/admin/surveyors/') && pathname !== '/build/admin/surveyors') {
       return { label: 'Surveyor profile', sub: 'Portfolio, contact, and map location' };
+    }
+    if (pathname.startsWith('/build/admin/surveyors')) {
+      return { label: 'Surveyors', sub: 'Profiles, completeness, and service coverage' };
     }
     if (pathname.startsWith('/build/admin/users/') && pathname !== '/build/admin/users') {
       return { label: 'User profile', sub: 'View and edit account details' };

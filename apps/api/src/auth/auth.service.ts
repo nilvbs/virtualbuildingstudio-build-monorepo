@@ -136,10 +136,30 @@ export class AuthService {
     const legacyHint = membershipRole as WorkspaceRole;
     const email = normalizeEmail(input.email);
 
-    // Prefer email: same person can register client + surveyor on one account.
-    // Phone-only hits a *different* email → block (phone stays unique on users).
+    // Email and phone are both unique identity keys. Reusing either without the
+    // other matching the same account is blocked. Same email + matching phone can
+    // add a missing client/surveyor role (dual-role).
     const byEmail = await this.findUserByEmail(email);
+    const phoneOwner = await this.prisma.user.findFirst({
+      where: { phone: input.phone },
+      select: { id: true, email: true },
+    });
+
     if (byEmail) {
+      if (phoneOwner && phoneOwner.id !== byEmail.id) {
+        throw new ConflictException(
+          'That phone number is already used by another account. Use a different number, or sign in with the email on that account.',
+        );
+      }
+      if (
+        input.phone &&
+        !this.isPlaceholderPhone(byEmail.phone) &&
+        input.phone !== byEmail.phone
+      ) {
+        throw new ConflictException(
+          'An account with this email already exists with a different phone number. Sign in with that account, or use a different email and phone.',
+        );
+      }
       const { user, session, accountNotice } = await this.addRoleToExistingUser(
         byEmail,
         { ...input, email },
@@ -152,10 +172,6 @@ export class AuthService {
       };
     }
 
-    const phoneOwner = await this.prisma.user.findFirst({
-      where: { phone: input.phone },
-      select: { id: true, email: true },
-    });
     if (phoneOwner) {
       throw new ConflictException(
         'That phone number is already used by another account. Use a different number, or sign in with the email on that account.',
@@ -253,8 +269,9 @@ export class AuthService {
    * Attach another segregated role (client / surveyor / admin) to an existing
    * identity after verifying the password. Profile tables stay separate.
    *
-   * Conflict only when that role is already on the account. Email match is enough
-   * to add the other workspace — phone does not need to match (still unique overall).
+   * Requires the same email (caller already matched) and either a matching phone
+   * or a placeholder phone on the existing account. Conflict when that role is
+   * already on the account.
    */
   private async addRoleToExistingUser(
     existing: User,

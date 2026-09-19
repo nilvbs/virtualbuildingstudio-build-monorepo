@@ -220,7 +220,7 @@ describe('AuthService', () => {
       expect(identity.createIdentity).not.toHaveBeenCalled();
     });
 
-    it('adds surveyor when email already has client even if phone differs', async () => {
+    it('rejects dual-role signup when phone differs from the existing account', async () => {
       const existing = makeUser({
         id: 'existing',
         phone: '+14155550000',
@@ -228,13 +228,29 @@ describe('AuthService', () => {
       });
       prisma.user.findFirst
         .mockResolvedValueOnce(existing) // findUserByEmail
-        .mockResolvedValueOnce(null); // phoneTaken check in addRole
+        .mockResolvedValueOnce(null); // phoneOwner (no other account owns signup phone)
+
+      await expect(service.signup({ ...signupInput, roleHint: 'surveyor' })).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(identity.createIdentity).not.toHaveBeenCalled();
+    });
+
+    it('adds surveyor when email already has client and phone matches', async () => {
+      const existing = makeUser({
+        id: 'existing',
+        phone: '+14155552671',
+        authProvider: 'auth0',
+      });
+      prisma.user.findFirst
+        .mockResolvedValueOnce(existing) // findUserByEmail
+        .mockResolvedValueOnce({ id: 'existing', email: existing.email }); // phoneOwner = same user
       prisma.userRole.findMany
         .mockResolvedValueOnce([{ role: 'client' }]) // listMemberships before add
         .mockResolvedValueOnce([{ role: 'client' }, { role: 'surveyor' }]); // after
       prisma.userRole.upsert.mockResolvedValue({});
-      prisma.user.update.mockResolvedValue({ ...existing, phone: '+14155552671' });
-      prisma.user.findUnique.mockResolvedValue({ ...existing, phone: '+14155552671' });
+      prisma.user.update.mockResolvedValue(existing);
+      prisma.user.findUnique.mockResolvedValue(existing);
       identity.login.mockResolvedValue({
         accessToken: 'tok',
         tokenType: 'Bearer',
@@ -244,7 +260,7 @@ describe('AuthService', () => {
       // hydrateUser / attachMarketplaceRole need findUnique etc.
       const attachSpy = jest
         .spyOn(service as unknown as { attachMarketplaceRole: AuthService['attachMarketplaceRole'] }, 'attachMarketplaceRole')
-        .mockResolvedValue({ ...existing, phone: '+14155552671' });
+        .mockResolvedValue(existing);
       const hydrateSpy = jest
         .spyOn(service as unknown as { hydrateUser: AuthService['hydrateUser'] }, 'hydrateUser')
         .mockResolvedValue({
@@ -277,7 +293,7 @@ describe('AuthService', () => {
       });
       prisma.user.findFirst
         .mockResolvedValueOnce(existing)
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce({ id: 'existing', email: existing.email });
       prisma.userRole.findMany
         .mockResolvedValueOnce([{ role: 'client' }])
         .mockResolvedValueOnce([{ role: 'client' }, { role: 'surveyor' }]);

@@ -142,11 +142,6 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
                         </td>
                       </tr>
                     </table>
-
-                    <p style="margin:22px 0 0 0; font-family:'DM Sans',Arial,sans-serif; font-size:12.5px; line-height:19px; color:#9B94FF; word-break:break-all;">
-                      Or paste this link into your browser:<br>
-                      <a href="{{reset_url}}" style="color:#7168F6;">{{reset_url}}</a>
-                    </p>
                   </td>
                 </tr>
 

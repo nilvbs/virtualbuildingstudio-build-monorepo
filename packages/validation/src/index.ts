@@ -358,6 +358,34 @@ export const adminSurveyorQuerySchema = z.object({
   nearLng: z.coerce.number().min(-180).max(180).optional(),
   radiusKm: z.coerce.number().positive().max(20000).optional(),
   minRating: z.coerce.number().optional(),
+  q: z.string().trim().max(120).optional(),
+  city: z.string().trim().max(120).optional(),
+  matchable: z
+    .union([z.boolean(), z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === 'boolean') return v;
+      return v === 'true' || v === '1';
+    }),
+  complete: z
+    .union([z.boolean(), z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === 'boolean') return v;
+      return v === 'true' || v === '1';
+    }),
+  bldVerified: z
+    .union([z.boolean(), z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === 'boolean') return v;
+      return v === 'true' || v === '1';
+    }),
+  minDayRateCents: z.coerce.number().int().min(0).optional(),
+  maxDayRateCents: z.coerce.number().int().min(0).optional(),
 });
 export type AdminSurveyorQuery = z.infer<typeof adminSurveyorQuerySchema>;
 

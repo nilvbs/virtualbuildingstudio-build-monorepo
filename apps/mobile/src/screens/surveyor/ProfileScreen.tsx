@@ -199,7 +199,7 @@ export function ProfileScreen() {
   }, [services, equipment, baseCity, lat, lng, dayRate, hourlyRate, details]);
 
   function patchDetails(patch: Partial<SurveyorPortfolioDetails>) {
-    setDetails((current) => ({ ...current, ...patch }));
+    setDetails((current) => ({ ...current, ...patch, currency: 'USD' }));
   }
 
   function patchIndividual(patch: Partial<IndividualIdentity>) {
@@ -465,7 +465,6 @@ export function ProfileScreen() {
                   [
                     ['travelNationwide', 'Travel nationwide'],
                     ['internationalProjects', 'International projects'],
-                    ['remoteServices', 'Remote services'],
                   ] as const
                 ).map(([key, label]) => (
                   <Pressable
@@ -503,11 +502,7 @@ export function ProfileScreen() {
           ) : step === 2 ? (
             <>
               <Text style={styles.section}>Pricing</Text>
-              <Field
-                label="Currency"
-                value={details.currency}
-                onChangeText={(currency) => patchDetails({ currency: currency.toUpperCase() })}
-              />
+              <Field label="Currency" value="USD" editable={false} />
               <Field
                 label="Hourly rate"
                 icon="dollar-sign"

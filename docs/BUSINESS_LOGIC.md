@@ -45,8 +45,12 @@ flowchart LR
 ```mermaid
 flowchart TD
   Start["Create account / Sign in"] --> EmailCheck{"Email already exists?"}
-  EmailCheck -->|Yes| AddRole["Verify password + add missing client/surveyor role"]
-  EmailCheck -->|No| CreateUser["Create user + Auth0/dev identity"]
+  EmailCheck -->|Yes| PhoneMatch{"Phone matches that account?"}
+  PhoneMatch -->|No| Conflict["Conflict — email or phone already taken"]
+  PhoneMatch -->|Yes| AddRole["Verify password + add missing client/surveyor role"]
+  EmailCheck -->|No| PhoneCheck{"Phone already exists?"}
+  PhoneCheck -->|Yes| Conflict
+  PhoneCheck -->|No| CreateUser["Create user + Auth0/dev identity"]
   AddRole --> Notice["Return accountNotice if role added"]
   CreateUser --> Welcome["Send branded welcome email"]
   Notice --> Session["Issue session + activeRole"]
@@ -56,11 +60,12 @@ flowchart TD
   Onboard -->|Yes| Home["Workspace home"]
 ```
 
+- **Identity uniqueness:** email and phone are both checked. Reusing one with a different other (e.g. same email + new phone, or new email + existing phone) is blocked. Dual-role only when the same email **and** matching phone (or placeholder phone) pass password verify for a role the account does not yet have.
 - Password signup: email/phone OTP **not** sent at create — only from onboarding **Verify contact**.
 - Google: complete registration (phone + role) then same onboarding gates.
 - Welcome email: branded HTML; client vs surveyor templates; SendGrid (`TwilioEmailSender`).
 - Email OTP: branded verify template (`buildVerifyEmail`).
-- **Forgot password (marketplace only):** client/surveyor request → branded reset email with one-time link (`/reset-password?token=…`, 1h TTL, bound to that `userId` via `contact_otps` channel `password_reset`). UI shows success + resend + back to login. Completing the link sets Auth0 + local password verifier for that user only; token is single-use. Staff/admin accounts are never emailed a reset. Anti-enumeration: API always returns the same ok message.
+- **Forgot password (marketplace only):** client/surveyor request → branded reset email with one-time **button** link (`/reset-password?token=…`, 1h TTL, bound to that `userId` via `contact_otps` channel `password_reset`). No raw paste-URL block in the HTML. UI shows success + resend + back to login. Completing the link sets Auth0 + local password verifier for that user only; token is single-use. Staff/admin accounts are never emailed a reset. Anti-enumeration: API always returns the same ok message.
 
 ```mermaid
 flowchart TD
@@ -170,6 +175,8 @@ Match statuses: `proposed → accepted | declined | cancelled`; `accepted → co
 ## 7. Surveyor portfolio & eligibility
 
 - Surveyor profile holds services, coverage (PostGIS), rates, portfolio JSON.
+- **Pricing currency is fixed to USD** (not editable in UI; normalized on save).
+- **Remote services** is no longer collected in surveyor UI (field may still exist in stored JSON as legacy `false`).
 - Incomplete portfolio blocks receiving / acting on marketplace requests (web gates + matching filters for “live” surveyors).
 - Profile completion % drives UI prompts (`profile-completion`, surveyor shell snooze).
 
@@ -213,7 +220,9 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 ## 11. Admin / staff
 
 - Super-admin bootstrap; staff levels + permission presets.
-- Pipeline / users / surveyors / projects / helpdesk / activity.
+- **Overview** (`/build/admin/queue`): network totals (incl. complete surveyor profiles), daily activity **bar chart + 7-day trend line**, services coverage bars, regional breakdown; date/region filters.
+- **Surveyors** directory (`/build/admin/surveyors`): quick filters (complete / incomplete / matchable / paused / BLD verified) plus advanced filters (service, city, rating, day rate); open full dossier with all filled portfolio fields.
+- Pipeline / users / projects / helpdesk / activity.
 - User delete must clear surveyor profile + matches (no FK cascade on surveyor→user).
 
 **Key code:** `apps/api/src/admin/**`, `apps/web/app/build/admin/**`
@@ -241,6 +250,8 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-19 | Signup: email **and** phone uniqueness (partial reuse blocked); dual-role requires matching phone; reset email paste-link removed; portfolio currency locked to USD; Remote services UI removed |
+| 2026-09-19 | Admin **surveyor directory + overview analytics**: complete-profile visibility, service coverage charts, activity bars with trend line, quick + advanced surveyor filters, full profile dossier |
 | 2026-09-19 | Marketplace **forgot password**: branded reset email, success/resend UI, `/reset-password` bound to requesting user only |
 | 2026-09-19 | Onboarding **email + phone** both mandatory to leave Verify contact / complete profile |
 | 2026-09-18 | Dual-role signup notice; branded welcome (client + surveyor); branded email OTP; SendGrid synced on deploy; admin user delete clears surveyor profile |

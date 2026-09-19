@@ -142,6 +142,14 @@ export interface AdminSurveyorQueryBody {
   nearLat?: number;
   nearLng?: number;
   radiusKm?: number;
+  q?: string;
+  city?: string;
+  matchable?: boolean;
+  complete?: boolean;
+  bldVerified?: boolean;
+  minRating?: number;
+  minDayRateCents?: number;
+  maxDayRateCents?: number;
 }
 
 export interface AdminOverviewQueryBody {
@@ -611,6 +619,14 @@ export class SurveyLinkClient {
     if (query.nearLat != null) qs.set('nearLat', String(query.nearLat));
     if (query.nearLng != null) qs.set('nearLng', String(query.nearLng));
     if (query.radiusKm != null) qs.set('radiusKm', String(query.radiusKm));
+    if (query.q) qs.set('q', query.q);
+    if (query.city) qs.set('city', query.city);
+    if (query.matchable !== undefined) qs.set('matchable', String(query.matchable));
+    if (query.complete !== undefined) qs.set('complete', String(query.complete));
+    if (query.bldVerified !== undefined) qs.set('bldVerified', String(query.bldVerified));
+    if (query.minRating != null) qs.set('minRating', String(query.minRating));
+    if (query.minDayRateCents != null) qs.set('minDayRateCents', String(query.minDayRateCents));
+    if (query.maxDayRateCents != null) qs.set('maxDayRateCents', String(query.maxDayRateCents));
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
     return this.request<AdminSurveyor[]>('GET', `/admin/surveyors${suffix}`);
   }

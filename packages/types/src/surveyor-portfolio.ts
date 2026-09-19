@@ -799,7 +799,7 @@ export function normalizePortfolioDetails(
     remoteServices: Boolean(src.remoteServices),
     availability: (src.availability as AvailabilityOption | null) ?? null,
     busyUntil: src.busyUntil ?? null,
-    currency: src.currency?.trim() || 'USD',
+    currency: 'USD',
     hourlyRateCents: src.hourlyRateCents ?? null,
     minimumProjectCents: src.minimumProjectCents ?? null,
     emergencyRateCents: src.emergencyRateCents ?? null,

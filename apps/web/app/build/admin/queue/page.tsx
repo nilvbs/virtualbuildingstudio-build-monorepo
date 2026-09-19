@@ -1,15 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Briefcase,
+  CheckCircle2,
   Inbox,
   MapPin,
   UserCheck,
   Users,
 } from 'lucide-react';
-import type { AdminOverviewStats } from '@surveylink/types';
+import {
+  SURVEY_SERVICE_LABELS,
+  type AdminOverviewStats,
+  type SurveyService,
+} from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 
 type DatePreset = 'all' | '7d' | '30d' | '90d' | 'custom';
@@ -37,15 +43,17 @@ function Metric({
   value,
   label,
   detail,
+  href,
 }: {
   icon: ReactNode;
   tone?: string;
   value: number;
   label: string;
   detail?: string;
+  href?: string;
 }) {
-  return (
-    <article className={`ops-metric${tone ? ` tone-${tone}` : ''}`}>
+  const body = (
+    <>
       <div className="ops-metric-top">
         <span className="ops-metric-ico" aria-hidden>
           {icon}
@@ -54,7 +62,17 @@ function Metric({
       </div>
       <div className="ops-metric-value">{value.toLocaleString()}</div>
       {detail ? <p className="ops-metric-detail">{detail}</p> : null}
-    </article>
+    </>
+  );
+  if (href) {
+    return (
+      <Link href={href} className={`ops-metric ops-metric-link${tone ? ` tone-${tone}` : ''}`}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <article className={`ops-metric${tone ? ` tone-${tone}` : ''}`}>{body}</article>
   );
 }
 
@@ -68,6 +86,203 @@ function LoadingState() {
           <div className="skeleton sk-line" style={{ width: '58%' }} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Grouped bar chart with overlay trend line (7-day moving average of totals). */
+function ActivityTrendChart({
+  trend,
+}: {
+  trend: AdminOverviewStats['trend'];
+}) {
+  const width = 720;
+  const height = 260;
+  const pad = { top: 18, right: 16, bottom: 36, left: 36 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+
+  const maxVal = Math.max(
+    1,
+    ...trend.map((d) => Math.max(d.clients, d.surveyors, d.projects)),
+  );
+
+  const n = Math.max(trend.length, 1);
+  const groupW = innerW / n;
+  const barW = Math.max(2, Math.min(10, groupW / 4));
+  const gap = barW * 0.2;
+
+  const totals = trend.map((d) => d.clients + d.surveyors + d.projects);
+  const ma = totals.map((_, i) => {
+    const start = Math.max(0, i - 6);
+    const slice = totals.slice(start, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  });
+  const maxTotal = Math.max(1, ...totals, ...ma);
+
+  const yFor = (v: number) => pad.top + innerH - (v / maxVal) * innerH;
+  const yTotal = (v: number) => pad.top + innerH - (v / maxTotal) * innerH;
+
+  const trendPath = ma
+    .map((v, i) => {
+      const x = pad.left + groupW * i + groupW / 2;
+      const y = yTotal(v);
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  const tickEvery = Math.max(1, Math.ceil(n / 8));
+
+  if (trend.length === 0) {
+    return <div className="ops-empty">No trend data for the current filters.</div>;
+  }
+
+  return (
+    <div className="ops-chart-wrap">
+      <svg
+        className="ops-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Daily clients, surveyors, and projects with trend line"
+      >
+        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+          const y = pad.top + innerH * (1 - t);
+          return (
+            <g key={t}>
+              <line
+                x1={pad.left}
+                x2={width - pad.right}
+                y1={y}
+                y2={y}
+                className="ops-chart-grid"
+              />
+              <text x={pad.left - 8} y={y + 3} className="ops-chart-axis" textAnchor="end">
+                {Math.round(maxVal * t)}
+              </text>
+            </g>
+          );
+        })}
+
+        {trend.map((d, i) => {
+          const x0 = pad.left + groupW * i + (groupW - barW * 3 - gap * 2) / 2;
+          const bars = [
+            { v: d.clients, cls: 'ops-bar-clients' },
+            { v: d.surveyors, cls: 'ops-bar-surveyors' },
+            { v: d.projects, cls: 'ops-bar-projects' },
+          ];
+          return (
+            <g key={d.date}>
+              {bars.map((b, bi) => {
+                const h = (b.v / maxVal) * innerH;
+                const x = x0 + bi * (barW + gap);
+                const y = pad.top + innerH - h;
+                return (
+                  <rect
+                    key={bi}
+                    x={x}
+                    y={y}
+                    width={barW}
+                    height={Math.max(h, b.v > 0 ? 1.5 : 0)}
+                    rx={1.5}
+                    className={b.cls}
+                  >
+                    <title>{`${d.date}: ${b.v}`}</title>
+                  </rect>
+                );
+              })}
+              {i % tickEvery === 0 || i === n - 1 ? (
+                <text
+                  x={pad.left + groupW * i + groupW / 2}
+                  y={height - 10}
+                  className="ops-chart-axis"
+                  textAnchor="middle"
+                >
+                  {d.date.slice(5)}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+
+        <path d={trendPath} className="ops-chart-trend" fill="none" />
+        {ma.map((v, i) => (
+          <circle
+            key={trend[i]?.date ?? i}
+            cx={pad.left + groupW * i + groupW / 2}
+            cy={yTotal(v)}
+            r={2.2}
+            className="ops-chart-trend-dot"
+          />
+        ))}
+      </svg>
+      <div className="ops-chart-legend">
+        <span>
+          <i className="ops-legend-swatch clients" /> Clients
+        </span>
+        <span>
+          <i className="ops-legend-swatch surveyors" /> Surveyors
+        </span>
+        <span>
+          <i className="ops-legend-swatch projects" /> Projects
+        </span>
+        <span>
+          <i className="ops-legend-swatch trend" /> 7-day trend
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ServicesBarChart({
+  services,
+}: {
+  services: AdminOverviewStats['services'];
+}) {
+  if (services.length === 0) {
+    return <div className="ops-empty">No service coverage in the current scope.</div>;
+  }
+
+  const max = Math.max(1, ...services.map((s) => Math.max(s.surveyors, s.projects)));
+  const rows = services.slice(0, 12);
+
+  return (
+    <div className="ops-svc-chart">
+      {rows.map((row) => {
+        const label = SURVEY_SERVICE_LABELS[row.service as SurveyService] ?? row.service;
+        return (
+          <div className="ops-svc-row" key={row.service}>
+            <div className="ops-svc-label" title={label}>
+              {label}
+            </div>
+            <div className="ops-svc-bars">
+              <div className="ops-svc-track">
+                <span
+                  className="ops-svc-fill surveyors"
+                  style={{ width: `${(row.surveyors / max) * 100}%` }}
+                />
+              </div>
+              <div className="ops-svc-track">
+                <span
+                  className="ops-svc-fill projects"
+                  style={{ width: `${(row.projects / max) * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="ops-svc-counts">
+              <span title="Surveyors offering">{row.surveyors}</span>
+              <span title="Projects requesting">{row.projects}</span>
+            </div>
+          </div>
+        );
+      })}
+      <div className="ops-chart-legend ops-svc-legend">
+        <span>
+          <i className="ops-legend-swatch surveyors" /> Surveyors offering
+        </span>
+        <span>
+          <i className="ops-legend-swatch projects" /> Projects requesting
+        </span>
+      </div>
     </div>
   );
 }
@@ -251,7 +466,16 @@ export default function AdminOverviewPage() {
                 tone="green"
                 value={stats.totals.surveyors}
                 label="Surveyors"
-                detail={`${stats.totals.matchableSurveyors} available for matching`}
+                detail={`${stats.totals.matchableSurveyors} matchable`}
+                href="/build/admin/surveyors"
+              />
+              <Metric
+                icon={<CheckCircle2 size={18} />}
+                tone="green"
+                value={stats.totals.completeSurveyors}
+                label="Complete profiles"
+                detail="100% portfolio filled"
+                href="/build/admin/surveyors?quick=complete"
               />
               <Metric
                 icon={<Briefcase size={18} />}
@@ -268,6 +492,26 @@ export default function AdminOverviewPage() {
                 detail="Pending assignment"
               />
             </div>
+          </section>
+
+          <section className="ops-block">
+            <div className="ops-block-head">
+              <h2 className="ops-block-title">Activity trend</h2>
+              <p className="ops-block-sub">
+                Daily adds with a 7-day moving average · {periodLabel}
+              </p>
+            </div>
+            <ActivityTrendChart trend={stats.trend} />
+          </section>
+
+          <section className="ops-block">
+            <div className="ops-block-head">
+              <h2 className="ops-block-title">Services coverage</h2>
+              <p className="ops-block-sub">
+                How many surveyors offer each service vs projects that request it
+              </p>
+            </div>
+            <ServicesBarChart services={stats.services} />
           </section>
 
           <section className="ops-block">

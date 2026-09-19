@@ -392,7 +392,7 @@ export default function SurveyorProfilePage() {
   }
 
   function patchDetails(patch: Partial<SurveyorPortfolioDetails>) {
-    setDetails((current) => ({ ...current, ...patch }));
+    setDetails((current) => ({ ...current, ...patch, currency: 'USD' }));
   }
 
   function matchCoverageState(stateName: string): string | null {
@@ -1021,13 +1021,12 @@ export default function SurveyorProfilePage() {
                   />
                 </div>
               ) : null}
-              <p className="svy-geo-label" style={{ marginTop: 18 }}>Travel &amp; remote</p>
+              <p className="svy-geo-label" style={{ marginTop: 18 }}>Travel</p>
               <div className="svy-avail">
                 {(
                   [
                     ['travelNationwide', 'Travel nationwide'],
                     ['internationalProjects', 'International projects'],
-                    ['remoteServices', 'Remote services'],
                   ] as const
                 ).map(([key, label]) => {
                   const on = Boolean(details[key]);
@@ -1064,11 +1063,7 @@ export default function SurveyorProfilePage() {
               <div className="svy-fields">
                 <div className="field">
                   <label htmlFor="currency">Currency</label>
-                  <input
-                    id="currency"
-                    value={details.currency}
-                    onChange={(e) => patchDetails({ currency: e.target.value.toUpperCase() })}
-                  />
+                  <input id="currency" value="USD" readOnly disabled aria-readonly="true" />
                 </div>
                 <div
                   className={`field${showFieldErrors && missingKeys.has('pricing') ? ' is-invalid' : ''}`}

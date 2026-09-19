@@ -467,6 +467,8 @@ export interface AdminOverviewStats {
     matchableSurveyors: number;
     projects: number;
     openProjects: number;
+    /** Surveyors with 100% portfolio completion. */
+    completeSurveyors: number;
   };
   /** New records created inside the selected date window. */
   period: {
@@ -494,6 +496,22 @@ export interface AdminOverviewStats {
   }>;
   /** Distinct location labels available for the filter dropdown. */
   availableLocations: string[];
+  /**
+   * Daily activity in the selected window (or last 30 days when unscoped).
+   * Values are new records created that UTC day.
+   */
+  trend: Array<{
+    date: string;
+    clients: number;
+    surveyors: number;
+    projects: number;
+  }>;
+  /** How many surveyors offer / projects request each service. */
+  services: Array<{
+    service: SurveyService;
+    surveyors: number;
+    projects: number;
+  }>;
 }
 
 /** A surveyor as seen in the admin browser, with optional distance to a point. */
@@ -513,6 +531,15 @@ export interface AdminSurveyor {
   /** Distance in km from the `near` point, if one was supplied. */
   distanceKm: number | null;
   createdAt: string;
+  /** 0–100 portfolio completion (same rules as surveyor app). */
+  completionPercent: number;
+  profileComplete: boolean;
+  bldVerified: boolean;
+  ratingAvg: number | null;
+  ratingCount: number;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  onboardingStep: string;
 }
 
 // --- Notifications ---
@@ -572,11 +599,8 @@ import { type ProjectDetails } from './project-brief';
 export interface AdminSurveyorDetail extends AdminSurveyor {
   bio: string | null;
   details: SurveyorPortfolioDetails;
-  emailVerified: boolean;
-  phoneVerified: boolean;
-  bldVerified: boolean;
-  ratingAvg: number | null;
-  ratingCount: number;
+  /** Completion checklist keys still missing (empty when complete). */
+  missingChecks: string[];
 }
 
 /** A portfolio image; DB stores the public S3 HTTPS URL in `key`. */
