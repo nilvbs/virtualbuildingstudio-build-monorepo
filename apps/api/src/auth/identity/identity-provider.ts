@@ -56,6 +56,11 @@ export const IDENTITY_PROVIDER = Symbol('IDENTITY_PROVIDER');
 
 export interface IdentityProvider {
   createIdentity(input: CreateIdentityInput): Promise<CreatedIdentity>;
+  /**
+   * Look up an existing provider identity by email (Auth0 Management).
+   * Returns null when no matching user exists.
+   */
+  findIdentityByEmail(email: string): Promise<CreatedIdentity | null>;
   /** Resource-Owner-Password grant → token bundle. */
   login(email: string, password: string): Promise<AuthSession>;
   /**

@@ -206,6 +206,27 @@ export class Auth0IdentityProvider implements IdentityProvider, OnModuleInit {
     }
   }
 
+  async findIdentityByEmail(email: string): Promise<CreatedIdentity | null> {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return null;
+    try {
+      const { data } = await this.mgmt().usersByEmail.getByEmail({ email: normalized });
+      if (!data?.length) return null;
+      const db = data.find((u) => (u.user_id ?? '').startsWith('auth0|'));
+      const hit = db ?? data[0];
+      if (!hit?.user_id) return null;
+      return {
+        subject: hit.user_id,
+        emailVerified: Boolean(hit.email_verified),
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Auth0 users-by-email failed for ${normalized}: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   /**
    * Google-only (or social) accounts have no DB password. Creating a Username-
    * Password identity and linking it to the primary subject lets password signup
