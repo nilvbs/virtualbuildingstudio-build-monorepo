@@ -48,14 +48,14 @@ erDiagram
     string username UK
     string email UK
     string phone UK
-    bool email_verified
-    bool phone_verified
+    boolean email_verified
+    boolean phone_verified
     string avatar_key
     string onboarding_step
     string account_type
-    timestamptz account_type_selected_at
-    timestamptz terms_accepted_at
-    timestamptz nda_accepted_at
+    timestamp account_type_selected_at
+    timestamp terms_accepted_at
+    timestamp nda_accepted_at
     string role_hint
     string status
     string auth_provider
@@ -71,7 +71,7 @@ erDiagram
 
   account_profiles {
     uuid id PK
-    uuid user_id FK_UK
+    uuid user_id FK,UK
     string company_name
     string address_line1
     string city
@@ -79,31 +79,31 @@ erDiagram
     string postal_code
     string country
     string work_email
-    bool work_email_verified
+    boolean work_email_verified
     float rating_avg
     int rating_count
   }
 
   surveyor_profiles {
     uuid id PK
-    uuid user_id FK_UK
+    uuid user_id FK,UK
     string bio
     json services
     json equipment
-    geography base_location
+    string base_location
     string base_city
     int radius_km
-    bigint day_rate_cents
+    int day_rate_cents
     float rating_avg
-    bool bld_verified
+    boolean bld_verified
     json portfolio
     json details
-    bool is_matchable
+    boolean is_matchable
   }
 
   admin_profiles {
     uuid id PK
-    uuid user_id FK_UK
+    uuid user_id FK,UK
     string title
     string staff_level
     string permission_preset
@@ -115,7 +115,7 @@ erDiagram
     uuid client_id FK
     string title
     json services
-    geography location
+    string location
     string location_text
     json details
     string status
@@ -127,10 +127,10 @@ erDiagram
     uuid surveyor_id FK
     uuid matched_by FK
     string status
-    timestamptz expires_at
+    timestamp expires_at
     string offer_source
-    timestamptz proposed_at
-    timestamptz accepted_at
+    timestamp proposed_at
+    timestamp accepted_at
   }
 
   feedbacks {
@@ -172,7 +172,7 @@ erDiagram
     uuid author_user_id FK
     string body
     json attachments
-    bool is_staff
+    boolean is_staff
   }
 
   activity_logs {
@@ -194,8 +194,8 @@ erDiagram
     string channel
     string destination
     string code_hash
-    timestamptz expires_at
-    timestamptz consumed_at
+    timestamp expires_at
+    timestamp consumed_at
   }
 
   notifications {
@@ -206,7 +206,7 @@ erDiagram
     string body
     string link_url
     string channel
-    timestamptz read_at
+    timestamp read_at
   }
 ```
 
@@ -219,9 +219,9 @@ erDiagram
 ```mermaid
 flowchart TB
   U[(users)]
-  U --> UR[user_roles<br/>client | surveyor | admin]
+  U --> UR["user_roles<br/>client / surveyor / admin"]
   U --> AP[account_profiles]
-  U --> SP[surveyor_profiles<br/>PostGIS pin]
+  U --> SP["surveyor_profiles<br/>PostGIS pin"]
   U --> ADP[admin_profiles]
   U --> OTP[contact_otps]
   U --> N[notifications]
@@ -231,7 +231,7 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  Client[(users client)] -->|client_id| P[(projects)]
+  Client[("users client")] -->|client_id| P[(projects)]
   P -->|project_id| M[(matches)]
   SP[(surveyor_profiles)] -->|surveyor_id| M
   Staff[(users)] -->|matched_by| M
@@ -243,7 +243,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  U[(users)] -->|owner / assignee| HT[(help_tickets)]
+  U[(users)] -->|"owner / assignee"| HT[(help_tickets)]
   P[(projects)] -.->|optional| HT
   HT --> HM[help_ticket_messages]
   U --> HM
@@ -252,7 +252,6 @@ flowchart TB
   M[(matches)] -.-> AL
   U -.->|actor| AL
 ```
-
 `site_feedbacks` is standalone (landing page); no FK to `users`.
 
 ---

@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BLD Security &amp; Data Protection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --purple: #7168f6;
+      --purple-hover: #5b52e0;
+      --purple-press: #4a42c9;
+      --purple-soft: #eeeaff;
+      --ink: #2a2558;
+      --muted: #6b668c;
+      --bg: #f7f8ff;
+      --panel: #ffffff;
+      --border: rgba(91, 82, 224, 0.14);
+      --ok: #0e9f6e;
+      --ok-soft: #e7f7f0;
+      --warn: #b7791f;
+      --warn-soft: #fdf6e3;
+      --danger: #e02424;
+      --danger-soft: #fdecec;
+      --shadow: 0 8px 28px rgba(42, 37, 88, 0.08);
+      --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background:
+        radial-gradient(1100px 520px at 0% -10%, rgba(113,104,246,0.14), transparent 55%),
+        radial-gradient(900px 480px at 100% 0%, rgba(14,159,110,0.08), transparent 50%),
+        var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 80px; }
+    .hero {
+      padding: 40px 36px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #4a42c9 0%, #7168f6 55%, #9b94ff 100%);
+      color: #fff;
+      box-shadow: var(--shadow);
+      margin-bottom: 28px;
+    }
+    .eyebrow {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; opacity: 0.85; margin-bottom: 10px;
+    }
+    h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(1.9rem, 3.5vw, 2.6rem);
+      margin: 0 0 12px; letter-spacing: -0.02em; line-height: 1.15;
+    }
+    .lede { margin: 0; max-width: 46rem; opacity: 0.94; font-size: 1.05rem; }
+    .callout {
+      margin-top: 18px; padding: 12px 14px; border-radius: 12px;
+      background: rgba(255,255,255,0.16); font-size: 0.92rem;
+    }
+    nav.toc { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 28px; }
+    nav.toc a {
+      text-decoration: none; color: var(--purple-press); background: var(--panel);
+      border: 1px solid var(--border); border-radius: 999px; padding: 8px 14px;
+      font-size: 13px; font-weight: 600;
+    }
+    nav.toc a:hover { background: var(--purple-soft); }
+    section {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 20px; padding: 28px; margin-bottom: 20px;
+    }
+    section h2 {
+      font-family: Fraunces, Georgia, serif; font-size: 1.5rem;
+      margin: 0 0 8px; letter-spacing: -0.02em;
+    }
+    .sub { margin: 0 0 18px; color: var(--muted); max-width: 50rem; }
+    h3 {
+      margin: 22px 0 10px; font-size: 0.9rem; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .card {
+      border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px;
+      background: #fbfbff;
+    }
+    .card strong { display: block; margin-bottom: 4px; }
+    .card p { margin: 0; font-size: 0.92rem; color: var(--muted); }
+    .badge {
+      display: inline-block; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 999px; margin-bottom: 8px;
+    }
+    .badge.now { background: var(--ok-soft); color: var(--ok); }
+    .badge.gap { background: var(--warn-soft); color: var(--warn); }
+    .badge.target { background: var(--purple-soft); color: var(--purple-press); }
+    .badge.critical { background: var(--danger-soft); color: var(--danger); }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 0.92rem;
+    }
+    th, td {
+      text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    ul { margin: 0; padding-left: 1.15rem; }
+    li { margin: 6px 0; }
+    .layer {
+      display: grid; gap: 10px; margin-top: 8px;
+    }
+    .layer-row {
+      display: grid; grid-template-columns: 140px 1fr; gap: 12px;
+      align-items: start; padding: 12px 14px; border-radius: 12px;
+      border: 1px solid var(--border); background: #fbfbff;
+    }
+    .layer-row .name {
+      font-weight: 700; font-size: 0.88rem; color: var(--purple-press);
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85em; color: var(--purple-press);
+    }
+    .phase {
+      border-left: 4px solid var(--purple);
+      padding: 14px 16px; margin: 12px 0;
+      background: var(--purple-soft); border-radius: 0 12px 12px 0;
+    }
+    .phase h4 { margin: 0 0 6px; }
+    .phase p { margin: 0; color: var(--ink); font-size: 0.95rem; }
+    footer {
+      text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 24px;
+    }
+    @media (max-width: 700px) {
+      .wrap { padding: 24px 16px 56px; }
+      .hero { padding: 28px 22px; }
+      .layer-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Security blueprint</div>
+      <h1>BLD Security &amp; Data Protection</h1>
+      <p class="lede">
+        Complete picture of how we protect marketplace data, client/surveyor PII,
+        and internal staff — plus the target state for a highly secured database and app.
+      </p>
+      <div class="callout">
+        <strong>Honest note:</strong> no system is “100% secure.” This blueprint defines a
+        <em>gold-standard control set</em> (defense in depth) so BLD can be audited,
+        hardened, and operated as highly secure in practice.
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="On this page">
+      <a href="#layers">Layers</a>
+      <a href="#now">What we have</a>
+      <a href="#database">Database gold standard</a>
+      <a href="#users">Users &amp; staff</a>
+      <a href="#gaps">Gaps to close</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#checklist">Checklist</a>
+    </nav>
+
+    <section id="layers">
+      <h2>Defense-in-depth model</h2>
+      <p class="sub">Every request and every row of data should pass multiple independent controls.</p>
+      <div class="layer">
+        <div class="layer-row">
+          <div class="name">1. Edge / network</div>
+          <div>HTTPS (ALB / Nginx / CloudFront), private VPC for DB, WAF optional, no public DB ports.</div>
+        </div>
+        <div class="layer-row">
+          <div class="name">2. Identity</div>
+          <div>Auth0 + app JWT sessions; OTP for email/phone; scrypt password verifiers; no anonymous write paths except deliberate public endpoints.</div>
+        </div>
+        <div class="layer-row">
+          <div class="name">3. Authorization</div>
+          <div>Memberships (<code>client</code> / <code>surveyor</code> / <code>admin</code>) + staff permission presets + ownership checks on projects, matches, tickets, notifications.</div>
+        </div>
+        <div class="layer-row">
+          <div class="name">4. Application</div>
+          <div>Zod validation, rate limits, signed S3 URLs, MIME/size caps, log redaction, PII minimization in API responses.</div>
+        </div>
+        <div class="layer-row">
+          <div class="name">5. Database</div>
+          <div>Private Aurora, encryption at rest (KMS), TLS in transit, Secrets Manager credentials, least-privilege DB users, backups + PITR, audit logging.</div>
+        </div>
+        <div class="layer-row">
+          <div class="name">6. Data lifecycle</div>
+          <div>Terms/NDA gates, retention/deletion policy, suspended users enforced, cascade-safe deletes, activity logs for staff actions.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="now">
+      <h2>What is already in place</h2>
+      <p class="sub">Controls currently implemented in the monorepo and deploy docs.</p>
+      <div class="grid">
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Auth by default</strong>
+          <p>Global <code>JwtAuthGuard</code>; only <code>@Public()</code> skips auth.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Auth0 + first-party JWT</strong>
+          <p>JWKS RS256 validation; HMAC app sessions; timing-safe verify.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Password &amp; OTP hardening</strong>
+          <p>scrypt password verifiers; OTP stored as SHA-256 hash, TTL, single-use.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Staff RBAC</strong>
+          <p><code>@Roles('admin')</code> + <code>@RequirePermissions</code>; super-admin protected.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Ownership scoping</strong>
+          <p>Projects, matches, feedback, helpdesk, notifications scoped to the right party.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Media controls</strong>
+          <p>Auth upload, MIME allowlist, size caps, user-namespaced keys, presigned GET.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Infra target</strong>
+          <p>Private VPC, RDS Proxy → Aurora, Secrets Manager, ALB HTTPS (see <code>deploy/aws/README.md</code>).</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Onboarding legal gate</strong>
+          <p>Terms + NDA timestamps required before workspace unlock.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="database">
+      <h2>Database — gold-standard (“highly secured”) target</h2>
+      <p class="sub">
+        This is the checklist for treating Aurora/Postgres as highly secured.
+        Items marked <span class="badge now" style="margin:0">Have / designed</span> are already in deploy guidance;
+        <span class="badge gap" style="margin:0">Must enforce</span> need ops/app follow-through.
+      </p>
+
+      <h3>Network isolation</h3>
+      <table>
+        <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Private subnets only</td><td>DB never has a public IP / public SG rule</td><td><span class="badge now">Designed</span></td></tr>
+          <tr><td>Security groups</td><td>Ingress 5432 only from ECS tasks / RDS Proxy SG</td><td><span class="badge gap">Enforce in AWS</span></td></tr>
+          <tr><td>RDS Proxy</td><td>App uses proxy endpoint; migrations use writer</td><td><span class="badge now">Designed</span></td></tr>
+          <tr><td>No staging ↔ prod</td><td>Separate accounts/clusters/secrets</td><td><span class="badge now">Policy</span></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Encryption &amp; secrets</h3>
+      <table>
+        <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Encryption at rest</td><td>Aurora storage encrypted with AWS KMS CMK</td><td><span class="badge gap">Verify in AWS</span></td></tr>
+          <tr><td>Encryption in transit</td><td><code>sslmode=require</code> (or verify-full) on <code>DATABASE_URL</code></td><td><span class="badge gap">App enforce</span></td></tr>
+          <tr><td>Credentials</td><td>Secrets Manager only; rotate periodically; no secrets in git</td><td><span class="badge now">Designed</span></td></tr>
+          <tr><td>App-level field crypto</td><td>Optional KMS envelope for highest-sensitivity columns (phone, address)</td><td><span class="badge target">Phase 3+</span></td></tr>
+          <tr><td>OTP / passwords</td><td>Never store plaintext; scrypt / SHA-256 hashes only</td><td><span class="badge now">Live</span></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Access &amp; privilege</h3>
+      <table>
+        <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Least-privilege DB roles</td><td>App role: DML only; migrate role: DDL; no shared superuser</td><td><span class="badge gap">Ops</span></td></tr>
+          <tr><td>IAM / RDS auth (optional)</td><td>IAM DB auth via Proxy for humans/break-glass</td><td><span class="badge target">Phase 2</span></td></tr>
+          <tr><td>No direct prod access</td><td>Bastion + audited sessions; prefer read replica for support</td><td><span class="badge gap">Ops</span></td></tr>
+          <tr><td>Row-level intent</td><td>App ownership checks (client_id, surveyor_id, user_id)</td><td><span class="badge now">Live</span></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Durability, audit, abuse</h3>
+      <table>
+        <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Automated backups + PITR</td><td>Aurora continuous backup; tested restore drill</td><td><span class="badge gap">Ops</span></td></tr>
+          <tr><td>Read replica</td><td>Designed in AWS topology</td><td><span class="badge now">Designed</span></td></tr>
+          <tr><td>DB audit</td><td>pgaudit / CloudWatch for DDL + privileged reads</td><td><span class="badge target">Phase 2</span></td></tr>
+          <tr><td>App activity logs</td><td><code>activity_logs</code> for marketplace / ticket / staff actions</td><td><span class="badge now">Live</span></td></tr>
+          <tr><td>Deletion safety</td><td>Documented cascades; surveyor profile delete ordered in admin</td><td><span class="badge now">Partial</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="users">
+      <h2>Protecting users — marketplace &amp; internal staff</h2>
+      <div class="grid">
+        <div class="card">
+          <strong>Clients</strong>
+          <p>See and mutate only their projects. Match peer PII minimized (username/city vs full name).</p>
+        </div>
+        <div class="card">
+          <strong>Surveyors</strong>
+          <p>Only their offers/profile. Portfolio/media under their key namespace. Matchable only when profile complete.</p>
+        </div>
+        <div class="card">
+          <strong>Internal staff</strong>
+          <p>Separate <code>admin</code> hat + <code>admin_profiles</code>. Fine-grained permissions. Super admin locked from normal staff UI delete/suspend.</p>
+        </div>
+        <div class="card">
+          <strong>Dual-role users</strong>
+          <p>One identity, multiple memberships. Workspace <code>activeRole</code> is UI routing only — API still checks membership + ownership.</p>
+        </div>
+      </div>
+
+      <h3>Staff permission matrix (current)</h3>
+      <p class="sub"><code>clients:view</code> · <code>surveyors:view</code> · <code>projects:view</code> · <code>match:create</code> · <code>match:update</code> · <code>project:update_status</code> · <code>users:view</code> · <code>users:manage</code> · <code>staff:manage</code></p>
+      <p class="sub">Presets: <code>viewer</code> · <code>matcher</code> · <code>full</code> · <code>custom</code></p>
+    </section>
+
+    <section id="gaps">
+      <h2>Priority gaps (close these for “highly secured”)</h2>
+      <table>
+        <thead><tr><th>Gap</th><th>Risk</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="badge critical">Critical</span> Tokens in localStorage / AsyncStorage</td>
+            <td>XSS can steal sessions</td>
+            <td>Move to httpOnly Secure cookies + refresh rotation</td>
+          </tr>
+          <tr>
+            <td><span class="badge critical">Critical</span> Suspended users not blocked on login/API</td>
+            <td>Disabled accounts may still act</td>
+            <td>Enforce <code>users.status !== 'active'</code> on auth + every request</td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">High</span> Media DELETE without ownership check</td>
+            <td>Any auth user could delete objects by key</td>
+            <td>Verify key prefix / owner before delete</td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">High</span> DB TLS + KMS not verified in app/config</td>
+            <td>Possible cleartext DB links / unencrypted storage</td>
+            <td>Require <code>sslmode=require</code>; confirm Aurora KMS in AWS</td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">High</span> OAuth state nonce not bound server-side</td>
+            <td>Login CSRF risk</td>
+            <td>Store nonce in short-lived server store / cookie</td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">Medium</span> Throttler is per-process</td>
+            <td>Bypass under multi-task scale</td>
+            <td>Redis throttling (ElastiCache already in design) + WAF</td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">Medium</span> CORS fallback to any origin if env empty</td>
+            <td>Browser API abuse</td>
+            <td>Fail closed in production</td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">Medium</span> No Helmet / security headers</td>
+            <td>Browser XSS/clickjacking surface</td>
+            <td>Helmet on Nest + CSP on web</td>
+          </tr>
+          <tr>
+            <td><span class="badge target">Later</span> No column-level encryption</td>
+            <td>DB dump exposes PII</td>
+            <td>KMS envelope for phone/address after baseline hardening</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="roadmap">
+      <h2>Implementation roadmap</h2>
+      <p class="sub">Do these in order — each phase raises the security floor without boiling the ocean.</p>
+
+      <div class="phase">
+        <h4>Phase 1 — Close critical app holes (1–2 weeks)</h4>
+        <p>
+          Enforce suspended users · media delete ownership · production CORS fail-closed ·
+          disable <code>AUTH_DEV_MODE</code> in prod · Helmet + security headers ·
+          require DB SSL in connection strings · document AWS KMS + SG checklist.
+        </p>
+        <p style="margin-top:10px">
+          <strong>Code status (repo):</strong> suspended-user guard + login/Google checks ·
+          media DELETE ownership · CORS fail-closed · <code>devAuthEnabled</code> on JWT path ·
+          Helmet on Nest · production DB SSL boot check · this ops checklist below.
+          <br /><strong>Still ops:</strong> verify Aurora KMS encryption + security groups in AWS.
+        </p>
+      </div>
+      <div class="phase">
+        <h4>Phase 2 — Session &amp; edge hardening (2–4 weeks)</h4>
+        <p>
+          httpOnly cookie sessions + refresh rotation · OAuth state binding ·
+          Redis-backed rate limits · optional AWS WAF · pgaudit / CloudWatch DB audit ·
+          least-privilege DB roles + credential rotation drill.
+        </p>
+      </div>
+      <div class="phase">
+        <h4>Phase 3 — Data protection maturity</h4>
+        <p>
+          Field-level encryption for sensitive PII · retention &amp; erasure API (GDPR-style) ·
+          soft-delete where needed · backup restore game-day · security review / pen-test.
+        </p>
+      </div>
+    </section>
+
+    <section id="checklist">
+      <h2>Operator checklist — “DB highly secured”</h2>
+      <p class="sub">Print this for staging and production. All boxes should be true before calling the environment highly secured.</p>
+      <ul>
+        <li>☐ Aurora in private subnets; SG allows only Proxy / ECS</li>
+        <li>☐ Storage encryption enabled (KMS CMK)</li>
+        <li>☐ App <code>DATABASE_URL</code> uses SSL (<code>sslmode=require</code> or stronger)</li>
+        <li>☐ Credentials only in Secrets Manager; rotated; not in git or CI logs</li>
+        <li>☐ Separate migrate vs app DB users (least privilege)</li>
+        <li>☐ Automated backups + PITR enabled; restore tested in last 90 days</li>
+        <li>☐ Staging and production fully isolated (no shared DB)</li>
+        <li>☑ Suspended / deleted users cannot authenticate (Phase 1 code)</li>
+        <li>☐ Staff actions permission-gated; super admin protected</li>
+        <li>☑ Media keys private; deletes ownership-checked; downloads signed (Phase 1 code)</li>
+        <li>☐ Auth tokens not readable by JavaScript (httpOnly) — Phase 2</li>
+        <li>☐ Audit trail for privileged DB and staff actions</li>
+      </ul>
+
+      <h3>Phase 1 — AWS KMS + security group verification</h3>
+      <ul>
+        <li>☐ RDS / Aurora → Configuration → Encryption = enabled (KMS key noted)</li>
+        <li>☐ DB subnet group = private subnets only (no public IP)</li>
+        <li>☐ DB / Proxy security group inbound: TCP 5432 from ECS task SG (or Proxy SG) only</li>
+        <li>☐ ECS task SG outbound to Proxy/DB only as needed; no world-open 5432</li>
+        <li>☐ Secrets Manager holds <code>DATABASE_URL</code> with <code>sslmode=require</code></li>
+        <li>☐ <code>CORS_ORIGINS</code> / <code>WEB_APP_URL</code> set in the environment (API will not boot otherwise)</li>
+        <li>☐ <code>AUTH_DEV_MODE</code> unset or false; <code>NODE_ENV=production</code></li>
+      </ul>
+      <p class="sub" style="margin-top:12px">
+        Automated check (needs AWS CLI credentials):
+        <code>powershell -File scripts/verify-phase1-aws.ps1 -Region &lt;region&gt;</code>
+      </p>
+    </section>
+
+    <section>
+      <h2>Source map</h2>
+      <div class="grid">
+        <div class="card"><strong>Auth / guards</strong><p><code>apps/api/src/auth/**</code></p></div>
+        <div class="card"><strong>Staff permissions</strong><p><code>packages/types</code> · <code>admin.controller.ts</code></p></div>
+        <div class="card"><strong>Schema / cascades</strong><p><code>apps/api/prisma/schema.prisma</code> · <code>docs/DATA_VISUAL.md</code></p></div>
+        <div class="card"><strong>AWS topology</strong><p><code>deploy/aws/README.md</code></p></div>
+        <div class="card"><strong>Business roles</strong><p><code>docs/BUSINESS_LOGIC.md</code></p></div>
+        <div class="card"><strong>Brand</strong><p><code>BRAND.html</code></p></div>
+      </div>
+    </section>
+
+    <footer>
+      Open in any browser · BLD Security &amp; Data Protection · Living blueprint
+    </footer>
+  </div>
+</body>
+</html>

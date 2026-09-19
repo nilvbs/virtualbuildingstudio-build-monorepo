@@ -27,6 +27,7 @@
     "@surveylink/types": "workspace:*",
     "@surveylink/validation": "workspace:*",
     "auth0": "^4.20.0",
+    "helmet": "^8.3.0",
     "jwks-rsa": "^3.1.0",
     "nestjs-pino": "^4.2.0",
     "passport": "^0.7.0",

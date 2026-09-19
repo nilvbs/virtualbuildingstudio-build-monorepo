@@ -252,6 +252,7 @@ export class AuthService {
     session: AuthSession;
     accountNotice: SignupResult['accountNotice'];
   }> {
+    this.assertUserActive(existing);
     const emailMatch = normalizeEmail(existing.email) === normalizeEmail(input.email);
     if (!emailMatch) {
       throw new ConflictException(
@@ -504,6 +505,8 @@ export class AuthService {
       return session;
     }
 
+    this.assertUserActive(user);
+
     await this.persistPasswordVerifier(user.id, password);
 
     const memberships = await listMemberships(this.prisma, user.id);
@@ -656,6 +659,13 @@ export class AuthService {
       });
     } catch {
       return user;
+    }
+  }
+
+  /** Phase 1: suspended (or otherwise non-active) accounts cannot authenticate. */
+  private assertUserActive(user: Pick<User, 'status'>): void {
+    if (user.status !== 'active') {
+      throw new UnauthorizedException('Account is suspended');
     }
   }
 
@@ -888,6 +898,7 @@ export class AuthService {
     session: AuthSession,
     workspaceRole: WorkspaceRole | undefined,
   ): Promise<GoogleAuthResult> {
+    this.assertUserActive(existing);
     let user = existing;
     if (workspaceRole) {
       user = await this.attachMarketplaceRole(existing.id, workspaceRole);
@@ -1308,7 +1319,7 @@ export class AuthService {
     const avatarKey = await this.avatarStorage.save(principal.sub, file);
     const updated = await this.updateMe(principal, { avatarKey });
     if (previous && previous !== avatarKey) {
-      await this.media.deleteStoredObject(previous);
+      await this.media.deleteStoredObject(previous, principal.sub);
     }
     return updated;
   }

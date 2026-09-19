@@ -44,16 +44,16 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  Start[Create account / Sign in] --> EmailCheck{Email already exists?}
-  EmailCheck -->|Yes| AddRole[Verify password + add missing client/surveyor role]
-  EmailCheck -->|No| CreateUser[Create user + Auth0/dev identity]
-  AddRole --> Notice[Return accountNotice if role added]
-  CreateUser --> Welcome[Send branded welcome email]
-  Notice --> Session[Issue session + activeRole]
+  Start["Create account / Sign in"] --> EmailCheck{"Email already exists?"}
+  EmailCheck -->|Yes| AddRole["Verify password + add missing client/surveyor role"]
+  EmailCheck -->|No| CreateUser["Create user + Auth0/dev identity"]
+  AddRole --> Notice["Return accountNotice if role added"]
+  CreateUser --> Welcome["Send branded welcome email"]
+  Notice --> Session["Issue session + activeRole"]
   Welcome --> Session
-  Session --> Onboard{onboardingStep = done?}
-  Onboard -->|No| Onboarding[/onboarding]
-  Onboard -->|Yes| Home[Workspace home]
+  Session --> Onboard{"onboardingStep = done?"}
+  Onboard -->|No| Onboarding["Go to /onboarding"]
+  Onboard -->|Yes| Home["Workspace home"]
 ```
 
 - Password signup: email/phone OTP **not** sent at create — only from onboarding **Verify contact**.
@@ -124,21 +124,21 @@ Allowed transitions: `PROJECT_STATUS_TRANSITIONS` in `@surveylink/types`.
 sequenceDiagram
   participant C as Client
   participant API as Projects/AutoMatch
-  participant S as Surveyor(s)
+  participant S as Surveyors
   participant N as Notifications
 
-  C->>API: POST project (geo + services)
-  API->>API: status → matching
+  C->>API: POST project (geo and services)
+  API->>API: status to matching
   API->>API: Rank nearby live surveyors
   loop Up to max offers
-    API->>S: Match proposed + deadline (working hours)
+    API->>S: Match proposed with deadline (working hours)
     API->>N: In-app / email / SMS offer
   end
   alt Surveyor accepts
     S->>API: accept
-    API->>API: match accepted; project → matched
-    API->>N: Notify client + others
-  else Decline / expire
+    API->>API: match accepted, project to matched
+    API->>N: Notify client and others
+  else Decline or expire
     S->>API: decline or timeout
     API->>API: Rematch / next candidate
   end

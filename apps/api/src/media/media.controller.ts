@@ -50,14 +50,14 @@ export class MediaController {
    */
   @Delete()
   async remove(
-    @CurrentUser() _principal: AuthPrincipal,
+    @CurrentUser() principal: AuthPrincipal,
     @Body() body: { url?: string; key?: string },
   ): Promise<{ ok: true }> {
     const target = body?.url?.trim() || body?.key?.trim();
     if (!target) {
       throw new BadRequestException('Provide url or key of the object to delete.');
     }
-    await this.storage.deleteStoredObject(target);
+    await this.storage.deleteStoredObject(target, principal.sub);
     return { ok: true };
   }
 }

@@ -9,7 +9,7 @@ import {
   DEV_GOOGLE_ACCESS_TOKEN,
   DEV_GOOGLE_PRINCIPAL,
   DEV_PRINCIPAL,
-  authDevModeFlag,
+  devAuthEnabled,
   principalFromDevUserToken,
   principalFromUnsignedJwt,
 } from '../dev-auth';
@@ -38,9 +38,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const request = context.switchToHttp().getRequest<Request>();
     const auth = request.headers.authorization;
 
-    // Local AUTH_DEV_MODE: accept fixed tokens, signup tokens, or unsigned JWTs
-    // so onboarding works without Auth0 JWKS (empty AUTH0_DOMAIN locally).
-    if (authDevModeFlag(this.config)) {
+    // Local AUTH_DEV_MODE only (force-disabled when NODE_ENV=production).
+    // Accepts fixed tokens, signup tokens, or unsigned JWTs without Auth0 JWKS.
+    if (devAuthEnabled(this.config)) {
       if (auth === `Bearer ${DEV_ACCESS_TOKEN}`) {
         request.user = DEV_PRINCIPAL;
         return true;

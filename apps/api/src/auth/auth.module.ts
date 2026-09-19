@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { ActiveUserGuard } from './guards/active-user.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { StaffContextService } from './staff-context.service';
@@ -41,6 +42,7 @@ import { MediaModule } from '../media/media.module';
     { provide: SMS_SENDER, useClass: TwilioSmsSender },
     { provide: PHONE_VERIFIER, useClass: LocalPhoneVerifier },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: ActiveUserGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

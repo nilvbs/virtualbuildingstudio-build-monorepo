@@ -1,60 +1,11 @@
-# EC2 staging — PostGIS + API.
-# Place this file NEXT TO `.env` on the server (e.g. ~/BLD/stage).
-# Optional: copy `postgres-init/` beside this file for first-boot extensions.
+# EC2 staging — API uses Aurora via host `.env` (Secrets Manager / Phase 1).
+# No database passwords in this file. Place next to `.env` (e.g. ~/BLD/stage).
 #
 #   cd ~/BLD/stage
-#   # .env must use @db:5432 (compose service name), NOT host.docker.internal
-#   docker compose up -d
+#   docker compose up -d api
 #   curl http://127.0.0.1:4000/health
 
 services:
-  db:
-    image: postgis/postgis:16-3.4
-    container_name: bld-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: surveylink
-      POSTGRES_PASSWORD: surveylink
-      POSTGRES_DB: surveylink
-    ports:
-      # Optional host access for debugging. Use 5436 to avoid clashing with an
-      # older host Postgres that may still own 5435.
-      - "5436:5432"
-    volumes:
-      - bld_pgdata:/var/lib/postgresql/data
-      - ./postgres-init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U surveylink -d surveylink"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-    logging:
-      driver: json-file
-      options:
-        max-size: "20m"
-        max-file: "3"
-
-  migrate:
-    image: bld-api:local
-    container_name: bld-migrate
-    restart: "no"
-    env_file:
-      - .env
-    environment:
-      # Prefer compose DNS even if .env still points at host.docker.internal.
-      DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
-      DIRECT_DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
-    depends_on:
-      db:
-        condition: service_healthy
-    command:
-      [
-        "sh",
-        "-c",
-        "cd /app/apps/api && npx prisma migrate deploy",
-      ]
-
   api:
     image: bld-api:local
     container_name: bld-api
@@ -63,12 +14,6 @@ services:
       - "4000:4000"
     env_file:
       - .env
-    environment:
-      DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
-      DIRECT_DATABASE_URL: postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
-    depends_on:
-      db:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
       interval: 5s
@@ -80,7 +25,3 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
-
-volumes:
-  bld_pgdata:
-    name: bld_pgdata

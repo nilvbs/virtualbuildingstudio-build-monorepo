@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -438,10 +439,17 @@ export class S3MediaStorageService {
   /**
    * Best-effort delete of a previously stored media object (URL or raw key).
    * Used when replacing an avatar so only the latest object remains in S3.
+   * When `ownerIdentity` is provided, the object key must live under that
+   * owner's hash namespace (`{kind}/{ownerHash}/...`).
    */
-  async deleteStoredObject(input: string | null | undefined): Promise<void> {
+  async deleteStoredObject(
+    input: string | null | undefined,
+    ownerIdentity?: string,
+  ): Promise<void> {
     if (!input || !this.accessKeyId || !this.secretAccessKey) return;
-    const key = this.keyFromUrl(input);
+    const key = ownerIdentity
+      ? this.assertOwnedKey(ownerIdentity, input)
+      : this.keyFromUrl(input);
     if (!key) return;
 
     try {
@@ -458,5 +466,22 @@ export class S3MediaStorageService {
         `Failed to delete s3://${this.bucket}/${key}: ${(err as Error).message}`,
       );
     }
+  }
+
+  /**
+   * Ensure the object key belongs to `ownerIdentity` (hashed Auth0 sub / subject).
+   * Keys are `{folder}/{ownerHash}/{filename}`.
+   */
+  assertOwnedKey(ownerIdentity: string, input: string): string {
+    const key = this.keyFromUrl(input);
+    if (!key) {
+      throw new BadRequestException('Invalid media url or key.');
+    }
+    const ownerHash = createHash('sha256').update(ownerIdentity).digest('hex').slice(0, 16);
+    const parts = key.split('/');
+    if (parts.length < 3 || parts[1] !== ownerHash) {
+      throw new ForbiddenException('You can only delete your own media.');
+    }
+    return key;
   }
 }

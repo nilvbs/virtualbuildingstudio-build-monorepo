@@ -28,6 +28,8 @@ tasks doesn't exhaust Postgres connections.
    migrations need: `CREATE EXTENSION postgis; CREATE EXTENSION pgcrypto;`
 4. **RDS Proxy** in front of Aurora. Use its endpoint for `DATABASE_URL`
    (pooled) and the cluster writer endpoint for `DIRECT_DATABASE_URL` (migrations).
+   Both URLs **must** include TLS in production, e.g. `&sslmode=require`
+   (the API refuses to boot without it when `NODE_ENV=production`).
 5. **ElastiCache** (Redis) cluster — for distributed rate-limiting/caching.
 6. **S3** bucket `bld-build` for media (folders: `avatar/`, `portfolio/`, `document/`, `logo/`, `cover/`, `certificate/`; serve via CloudFront or public prefix policy).
 7. **ACM** certificates for `api.bld.app` and `app.bld.app` (+ staging variants).
@@ -60,8 +62,23 @@ Create two **Environments**: `staging` and `production`. In each:
 
 - **Variables**: `AWS_REGION`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`,
   `ECS_CONTAINER_NAME` (`api`).
-- **Secrets**: `AWS_DEPLOY_ROLE_ARN`, `DATABASE_URL`, `DIRECT_DATABASE_URL`.
+- **Secrets**: `AWS_DEPLOY_ROLE_ARN`, `DATABASE_URL`, `DIRECT_DATABASE_URL`
+  (with `&sslmode=require`), plus `CORS_ORIGINS` / `WEB_APP_URL` in the task
+  definition Secrets Manager entries (`bld/api/*`).
 - Add **required reviewers** on `production` for a manual approval gate.
+
+### Phase 1 — verify DB isolation in AWS Console
+
+Before calling an environment highly secured:
+
+1. **Aurora → Configuration → Encryption** = enabled (note the KMS key).
+2. **Subnet group** = private subnets only (instance has no public IP).
+3. **Security group** inbound TCP `5432` only from ECS task SG and/or RDS Proxy SG.
+4. Secrets Manager `bld/api/DATABASE_URL` and `DIRECT_DATABASE_URL` include `sslmode=require`.
+5. Secrets Manager `bld/api/CORS_ORIGINS` (or `WEB_APP_URL`) is set to the real web origin(s).
+6. Task env has `NODE_ENV=production` and `AUTH_DEV_MODE` unset/false.
+
+See also [`SECURITY.html`](../../SECURITY.html) Phase 1 checklist.
 
 Then:
 - Push to **`main`** → deploys **staging**.
