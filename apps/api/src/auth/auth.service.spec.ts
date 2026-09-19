@@ -92,6 +92,7 @@ describe('AuthService', () => {
     };
     identity = {
       createIdentity: jest.fn(),
+      findIdentityByEmail: jest.fn().mockResolvedValue(null),
       ensurePasswordCredential: jest.fn().mockResolvedValue({
         accessToken: 'tok',
         tokenType: 'Bearer',
