@@ -85,7 +85,7 @@ model User {
   @@map("users")
 }
 
-/** Short-lived contact OTP codes (email, work_email, phone) delivered via SES/SNS. */
+/** Short-lived codes: email / work_email / phone OTPs, plus password_reset tokens. */
 model ContactOtp {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId      String    @map("user_id") @db.Uuid
