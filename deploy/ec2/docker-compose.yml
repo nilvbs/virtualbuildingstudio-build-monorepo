@@ -1,5 +1,5 @@
-# EC2 staging — API uses Aurora via host `.env` (Secrets Manager / Phase 1).
-# No database passwords in this file. Place next to `.env` (e.g. ~/BLD/stage).
+# EC2 staging — API uses Aurora ONLY (Secrets Manager / Phase 1).
+# No local Postgres service. No bld_pgdata volume. No DB passwords in this file.
 #
 #   cd ~/BLD/stage
 #   docker compose up -d api

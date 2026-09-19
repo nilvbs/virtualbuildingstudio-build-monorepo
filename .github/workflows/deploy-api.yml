@@ -192,6 +192,23 @@ jobs:
               echo "::error::DATABASE_URL must point at Aurora with sslmode=require (no hardcoded local db passwords in compose)."
               exit 1
             fi
+            # Refuse local Docker Postgres hosts — staging is Aurora-only.
+            if grep -E '^DATABASE_URL=.*(://[^/@]*@(db|bld-db|localhost|127\.0\.0\.1)[:/])' "$APP_DIR/.env"; then
+              echo "::error::DATABASE_URL still points at local Docker/host Postgres. Staging must use Aurora only."
+              exit 1
+            fi
+            if ! grep -E '^DATABASE_URL=.*\.rds\.amazonaws\.com' "$APP_DIR/.env"; then
+              echo "::error::DATABASE_URL must target an RDS/Aurora hostname (*.rds.amazonaws.com)."
+              exit 1
+            fi
+
+            # Remove legacy local DB containers/volumes so they cannot be used again.
+            docker rm -f bld-db bld-db-oldcheck 2>/dev/null || true
+            docker compose rm -sf db migrate 2>/dev/null || true
+            if docker volume inspect bld_pgdata >/dev/null 2>&1; then
+              echo "Removing legacy local Postgres volume bld_pgdata (Aurora-only staging)"
+              docker volume rm -f bld_pgdata || true
+            fi
 
             # API only — database is Aurora (credentials live in host .env / Secrets Manager).
             docker compose up -d --force-recreate --remove-orphans api

@@ -2,7 +2,9 @@
 
 - `/api/*` → Docker API `:4000`
 - `/` → Cloudflare Worker (`nginx-snippets/bld-staging-proxy.conf`)
-- DB → PostGIS container `bld-db` (compose service `db`)
+- **DB → AWS Aurora PostgreSQL only** (encrypted, `sslmode=require`)  
+  Host comes from Secrets Manager `bld/api/DATABASE_URL` / EC2 `~/BLD/stage/.env`.  
+  **No local Docker Postgres.** Do not start a `db` service or use volume `bld_pgdata`.
 
 ### Keep Nginx up (do not overwrite Certbot)
 
@@ -34,39 +36,22 @@ If the Worker `*.workers.dev` URL changes, update `$cf_worker` in the snippet an
 Use the **stable** hostname `bld-web-staging.<account-subdomain>.workers.dev` (matches `wrangler.jsonc` `name`).
 Never pin an OpenNext preview host (`<hash>-bld-web-staging.…`) — deploys update the stable name, not the preview URL.
 
-### First-time / fix PostGIS
+### Database (Aurora only)
 
-The API **requires PostGIS**. Do **not** point staging at a plain host Postgres
-without the extension (that causes `extension "postgis" is not available`).
-
-1. Deploy syncs `docker-compose.yml` + `postgres-init/` to `~/BLD/stage` automatically.
-2. In `~/BLD/stage/.env` (compose overrides DB host to `db` for api/migrate anyway):
+Staging API **must** use Aurora with TLS. Example (secrets, not committed):
 
 ```env
-DATABASE_URL=postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
-DIRECT_DATABASE_URL=postgresql://surveylink:surveylink@db:5432/surveylink?schema=public
+DATABASE_URL=postgresql://USER:PASSWORD@bld-aurora-pg.….rds.amazonaws.com:5432/surveylink?schema=public&sslmode=require
+DIRECT_DATABASE_URL=postgresql://USER:PASSWORD@bld-aurora-pg.….rds.amazonaws.com:5432/surveylink?schema=public&sslmode=require
 ```
-
-3. PostGIS is published on host **5436** (not 5435) so an older host Postgres on 5435 does not block deploy.
-4. Start DB + migrate + API (or wait for GitHub deploy):
 
 ```bash
 cd ~/BLD/stage
-docker compose up -d db
-docker compose run --rm migrate
 docker compose up -d api
+curl http://127.0.0.1:4000/health
 ```
 
-If a previous migrate left a failed `20260711000000_init` on the **old**
-non-PostGIS database, either switch to the new `bld_pgdata` volume (default
-above — clean DB) or, on that same DB after installing PostGIS:
-
-```bash
-docker compose run --rm migrate sh -c \
-  "cd /app/apps/api && npx prisma migrate resolve --rolled-back 20260711000000_init && npx prisma migrate deploy"
-```
-
-GitHub `deploy-api` brings up `db`, runs `migrate`, then recreates `api`.
+Deploy (`deploy-api.yml`) refuses `DATABASE_URL` pointing at `db` / `localhost` and deletes any leftover `bld_pgdata` volume.
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
