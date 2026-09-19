@@ -318,13 +318,13 @@ export default function OnboardingPage() {
     : needsTerms
       ? 'Before onboarding, you must accept the Terms & Conditions and NDA. There is no skip.'
       : needsContact
-        ? 'Verify your mobile number to continue. This step is required before your profile.'
+        ? 'Verify your email and mobile. Both are required before your profile.'
         : needsProfile
           ? isCompany
             ? 'Verify your work email and add company address, registration number, and optional website.'
-            : status.phoneVerified
-              ? 'Your mobile is verified. Add your base address to finish setup.'
-              : 'Verify your mobile and add your base address to finish setup.'
+            : status.phoneVerified && status.emailVerified
+              ? 'Your contact details are verified. Add your base address to finish setup.'
+              : 'Verify your email and mobile, then add your base address to finish setup.'
           : 'Add project examples next so clients can understand your work.';
 
   return (
@@ -544,6 +544,23 @@ export default function OnboardingPage() {
 
           {needsContact && (
             <div className="onboarding-form">
+              <p className="ob-contact-req" style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--muted, #6B668C)' }}>
+                Email and mobile verification are both required to continue.
+                {status.pendingContact !== 'none' ? (
+                  <>
+                    {' '}
+                    Still needed:{' '}
+                    <strong>
+                      {status.pendingContact === 'both'
+                        ? 'email and phone'
+                        : status.pendingContact === 'email'
+                          ? 'email'
+                          : 'phone'}
+                    </strong>
+                    .
+                  </>
+                ) : null}
+              </p>
               {!status.emailVerified && (
                 <div className="onboarding-channel-block">
                   <div className="onboarding-channel">
@@ -618,7 +635,7 @@ export default function OnboardingPage() {
                 onSendCode={sendPhoneCode}
                 onVerify={() => run('phone', () => api.verifyPhone(phoneCode))}
               />
-              {isReviewing ? (
+              {isReviewing && status.canCompleteProfile ? (
                 <button type="button" className="btn block" onClick={advanceReview}>
                   Continue <ArrowRight size={16} />
                 </button>

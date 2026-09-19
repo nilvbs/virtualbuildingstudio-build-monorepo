@@ -84,7 +84,7 @@ flowchart LR
 |------|----------------|
 | `select_account_type` | Individual vs company |
 | `accept_terms` | T&C + NDA (required) |
-| `verify_contact` | Email OTP + phone OTP (phone required to advance) |
+| `verify_contact` | **Email OTP + phone OTP (both required)** before profile |
 | `complete_profile` | Address / company fields → `account_profiles` |
 | `portfolio` | Surveyors only (or client-first then adding surveyor) |
 | `done` | Workspace unlocked |
@@ -228,6 +228,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-19 | Onboarding **email + phone** both mandatory to leave Verify contact / complete profile |
 | 2026-09-18 | Dual-role signup notice; branded welcome (client + surveyor); branded email OTP; SendGrid synced on deploy; admin user delete clears surveyor profile |
 | 2026-09-18 | **Doc created** — keep updating this table + diagrams above |
 

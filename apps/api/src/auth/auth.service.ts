@@ -945,6 +945,7 @@ export class AuthService {
       (Boolean(user.accountTypeSelectedAt) &&
         Boolean(user.termsAcceptedAt) &&
         Boolean(user.ndaAcceptedAt) &&
+        user.emailVerified &&
         user.phoneVerified);
 
     if (coreDone) {
@@ -1135,7 +1136,7 @@ export class AuthService {
     return { ok: true, messageId: sent.messageId };
   }
 
-  /** Confirm email OTP. Profile unlock still requires phone verification. */
+  /** Confirm email OTP — both email and phone must be verified before profile. */
   async verifyEmail(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
     const approved = await this.emailOtp.check(user.id, user.email, code);
@@ -1151,7 +1152,7 @@ export class AuthService {
     return this.hydrateUser(updated, principal.roles);
   }
 
-  /** Confirm the SMS OTP — required before profile completion. */
+  /** Confirm the SMS OTP — both email and phone must be verified before profile. */
   async verifyPhone(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
     const approved = await this.phone.checkVerification(user.id, user.phone, code);
@@ -1326,7 +1327,7 @@ export class AuthService {
 
   /**
    * Finish personal profile. Surveyors advance to portfolio builder; clients to done.
-   * Remaining contact OTP can still be completed from this step (does not block).
+   * Email and phone must both be verified first.
    */
   async completeProfile(
     principal: AuthPrincipal,
@@ -1335,6 +1336,9 @@ export class AuthService {
     const user = await this.requireUser(principal.sub);
     if (!user.termsAcceptedAt || !user.ndaAcceptedAt) {
       throw new BadRequestException('Accept the Terms & Conditions and NDA before continuing');
+    }
+    if (!user.emailVerified) {
+      throw new BadRequestException('Verify your email before completing your profile');
     }
     if (!user.phoneVerified) {
       throw new BadRequestException('Verify your mobile number before completing your profile');
@@ -1406,7 +1410,7 @@ export class AuthService {
     return this.hydrateUser(updated, principal.roles);
   }
 
-  /** After Terms & NDA: phone verification is always required before profile. */
+  /** After Terms & NDA: email + phone verification are required before profile. */
   private stepAfterTermsAccepted(_user: User): OnboardingStep {
     return 'verify_contact';
   }
@@ -1437,18 +1441,32 @@ export class AuthService {
 
     if (user.termsAcceptedAt && user.ndaAcceptedAt) {
       if (stored === 'select_account_type' || stored === 'accept_terms') {
-        return user.phoneVerified ? 'complete_profile' : 'verify_contact';
+        return this.contactsVerified(user) ? 'complete_profile' : 'verify_contact';
+      }
+      // Heal: never leave someone on profile/portfolio while contact is incomplete.
+      if (
+        (stored === 'complete_profile' || stored === 'portfolio') &&
+        !this.contactsVerified(user)
+      ) {
+        return 'verify_contact';
       }
     }
 
     return stored;
   }
 
+  /** Signup email + mobile must both be verified to leave Verify contact. */
+  private contactsVerified(user: Pick<User, 'emailVerified' | 'phoneVerified'>): boolean {
+    return user.emailVerified && user.phoneVerified;
+  }
+
   private stepAfterContactVerified(user: User): OnboardingStep {
-    // Only advance once mobile is verified (email alone is not enough).
-    if (!user.phoneVerified) {
+    if (!this.contactsVerified(user)) {
       const current = user.onboardingStep as OnboardingStep;
-      return current === 'verify_contact' ? 'verify_contact' : current;
+      if (current === 'verify_contact' || current === 'complete_profile' || current === 'portfolio') {
+        return 'verify_contact';
+      }
+      return current;
     }
     const current = user.onboardingStep as OnboardingStep;
     if (current === 'verify_contact') return 'complete_profile';
@@ -1461,11 +1479,13 @@ export class AuthService {
     accountProfile: AccountProfile | null,
     requiresPortfolio = memberships.includes('surveyor'),
   ): OnboardingStatus {
-    const pendingContact = !user.phoneVerified
-      ? user.emailVerified
-        ? 'phone'
+    const pendingContact = !user.emailVerified
+      ? user.phoneVerified
+        ? 'email'
         : 'both'
-      : 'none';
+      : !user.phoneVerified
+        ? 'phone'
+        : 'none';
 
     const address: PostalAddress = {
       line1: accountProfile?.addressLine1 ?? null,
@@ -1491,7 +1511,7 @@ export class AuthService {
       phoneNeedsEntry,
       termsAccepted: user.termsAcceptedAt != null,
       ndaAccepted: user.ndaAcceptedAt != null,
-      canCompleteProfile: user.phoneVerified,
+      canCompleteProfile: this.contactsVerified(user),
       pendingContact,
       requiresPortfolio,
       avatarKey: this.media.resolveSignedUrl(user.avatarKey),

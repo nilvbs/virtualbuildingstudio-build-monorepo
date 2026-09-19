@@ -66,9 +66,9 @@ export interface OnboardingStatus {
   termsAccepted: boolean;
   /** NDA accepted — required before onboarding may proceed. */
   ndaAccepted: boolean;
-  /** At least one contact channel is verified — unlocks personal profile. */
+  /** Both email and phone OTP verified — unlocks personal profile. */
   canCompleteProfile: boolean;
-  /** Remaining contact channel still needs OTP (if any). */
+  /** Remaining contact channel still needs OTP (if any). Both are required. */
   pendingContact: 'email' | 'phone' | 'both' | 'none';
   /** Surveyors must finish portfolio after personal profile; clients skip. */
   requiresPortfolio: boolean;

@@ -315,11 +315,11 @@ describe('AuthService', () => {
   });
 
   describe('verifyPhone', () => {
-    it('flips phone_verified and advances onboarding when the OTP is approved', async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+    it('flips phone_verified but stays on verify_contact until email is also verified', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser({ emailVerified: false }));
       phone.checkVerification.mockResolvedValue(true);
       prisma.user.update.mockResolvedValue(
-        makeUser({ phoneVerified: true, onboardingStep: 'complete_profile' }),
+        makeUser({ emailVerified: false, phoneVerified: true, onboardingStep: 'verify_contact' }),
       );
 
       const result = await service.verifyPhone(principal, '123456');
@@ -327,9 +327,25 @@ describe('AuthService', () => {
       expect(phone.checkVerification).toHaveBeenCalledWith('user-uuid', '+14155552671', '123456');
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-uuid' },
-        data: { phoneVerified: true, onboardingStep: 'complete_profile' },
+        data: { phoneVerified: true, onboardingStep: 'verify_contact' },
       });
       expect(result.phoneVerified).toBe(true);
+      expect(result.onboardingStep).toBe('verify_contact');
+    });
+
+    it('advances to complete_profile when email was already verified', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser({ emailVerified: true }));
+      phone.checkVerification.mockResolvedValue(true);
+      prisma.user.update.mockResolvedValue(
+        makeUser({ emailVerified: true, phoneVerified: true, onboardingStep: 'complete_profile' }),
+      );
+
+      const result = await service.verifyPhone(principal, '123456');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-uuid' },
+        data: { phoneVerified: true, onboardingStep: 'complete_profile' },
+      });
       expect(result.onboardingStep).toBe('complete_profile');
     });
 
@@ -345,17 +361,39 @@ describe('AuthService', () => {
   });
 
   describe('verifyEmail', () => {
-    it('flips email_verified when the OTP is approved', async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser({ emailVerified: false }));
+    it('flips email_verified but stays on verify_contact until phone is also verified', async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser({ emailVerified: false, phoneVerified: false }));
       emailOtp.check.mockResolvedValue(true);
       prisma.user.update.mockResolvedValue(
-        makeUser({ emailVerified: true, onboardingStep: 'complete_profile' }),
+        makeUser({ emailVerified: true, phoneVerified: false, onboardingStep: 'verify_contact' }),
       );
 
       const result = await service.verifyEmail(principal, '654321');
 
       expect(emailOtp.check).toHaveBeenCalledWith('user-uuid', 'ada@example.com', '654321');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-uuid' },
+        data: { emailVerified: true, onboardingStep: 'verify_contact' },
+      });
       expect(result.emailVerified).toBe(true);
+      expect(result.onboardingStep).toBe('verify_contact');
+    });
+
+    it('advances to complete_profile when phone was already verified', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ emailVerified: false, phoneVerified: true }),
+      );
+      emailOtp.check.mockResolvedValue(true);
+      prisma.user.update.mockResolvedValue(
+        makeUser({ emailVerified: true, phoneVerified: true, onboardingStep: 'complete_profile' }),
+      );
+
+      const result = await service.verifyEmail(principal, '654321');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-uuid' },
+        data: { emailVerified: true, onboardingStep: 'complete_profile' },
+      });
       expect(result.onboardingStep).toBe('complete_profile');
     });
 
