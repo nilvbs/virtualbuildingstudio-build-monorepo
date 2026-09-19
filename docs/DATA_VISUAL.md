@@ -5,7 +5,7 @@
 > Narrative companion: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Product flows: [`docs/BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md).
 
-Last synced from schema: **2026-09-18**
+Last synced from schema: **2026-09-19**
 
 ---
 
@@ -311,6 +311,7 @@ See `@surveylink/types` for transition maps.
 
 | Date | Change |
 |------|--------|
+| 2026-09-19 | `contact_otps.channel` check allows `password_reset` (forgot-password tokens) |
 | 2026-09-18 | **Doc created** from current `schema.prisma` (full ERD + domain views + cascade notes) |
 
 ---
