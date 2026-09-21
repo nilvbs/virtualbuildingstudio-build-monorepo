@@ -7,9 +7,12 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Briefcase,
+  Building2,
+  CheckCircle2,
   Loader2,
   Mail,
   MapPin,
+  PauseCircle,
   Pencil,
   Phone,
   ShieldAlert,
@@ -20,7 +23,6 @@ import type { AdminUserDetail } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../../lib/api';
 import { toastError, toastSuccess } from '../../../../../lib/action-toast';
 import { displayPhone, isPlaceholderPhone } from '../../../../../lib/country-codes';
-import { StatusBadge } from '../../../../../components/status';
 import { AdminSurveyorPortfolioDrawer } from '../../../../../components/admin-surveyor-portfolio-drawer';
 import {
   defaultPhoneInput,
@@ -420,26 +422,42 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </div>
         <div className="admin-user-head-actions">
-          <StatusBadge status={user.status} />
+          <span
+            className={`admin-user-ico admin-user-ico--status is-${user.status}`}
+            title={user.status === 'active' ? 'Active' : 'Suspended'}
+            aria-label={user.status === 'active' ? 'Status: Active' : 'Status: Suspended'}
+          >
+            {user.status === 'active' ? (
+              <CheckCircle2 size={16} aria-hidden />
+            ) : (
+              <PauseCircle size={16} aria-hidden />
+            )}
+          </span>
           {user.roles.includes('client') ? (
-            <Link href={`/build/admin/clients/${user.id}`} className="btn secondary sm">
-              Client dossier
+            <Link
+              href={`/build/admin/clients/${user.id}`}
+              className="admin-user-ico admin-user-ico--client"
+              title="Client dossier"
+              aria-label="Client dossier"
+            >
+              <Building2 size={15} aria-hidden />
             </Link>
           ) : null}
           {user.roles.includes('surveyor') ? (
             <button
               type="button"
-              className="btn secondary sm"
+              className="admin-user-ico admin-user-ico--portfolio"
               onClick={() => setPortfolioOpen(true)}
+              title="View portfolio"
+              aria-label="View portfolio"
             >
-              <Briefcase size={14} aria-hidden />
-              View portfolio
+              <Briefcase size={15} aria-hidden />
             </button>
           ) : null}
           {canManage && !editing ? (
             <button
               type="button"
-              className="admin-user-pencil"
+              className="admin-user-ico admin-user-ico--edit"
               onClick={enterEdit}
               aria-label="Edit user"
               title="Edit"
@@ -450,27 +468,29 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
           {canManage && editing ? (
             <button
               type="button"
-              className="btn secondary sm"
+              className="admin-user-ico admin-user-ico--cancel"
               onClick={cancelEdit}
               disabled={saving}
+              aria-label="Cancel edit"
+              title="Cancel edit"
             >
-              Cancel
+              <X size={16} aria-hidden />
             </button>
           ) : null}
           {canManage && !user.isStaff ? (
             <button
               type="button"
-              className="btn secondary sm"
+              className="admin-user-ico admin-user-ico--danger"
               onClick={() => setConfirmDeleteOpen(true)}
               disabled={deleting || editing}
-              style={{ color: 'var(--danger, #b42318)' }}
+              aria-label={deleting ? 'Deleting' : 'Delete user'}
+              title={deleting ? 'Deleting…' : 'Delete'}
             >
               {deleting ? (
-                <Loader2 size={14} className="hd-action-toast-spin" aria-hidden />
+                <Loader2 size={15} className="hd-action-toast-spin" aria-hidden />
               ) : (
-                <Trash2 size={14} />
+                <Trash2 size={15} aria-hidden />
               )}
-              {deleting ? 'Deleting…' : 'Delete'}
             </button>
           ) : null}
         </div>
@@ -599,17 +619,6 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       <section id="edit" className={`admin-dossier-card admin-user-edit-card${editing ? ' is-editing' : ''}`}>
         <div className="admin-dossier-card-head">
           <h2>{editing ? 'Edit details' : 'Details'}</h2>
-          {canManage && !editing ? (
-            <button
-              type="button"
-              className="admin-user-pencil"
-              onClick={enterEdit}
-              aria-label="Edit details"
-              title="Edit"
-            >
-              <Pencil size={15} aria-hidden />
-            </button>
-          ) : null}
         </div>
         <form onSubmit={onSave} className="admin-user-edit">
           <fieldset className="admin-user-edit-fields" disabled={!editing}>

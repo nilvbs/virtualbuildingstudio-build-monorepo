@@ -79,12 +79,6 @@ const NAV: Record<Section, { label: string; sub: string; sectionLabel?: string; 
         requiresPermission: 'users:view',
       },
       {
-        href: '/build/admin/surveyors',
-        label: 'Surveyors',
-        icon: 'briefcase',
-        requiresPermission: 'surveyors:view',
-      },
-      {
         href: '/build/admin/pipeline',
         label: 'Pipeline',
         icon: 'check',

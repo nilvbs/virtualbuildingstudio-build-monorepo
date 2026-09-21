@@ -1634,6 +1634,111 @@ code {
   flex-wrap: wrap;
 }
 
+.admin-user-ico,
+.admin-user-pencil {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(113, 104, 246, 0.28);
+  background: #fff;
+  color: #5b52e0;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.admin-user-ico:hover,
+.admin-user-pencil:hover {
+  background: #f7f8ff;
+  border-color: rgba(113, 104, 246, 0.45);
+  box-shadow: 0 0 0 3px rgba(113, 104, 246, 0.1);
+}
+
+.admin-user-ico:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.admin-user-ico--status {
+  cursor: default;
+  pointer-events: none;
+}
+
+.admin-user-ico--status.is-active {
+  color: #0e9f6e;
+  border-color: rgba(14, 159, 110, 0.35);
+  background: #eefaf4;
+}
+
+.admin-user-ico--status.is-suspended {
+  color: #b7791f;
+  border-color: rgba(183, 121, 31, 0.35);
+  background: #fff8eb;
+}
+
+.admin-user-ico--client {
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.3);
+  background: #eff6ff;
+}
+
+.admin-user-ico--client:hover {
+  background: #dbeafe;
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.admin-user-ico--portfolio {
+  color: #5b52e0;
+  border-color: rgba(113, 104, 246, 0.3);
+  background: #f5f3ff;
+}
+
+.admin-user-ico--portfolio:hover {
+  background: #eeeaff;
+  border-color: rgba(113, 104, 246, 0.5);
+}
+
+.admin-user-ico--edit {
+  color: #5b52e0;
+  border-color: rgba(113, 104, 246, 0.28);
+  background: #fff;
+}
+
+.admin-user-ico--cancel {
+  color: #6b668c;
+  border-color: rgba(107, 102, 140, 0.28);
+  background: #f7f7fb;
+}
+
+.admin-user-ico--cancel:hover {
+  background: #efeff6;
+  border-color: rgba(107, 102, 140, 0.42);
+  box-shadow: 0 0 0 3px rgba(107, 102, 140, 0.1);
+}
+
+.admin-user-ico--danger {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.28);
+  background: #fff5f4;
+}
+
+.admin-user-ico--danger:hover:not(:disabled) {
+  background: #ffe8e6;
+  border-color: rgba(180, 35, 24, 0.45);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
+}
+
 .admin-user-meta {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1720,31 +1825,6 @@ code {
 
 .admin-user-edit-card .admin-dossier-card-head h2 {
   font-size: 13.5px;
-}
-
-.admin-user-pencil {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(113, 104, 246, 0.28);
-  background: #fff;
-  color: #5b52e0;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.admin-user-pencil:hover {
-  background: #f7f8ff;
-  border-color: rgba(113, 104, 246, 0.45);
-  box-shadow: 0 0 0 3px rgba(113, 104, 246, 0.1);
 }
 
 .admin-user-edit-fields {

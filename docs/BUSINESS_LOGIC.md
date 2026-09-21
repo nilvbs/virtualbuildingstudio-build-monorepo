@@ -221,8 +221,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 - Super-admin bootstrap; staff levels + permission presets.
 - **Overview** (`/build/admin/queue`): network totals (incl. complete surveyor profiles), daily activity **bar chart + 7-day trend line**, services coverage bars, regional breakdown; date/region filters.
-- **Surveyors** directory (`/build/admin/surveyors`): quick filters (complete / incomplete / matchable / paused / BLD verified) plus advanced filters (service, city, rating, day rate); open full dossier with all filled portfolio fields.
-- **Users** detail: view-only by default; pencil unlocks account edit/verify; surveyor **View portfolio** drawer is view-only until circled pencil unlocks portfolio edit (`users:manage`).
+- **Users** detail: view-only by default; pencil unlocks account edit/verify; surveyor portfolio opens from the user header (**View portfolio** drawer), not a separate sidebar module.
 - Pipeline / users / projects / helpdesk / activity.
 - User delete must clear surveyor profile + matches (no FK cascade on surveyor→user).
 
@@ -251,6 +250,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-21 | Admin sidebar: **Surveyors** nav removed — portfolio managed from Users detail drawer |
 | 2026-09-21 | Admin user detail: view-only by default; pencil unlocks account edit; **View portfolio** drawer also has circled pencil to edit surveyor portfolio |
 | 2026-09-19 | Verify contact: Continue after both email+phone verified; heal stuck `verify_contact` when contacts already done |
 | 2026-09-19 | Signup: email **and** phone uniqueness (partial reuse blocked); dual-role requires matching phone; reset email paste-link removed; portfolio currency locked to USD; Remote services UI removed |
