@@ -250,6 +250,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-19 | Verify contact: Continue after both email+phone verified; heal stuck `verify_contact` when contacts already done |
 | 2026-09-19 | Signup: email **and** phone uniqueness (partial reuse blocked); dual-role requires matching phone; reset email paste-link removed; portfolio currency locked to USD; Remote services UI removed |
 | 2026-09-19 | Admin **surveyor directory + overview analytics**: complete-profile visibility, service coverage charts, activity bars with trend line, quick + advanced surveyor filters, full profile dossier |
 | 2026-09-19 | Marketplace **forgot password**: branded reset email, success/resend UI, `/reset-password` bound to requesting user only |

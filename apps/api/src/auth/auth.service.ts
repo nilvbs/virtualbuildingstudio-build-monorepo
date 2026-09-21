@@ -1336,7 +1336,16 @@ export class AuthService {
   }
 
   async getOnboarding(principal: AuthPrincipal): Promise<OnboardingStatus> {
-    const user = await this.requireUser(principal.sub);
+    let user = await this.requireUser(principal.sub);
+    const effectiveStep = this.resolveOnboardingStep(user);
+    // Persist forward heals (e.g. verify_contact → complete_profile when both OTPs done)
+    // so the client and later gates share one source of truth.
+    if (effectiveStep !== user.onboardingStep) {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { onboardingStep: effectiveStep },
+      });
+    }
     const memberships = await listMemberships(this.prisma, user.id);
     const accountProfile = await this.prisma.accountProfile.findUnique({
       where: { userId: user.id },
@@ -1609,6 +1618,11 @@ export class AuthService {
     if (user.termsAcceptedAt && user.ndaAcceptedAt) {
       if (stored === 'select_account_type' || stored === 'accept_terms') {
         return this.contactsVerified(user) ? 'complete_profile' : 'verify_contact';
+      }
+      // Both contacts already verified but step still on verify_contact (dual-role,
+      // Google email pre-verified, or a missed step write after OTP).
+      if (stored === 'verify_contact' && this.contactsVerified(user)) {
+        return 'complete_profile';
       }
       // Heal: never leave someone on profile/portfolio while contact is incomplete.
       if (

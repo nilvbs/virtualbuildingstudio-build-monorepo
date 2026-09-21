@@ -170,6 +170,13 @@ export function OnboardingScreen({ navigation }: Props) {
     }
   }
 
+  /** Leave Verify contact once both channels are verified. */
+  function continueFromContact() {
+    if (!status?.canCompleteProfile) return;
+    setViewStep('complete_profile');
+    setError(null);
+  }
+
   function goBack() {
     if (!status) return;
     const display = viewStep ?? status.step;
@@ -356,11 +363,13 @@ export function OnboardingScreen({ navigation }: Props) {
     : needsTerms
       ? 'Before onboarding, you must accept the Terms & Conditions and NDA. There is no skip.'
       : needsContact
-        ? 'Verify either your email or phone to continue. You can finish the other later.'
+        ? 'Verify your email and mobile. Both are required before your profile.'
         : needsProfile
           ? isCompany
             ? 'Verify your work email and add company address, registration number, and optional website.'
-            : 'Verify any remaining contact and add your base address.'
+            : status.phoneVerified && status.emailVerified
+              ? 'Your contact details are verified. Add your base address to finish setup.'
+              : 'Verify your email and mobile, then add your base address to finish setup.'
           : 'Add project examples next so clients can understand your work.';
 
   function renderPhoneBlock() {
@@ -689,8 +698,8 @@ export function OnboardingScreen({ navigation }: Props) {
                 </View>
               )}
               {renderPhoneBlock()}
-              {isReviewing ? (
-                <Button label="Continue" icon="arrow-right" onPress={advanceReview} />
+              {status.canCompleteProfile ? (
+                <Button label="Continue" icon="arrow-right" onPress={continueFromContact} />
               ) : null}
             </View>
           ) : null}

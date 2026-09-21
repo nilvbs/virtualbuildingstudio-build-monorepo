@@ -175,6 +175,13 @@ export default function OnboardingPage() {
     }
   }
 
+  /** Leave Verify contact once both channels are verified. */
+  function continueFromContact() {
+    if (!status?.canCompleteProfile) return;
+    setViewStep('complete_profile');
+    setError(null);
+  }
+
   function goBack() {
     if (!status) return;
     const display = viewStep ?? status.step;
@@ -635,8 +642,8 @@ export default function OnboardingPage() {
                 onSendCode={sendPhoneCode}
                 onVerify={() => run('phone', () => api.verifyPhone(phoneCode))}
               />
-              {isReviewing && status.canCompleteProfile ? (
-                <button type="button" className="btn block" onClick={advanceReview}>
+              {status.canCompleteProfile ? (
+                <button type="button" className="btn block" onClick={continueFromContact}>
                   Continue <ArrowRight size={16} />
                 </button>
               ) : null}
