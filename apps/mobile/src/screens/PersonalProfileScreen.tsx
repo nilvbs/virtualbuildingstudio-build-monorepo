@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
@@ -22,6 +22,7 @@ import { colors, radius, shadows, spacing } from '../lib/theme';
 import { AlertBox, BackButton, Button, Field } from '../components/ui';
 import { AppHeader } from '../components/AppHeader';
 import { FadeInUp } from '../components/motion';
+import { OtpInput } from '../components/OtpInput';
 
 const EMPTY_ADDRESS = {
   line1: '',
@@ -32,6 +33,8 @@ const EMPTY_ADDRESS = {
   country: '',
 };
 
+type VerifyChannel = 'email' | 'phone';
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
@@ -39,6 +42,12 @@ function initials(name: string): string {
 
 function avatarIsUrl(value: string | null | undefined): boolean {
   return /^(https?:\/\/|\/)/.test(value ?? '');
+}
+
+function nextPendingChannel(user: AuthenticatedUser): VerifyChannel | null {
+  if (!user.emailVerified) return 'email';
+  if (!user.phoneVerified) return 'phone';
+  return null;
 }
 
 export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
@@ -56,6 +65,11 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [verifyChannel, setVerifyChannel] = useState<VerifyChannel | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifySending, setVerifySending] = useState(false);
+  const verifyingRef = useRef(false);
 
   function applyOnboarding(onboarding: OnboardingStatus) {
     setAccountType(onboarding.accountType);
@@ -90,6 +104,69 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
     setSavedMessage(null);
     setError(null);
     setEditing(true);
+  }
+
+  async function sendCodeFor(channel: VerifyChannel) {
+    setVerifySending(true);
+    setError(null);
+    setOtpCode('');
+    try {
+      if (channel === 'email') await api.startEmailVerification();
+      else await api.startPhoneVerification();
+      setVerifyChannel(channel);
+    } catch (err) {
+      setError(errorMessage(err));
+      setVerifyChannel(null);
+    } finally {
+      setVerifySending(false);
+    }
+  }
+
+  async function beginVerification() {
+    if (!user || verifySending || verifyBusy) return;
+    const channel = nextPendingChannel(user);
+    if (!channel) return;
+    setSavedMessage(null);
+    await sendCodeFor(channel);
+  }
+
+  async function submitOtp(code: string) {
+    if (!verifyChannel || verifyingRef.current) return;
+    const cleaned = code.replace(/\D/g, '');
+    if (cleaned.length < 6) return;
+    verifyingRef.current = true;
+    setVerifyBusy(true);
+    setError(null);
+    try {
+      const nextUser =
+        verifyChannel === 'email'
+          ? await api.verifyEmail(cleaned)
+          : await api.verifyPhone(cleaned);
+      setUser(nextUser);
+      DeviceEventEmitter.emit('bld:user-updated');
+      setOtpCode('');
+      const next = nextPendingChannel(nextUser);
+      if (next) {
+        setSavedMessage(
+          verifyChannel === 'email' ? 'Email verified. Sending a code to your phone…' : null,
+        );
+        await sendCodeFor(next);
+      } else {
+        setVerifyChannel(null);
+        setSavedMessage('Contact verified.');
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+      setOtpCode('');
+    } finally {
+      verifyingRef.current = false;
+      setVerifyBusy(false);
+    }
+  }
+
+  async function resendCode() {
+    if (!verifyChannel || verifySending || verifyBusy) return;
+    await sendCodeFor(verifyChannel);
   }
 
   async function cancelEditing() {
@@ -268,6 +345,60 @@ export function PersonalProfileScreen({ role }: { role: WorkspaceRole }) {
                     verified={user.phoneVerified}
                   />
                 </View>
+                {!user.emailVerified || !user.phoneVerified ? (
+                  <View style={styles.verifyPanel}>
+                    {!verifyChannel ? (
+                      <Button
+                        label={verifySending ? 'Sending code…' : 'Complete verification'}
+                        busy={verifySending}
+                        onPress={() => void beginVerification()}
+                        disabled={verifySending || verifyBusy}
+                      />
+                    ) : (
+                      <>
+                        <Text style={styles.verifyHint}>
+                          {verifyChannel === 'email'
+                            ? `Enter the 6-digit code sent to ${user.email}.`
+                            : `Enter the 6-digit code sent to ${user.phone}.`}
+                        </Text>
+                        <OtpInput
+                          value={otpCode}
+                          onChange={setOtpCode}
+                          disabled={verifyBusy || verifySending}
+                          autoFocus
+                          label={
+                            verifyChannel === 'email'
+                              ? 'Email verification code'
+                              : 'Phone verification code'
+                          }
+                          onComplete={(code) => {
+                            void submitOtp(code);
+                          }}
+                        />
+                        <View style={styles.verifyActions}>
+                          <Button
+                            label={verifySending ? 'Sending…' : 'Resend code'}
+                            variant="outline"
+                            busy={verifySending}
+                            disabled={verifySending || verifyBusy}
+                            onPress={() => void resendCode()}
+                            style={{ flex: 1 }}
+                          />
+                          <Button
+                            label="Cancel"
+                            variant="ghost"
+                            disabled={verifyBusy || verifySending}
+                            onPress={() => {
+                              setVerifyChannel(null);
+                              setOtpCode('');
+                            }}
+                            style={{ flex: 1 }}
+                          />
+                        </View>
+                      </>
+                    )}
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.card}>
@@ -490,6 +621,9 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   cardBody: { marginTop: spacing.md, gap: spacing.sm },
+  verifyPanel: { marginTop: spacing.md, gap: spacing.md },
+  verifyHint: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  verifyActions: { flexDirection: 'row', gap: spacing.sm },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'center',

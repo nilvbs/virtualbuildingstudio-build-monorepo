@@ -4027,6 +4027,25 @@ lord-icon {
   justify-content: center;
 }
 
+.personal-verify-panel {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.personal-verify-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #6b668c;
+}
+
+.personal-verify-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .personal-profile-edit {
   grid-column: 1 / -1;
 }

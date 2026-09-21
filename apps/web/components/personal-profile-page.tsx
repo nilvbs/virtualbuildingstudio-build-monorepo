@@ -13,6 +13,7 @@ import {
 import type { AccountType, AuthenticatedUser, OnboardingStatus, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
 import { AddressFields } from './address-fields';
+import { OtpInput } from './otp-input';
 
 const EMPTY_ADDRESS = {
   line1: '',
@@ -22,6 +23,8 @@ const EMPTY_ADDRESS = {
   postalCode: '',
   country: '',
 };
+
+type VerifyChannel = 'email' | 'phone';
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -35,6 +38,12 @@ function VerificationBadge({ verified }: { verified: boolean }) {
       {verified ? 'Verified' : 'Not verified'}
     </span>
   );
+}
+
+function nextPendingChannel(user: AuthenticatedUser): VerifyChannel | null {
+  if (!user.emailVerified) return 'email';
+  if (!user.phoneVerified) return 'phone';
+  return null;
 }
 
 export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
@@ -51,6 +60,12 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const [verifyChannel, setVerifyChannel] = useState<VerifyChannel | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifySending, setVerifySending] = useState(false);
+  const verifyingRef = useRef(false);
 
   function applyOnboarding(onboarding: OnboardingStatus) {
     setAccountType(onboarding.accountType);
@@ -119,6 +134,69 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
     setSavedMessage(null);
     setError(null);
     setEditing(true);
+  }
+
+  async function sendCodeFor(channel: VerifyChannel) {
+    setVerifySending(true);
+    setError(null);
+    setOtpCode('');
+    try {
+      if (channel === 'email') await api.startEmailVerification();
+      else await api.startPhoneVerification();
+      setVerifyChannel(channel);
+    } catch (err) {
+      setError(errorMessage(err));
+      setVerifyChannel(null);
+    } finally {
+      setVerifySending(false);
+    }
+  }
+
+  async function beginVerification() {
+    if (!user || verifySending || verifyBusy) return;
+    const channel = nextPendingChannel(user);
+    if (!channel) return;
+    setSavedMessage(null);
+    await sendCodeFor(channel);
+  }
+
+  async function submitOtp(code: string) {
+    if (!verifyChannel || verifyingRef.current) return;
+    const cleaned = code.replace(/\D/g, '');
+    if (cleaned.length < 6) return;
+    verifyingRef.current = true;
+    setVerifyBusy(true);
+    setError(null);
+    try {
+      const nextUser =
+        verifyChannel === 'email'
+          ? await api.verifyEmail(cleaned)
+          : await api.verifyPhone(cleaned);
+      setUser(nextUser);
+      window.dispatchEvent(new Event('bld:user-updated'));
+      setOtpCode('');
+      const next = nextPendingChannel(nextUser);
+      if (next) {
+        setSavedMessage(
+          verifyChannel === 'email' ? 'Email verified. Sending a code to your phone…' : null,
+        );
+        await sendCodeFor(next);
+      } else {
+        setVerifyChannel(null);
+        setSavedMessage('Contact verified.');
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+      setOtpCode('');
+    } finally {
+      verifyingRef.current = false;
+      setVerifyBusy(false);
+    }
+  }
+
+  async function resendCode() {
+    if (!verifyChannel || verifySending || verifyBusy) return;
+    await sendCodeFor(verifyChannel);
   }
 
   async function cancelEditing() {
@@ -261,9 +339,68 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
             </div>
           </div>
           {(!user.emailVerified || !user.phoneVerified) && (
-            <a className="btn secondary personal-verify-cta" href="/onboarding">
-              Complete verification
-            </a>
+            <div className="personal-verify-panel">
+              {!verifyChannel ? (
+                <button
+                  type="button"
+                  className="btn secondary personal-verify-cta"
+                  disabled={verifySending || verifyBusy}
+                  onClick={() => void beginVerification()}
+                >
+                  {verifySending ? (
+                    <>
+                      <LoaderCircle size={15} className="spin" aria-hidden />
+                      Sending code…
+                    </>
+                  ) : (
+                    'Complete verification'
+                  )}
+                </button>
+              ) : (
+                <>
+                  <p className="personal-verify-hint">
+                    {verifyChannel === 'email'
+                      ? `Enter the 6-digit code sent to ${user.email}.`
+                      : `Enter the 6-digit code sent to ${user.phone}.`}
+                  </p>
+                  <OtpInput
+                    value={otpCode}
+                    onChange={setOtpCode}
+                    disabled={verifyBusy || verifySending}
+                    autoFocus
+                    label={
+                      verifyChannel === 'email'
+                        ? 'Email verification code'
+                        : 'Phone verification code'
+                    }
+                    onComplete={(code) => {
+                      void submitOtp(code);
+                    }}
+                  />
+                  <div className="personal-verify-actions">
+                    <button
+                      type="button"
+                      className="btn secondary sm"
+                      disabled={verifySending || verifyBusy}
+                      onClick={() => void resendCode()}
+                    >
+                      {verifySending ? 'Sending…' : 'Resend code'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      disabled={verifyBusy || verifySending}
+                      onClick={() => {
+                        setVerifyChannel(null);
+                        setOtpCode('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </section>
 
