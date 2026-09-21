@@ -24,13 +24,17 @@ const LandingPresenceMap = dynamic(
   },
 );
 
-const HERO_IMAGE_DESKTOP = '/brand/landing-hero.png';
-const HERO_IMAGE_TABLET = '/brand/landing-hero-mobile.png';
-const HERO_IMAGE_MOBILE = '/brand/landing-hero-mobile-portrait.png?v=3';
+const HERO_IMAGE = {
+  desktop: '/brand/landing-hero.webp',
+  tablet: '/brand/landing-hero-mobile.webp',
+  mobile: '/brand/landing-hero-mobile-portrait.webp',
+  /** PNG fallbacks for browsers without WebP */
+  desktopFallback: '/brand/landing-hero.png',
+} as const;
 
 const PATH_IMAGES = {
-  client: '/brand/path-client.png?v=3',
-  surveyor: '/brand/path-surveyor.png?v=3',
+  client: '/brand/path-client.webp',
+  surveyor: '/brand/path-surveyor.webp',
 } as const;
 
 const SERVICES = [
@@ -131,27 +135,29 @@ export function LandingPage() {
       <main>
         <section className="bld-hero" aria-label="Introduction">
           <div className="bld-hero-bg-wrap" aria-hidden>
-            <img
-              src={HERO_IMAGE_MOBILE}
-              alt=""
-              className="bld-hero-bg bld-hero-bg--mobile"
-              loading="eager"
-              decoding="async"
-            />
-            <img
-              src={HERO_IMAGE_TABLET}
-              alt=""
-              className="bld-hero-bg bld-hero-bg--tablet"
-              loading="lazy"
-              decoding="async"
-            />
-            <img
-              src={HERO_IMAGE_DESKTOP}
-              alt=""
-              className="bld-hero-bg bld-hero-bg--desktop"
-              loading="eager"
-              decoding="async"
-            />
+            <picture>
+              <source
+                media="(max-width: 768px)"
+                type="image/webp"
+                srcSet={HERO_IMAGE.mobile}
+              />
+              <source
+                media="(max-width: 1024px)"
+                type="image/webp"
+                srcSet={HERO_IMAGE.tablet}
+              />
+              <source type="image/webp" srcSet={HERO_IMAGE.desktop} />
+              <img
+                src={HERO_IMAGE.desktopFallback}
+                alt=""
+                className="bld-hero-bg"
+                width={1536}
+                height={1024}
+                fetchPriority="high"
+                loading="eager"
+                decoding="async"
+              />
+            </picture>
           </div>
 
           <div className="bld-hero-stage">
