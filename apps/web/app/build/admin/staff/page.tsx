@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2, Pencil, Shield, Trash2, UserPlus, X } from 'lucide-react';
 import {
@@ -42,6 +43,7 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
 
 export default function StaffAdminsPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [staff, setStaff] = useState<StaffAdmin[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -91,6 +93,10 @@ export default function StaffAdminsPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -353,22 +359,21 @@ export default function StaffAdminsPage() {
         )}
       </div>
 
-      <div
-        className={`hd-drawer-root${drawerOpen ? ' is-open' : ''}`}
-        aria-hidden={!drawerOpen}
-      >
-        <button
-          type="button"
-          className="hd-drawer-backdrop"
-          aria-label="Close drawer"
-          onClick={closeDrawers}
-        />
-        <aside
-          className="hd-drawer-panel"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="staff-drawer-title"
-        >
+      {mounted && drawerOpen
+        ? createPortal(
+            <div className="hd-drawer-root is-open" role="presentation">
+              <button
+                type="button"
+                className="hd-drawer-backdrop"
+                aria-label="Close drawer"
+                onClick={closeDrawers}
+              />
+              <aside
+                className="hd-drawer-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="staff-drawer-title"
+              >
           {inviteOpen ? (
             <>
               <div className="hd-drawer-head">
@@ -649,8 +654,11 @@ export default function StaffAdminsPage() {
               </div>
             </>
           ) : null}
-        </aside>
-      </div>
+              </aside>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
