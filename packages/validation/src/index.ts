@@ -500,6 +500,10 @@ export type CreateStaffAdminInput = z.infer<typeof createStaffAdminSchema>;
 export const updateStaffAdminSchema = z
   .object({
     title: z.string().max(120).nullable().optional(),
+    firstName: namePartSchema.optional(),
+    lastName: namePartSchema.optional(),
+    /** Super-admin only: set a new sign-in password for this staff member. */
+    password: passwordSchema.optional(),
     permissionPreset: staffPermissionPresetSchema.optional(),
     permissions: z.array(staffPermissionSchema).optional(),
     status: z.enum(['active', 'suspended']).optional(),
@@ -507,6 +511,9 @@ export const updateStaffAdminSchema = z
   .refine(
     (v) =>
       v.title !== undefined ||
+      v.firstName !== undefined ||
+      v.lastName !== undefined ||
+      v.password !== undefined ||
       v.permissionPreset !== undefined ||
       v.permissions !== undefined ||
       v.status !== undefined,

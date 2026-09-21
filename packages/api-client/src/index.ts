@@ -188,10 +188,23 @@ export interface CreateStaffAdminBody {
 
 export interface UpdateStaffAdminBody {
   title?: string | null;
+  firstName?: string;
+  lastName?: string;
+  password?: string;
   permissionPreset?: StaffPermissionPreset;
   permissions?: StaffPermission[];
   status?: UserStatus;
 }
+
+export type StaffInvitePeekResult =
+  | {
+      ok: true;
+      email: string;
+      password: string;
+      fullName: string;
+      expiresAt: string;
+    }
+  | { ok: false; reason: string };
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -793,6 +806,22 @@ export class SurveyLinkClient {
 
   async removeStaffAdmin(userId: string): Promise<void> {
     await this.request<void>('DELETE', `/admin/staff/${userId}`);
+  }
+
+  /** Public: resolve a staff invite link for portal email/password prefill. */
+  async peekStaffInvite(token: string): Promise<StaffInvitePeekResult> {
+    return this.request<StaffInvitePeekResult>(
+      'GET',
+      `/admin/staff/invite/${encodeURIComponent(token)}`,
+    );
+  }
+
+  /** Mark a staff invite as accepted after the invitee signs in. */
+  async acceptStaffInvite(token: string): Promise<{ ok: true }> {
+    return this.request<{ ok: true }>(
+      'POST',
+      `/admin/staff/invite/${encodeURIComponent(token)}/accept`,
+    );
   }
 
   private async request<T>(

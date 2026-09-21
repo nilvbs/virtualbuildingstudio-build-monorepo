@@ -148,17 +148,23 @@ model AccountProfile {
 }
 
 model AdminProfile {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId           String   @unique @map("user_id") @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @unique @map("user_id") @db.Uuid
   title            String?
   /** super_admin | admin */
-  staffLevel       String   @default("admin") @map("staff_level")
+  staffLevel       String    @default("admin") @map("staff_level")
   /** viewer | matcher | full | custom */
-  permissionPreset String   @default("matcher") @map("permission_preset")
+  permissionPreset String    @default("matcher") @map("permission_preset")
   /** JSON array of StaffPermission strings when preset is custom (or overrides). */
-  permissions      Json     @default("[]")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  permissions      Json      @default("[]")
+  /** Opaque invite token for staff portal access link (cleared after accept). */
+  inviteToken      String?   @unique @map("invite_token")
+  inviteExpiresAt  DateTime? @map("invite_expires_at") @db.Timestamptz(6)
+  inviteAcceptedAt DateTime? @map("invite_accepted_at") @db.Timestamptz(6)
+  /** AES-GCM ciphertext of the temporary password for invite prefill (cleared after accept). */
+  invitePasswordEnc String?  @map("invite_password_enc")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

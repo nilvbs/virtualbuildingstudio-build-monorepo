@@ -77,12 +77,12 @@ export default function AdminHelpdeskPage() {
   if (loading) {
     return (
       <div className="hd-admin">
-        <div className="skeleton sk-line" style={{ width: 220, height: 28 }} />
         <div className="hd-admin-stats">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="hd-admin-stat skeleton" style={{ minHeight: 88 }} />
+            <div key={i} className="hd-admin-stat skeleton" style={{ minHeight: 64 }} />
           ))}
         </div>
+        <div className="skeleton" style={{ minHeight: 40, borderRadius: 12 }} />
       </div>
     );
   }
@@ -92,47 +92,43 @@ export default function AdminHelpdeskPage() {
 
   return (
     <div className="hd-admin">
-      <header className="hd-admin-head">
-        <div>
-          <p className="ops-kicker">Operations</p>
-          <h1>Help desk</h1>
-          <p>Inbox for client and surveyor support — triage, reply, and close the loop.</p>
-        </div>
-      </header>
+      <p className="hd-admin-lead">
+        Inbox for client and surveyor support — triage, reply, and close the loop.
+      </p>
 
       <div className="hd-admin-stats">
         <article className="hd-admin-stat">
           <span className="hd-admin-stat-ico" aria-hidden>
             <Inbox size={16} />
           </span>
-          <div>
+          <div className="hd-admin-stat-body">
             <strong>{counts.open + counts.in_progress}</strong>
             <span>Needs attention</span>
           </div>
         </article>
         <article className="hd-admin-stat">
-          <span className="hd-admin-stat-ico" aria-hidden>
+          <span className="hd-admin-stat-ico hd-admin-stat-ico--blue" aria-hidden>
             <Clock3 size={16} />
           </span>
-          <div>
+          <div className="hd-admin-stat-body">
             <strong>{counts.waiting}</strong>
             <span>Waiting on user</span>
           </div>
         </article>
         <article className="hd-admin-stat">
-          <span className="hd-admin-stat-ico" aria-hidden>
+          <span className="hd-admin-stat-ico hd-admin-stat-ico--green" aria-hidden>
             <MessageSquare size={16} />
           </span>
-          <div>
+          <div className="hd-admin-stat-body">
             <strong>{counts.resolved + counts.closed}</strong>
             <span>Resolved / closed</span>
           </div>
         </article>
         <article className="hd-admin-stat hd-admin-stat--warn">
-          <span className="hd-admin-stat-ico" aria-hidden>
+          <span className="hd-admin-stat-ico hd-admin-stat-ico--warn" aria-hidden>
             <TriangleAlert size={16} />
           </span>
-          <div>
+          <div className="hd-admin-stat-body">
             <strong>{counts.urgent}</strong>
             <span>High / urgent</span>
           </div>
@@ -163,8 +159,8 @@ export default function AdminHelpdeskPage() {
 
       {visible.length === 0 ? (
         <div className="hd-admin-empty">
-          <div className="empty-ico">
-            <Headset size={22} />
+          <div className="hd-admin-empty-ico" aria-hidden>
+            <Headset size={18} />
           </div>
           <h2>No tickets here</h2>
           <p>Nothing matches this filter. New tickets from Help land in Open.</p>

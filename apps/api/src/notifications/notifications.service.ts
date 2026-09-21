@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EMAIL_SENDER, type EmailSender } from './delivery/email-sender';
 import { SMS_SENDER, type SmsSender } from './delivery/sms-sender';
 import { TWILIO_TRIAL_NOTIFY_TEMPLATE } from './delivery/twilio.sms-sender';
+import { buildStaffInviteEmail } from './delivery/staff-invite-email';
 
 interface MatchNotificationContext {
   clientUserId: string;
@@ -517,6 +518,58 @@ export class NotificationsService {
       data: { readAt: new Date() },
     });
     return this.toDto(updated);
+  }
+
+  /** Ops: new staff admin invited — email (Access portal CTA), SMS, in-app. */
+  async notifyStaffInvite(ctx: {
+    userId: string;
+    fullName: string;
+    email: string;
+    tempPassword: string;
+    inviteToken: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const portalUrl = `${this.webAppUrl}/build/admin?invite=${encodeURIComponent(ctx.inviteToken)}`;
+    const content = buildStaffInviteEmail({
+      fullName: ctx.fullName,
+      email: ctx.email,
+      tempPassword: ctx.tempPassword,
+      portalUrl,
+      expiresAt: ctx.expiresAt,
+    });
+
+    await this.createInApp(
+      ctx.userId,
+      'staff_invite',
+      'Your BLD staff portal access',
+      'You have been invited to the operations portal. Open the link from your email (Mon–Fri, valid 3 days) to sign in.',
+      `/build/admin?invite=${encodeURIComponent(ctx.inviteToken)}`,
+    );
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { phone: true },
+    });
+
+    const tasks: Promise<unknown>[] = [
+      this.email.send({
+        to: ctx.email,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
+      }),
+    ];
+    if (user?.phone?.trim()) {
+      tasks.push(
+        this.sms.send({
+          to: user.phone,
+          body: `BLD: You've been invited to the staff portal. Access (Mon–Fri, 3 days): ${portalUrl}`,
+          purpose: 'notification',
+          trialTemplate: TWILIO_TRIAL_NOTIFY_TEMPLATE,
+        }),
+      );
+    }
+    await Promise.allSettled(tasks);
   }
 
   private async createInApp(

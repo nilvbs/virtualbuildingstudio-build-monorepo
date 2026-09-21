@@ -4,7 +4,7 @@
 > Data shape / ERD: [`docs/DATA_VISUAL.md`](./DATA_VISUAL.md) · narrative: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Status enums & transitions: [`packages/types/src/index.ts`](../packages/types/src/index.ts).
 
-Last reviewed: 2026-09-19
+Last reviewed: 2026-09-21
 
 ---
 
@@ -25,6 +25,7 @@ BLD is a **managed marketplace**: clients post site-survey projects; the platfor
 - Access control uses **memberships**, not `users.role_hint` (legacy display only).
 - Session may carry `activeRole` (`client` \| `surveyor`) for workspace routing.
 - **Dual-role:** signing up again with the same email **adds** the other marketplace role; shared onboarding progress is kept; UI shows an `accountNotice`.
+- **Staff invite (super admin only):** create normal admin → email with **Access portal** CTA + SMS + in-app notification. Link is `/build/admin?invite=…`, valid **3 days**, redeemable **Monday–Friday only**. Portal prefills email + temp password; successful sign-in accepts the invite (clears token). Super admin can edit any staff row (including self) and set passwords; password fields show masked (`***`) with an eye toggle.
 
 ```mermaid
 flowchart LR
@@ -36,7 +37,20 @@ flowchart LR
   AdminHat --> AdminProfile[admin_profiles]
 ```
 
-**Key code:** `apps/api/src/auth/memberships.ts`, `apps/api/src/auth/auth.service.ts`
+```mermaid
+flowchart TD
+  SA[Super admin invites staff] --> Create[Create admin + invite token]
+  Create --> Mail[Email Access portal CTA]
+  Create --> SMS[SMS + in-app]
+  Mail --> Link["/build/admin?invite=token"]
+  Link --> Peek{Mon-Fri and within 3 days?}
+  Peek -->|no| Fail[Show reason]
+  Peek -->|yes| Prefill[Prefill email + temp password]
+  Prefill --> Login[Sign in]
+  Login --> Accept[Accept invite / clear token]
+```
+
+**Key code:** `apps/api/src/auth/memberships.ts`, `apps/api/src/auth/auth.service.ts`, `apps/api/src/admin/admin.service.ts`
 
 ---
 
@@ -250,6 +264,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-21 | Staff invite: right-drawer create, email Access portal CTA + SMS/in-app, 3-day Mon–Fri link prefills portal credentials; super admin pencil edit + password (masked + eye) |
 | 2026-09-21 | Admin sidebar: **Surveyors** nav removed — portfolio managed from Users detail drawer |
 | 2026-09-21 | Admin user detail: view-only by default; pencil unlocks account edit; **View portfolio** drawer also has circled pencil to edit surveyor portfolio |
 | 2026-09-19 | Verify contact: Continue after both email+phone verified; heal stuck `verify_contact` when contacts already done |

@@ -62,6 +62,15 @@ export function isWithinWorkingHours(
   return mins >= config.startHour * 60 && mins < config.endHour * 60;
 }
 
+/** True when `date` falls on a configured workday (default Mon–Fri), ignoring clock time. */
+export function isStaffInviteWeekday(
+  date: Date = new Date(),
+  config: WorkingHoursConfig = DEFAULT_WORKING_HOURS,
+): boolean {
+  const { weekday } = zonedParts(date, config.timeZone);
+  return config.workdays.includes(weekday);
+}
+
 /** Advance wall time until `hours` of working time have elapsed. */
 export function addWorkingHours(
   from: Date,

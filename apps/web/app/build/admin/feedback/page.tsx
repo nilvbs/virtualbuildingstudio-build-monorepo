@@ -6,11 +6,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Eye,
+  HardHat,
   MessageSquareQuote,
   Sparkles,
   Star,
   ThumbsDown,
   ThumbsUp,
+  UserRound,
+  Users,
   X,
 } from 'lucide-react';
 import {
@@ -130,17 +133,12 @@ export default function AdminFeedbackPage() {
   if (loading) {
     return (
       <div className="admin-fb">
-        <div className="admin-fb-hero skeleton" style={{ minHeight: 120, borderRadius: 20 }} />
         <div className="admin-fb-metrics">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="skeleton" style={{ minHeight: 92, borderRadius: 16 }} />
+            <div key={i} className="skeleton" style={{ minHeight: 72, borderRadius: 12 }} />
           ))}
         </div>
-        <div className="admin-fb-grid">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="skeleton" style={{ minHeight: 168, borderRadius: 18 }} />
-          ))}
-        </div>
+        <div className="skeleton" style={{ minHeight: 140, borderRadius: 14 }} />
       </div>
     );
   }
@@ -152,6 +150,9 @@ export default function AdminFeedbackPage() {
     stats.avg != null
       ? FEEDBACK_RATING_EMOJIS[Math.max(1, Math.min(5, Math.round(stats.avg))) as 1 | 2 | 3 | 4 | 5]
       : null;
+  const recommendPct = stats.recommendTotal
+    ? Math.round((stats.recommendYes / stats.recommendTotal) * 100)
+    : null;
 
   const detailDrawer =
     selected && mounted
@@ -298,67 +299,66 @@ export default function AdminFeedbackPage() {
 
   return (
     <div className="admin-fb">
-      <header className="admin-fb-hero">
-        <div className="admin-fb-hero-copy">
-          <p className="ops-kicker">Product trust</p>
-          <h1>Feedback</h1>
-          <p>
-            Product and service ratings from clients and surveyors after completed jobs.
-          </p>
-        </div>
+      <div className="admin-fb-top">
+        <p className="admin-fb-lead">
+          Product and service ratings after completed jobs.
+        </p>
         <div
-          className="admin-fb-hero-score"
+          className="admin-fb-avg"
           aria-label={stats.avg != null ? `Average ${stats.avg} of 5` : 'No ratings yet'}
         >
-          <span className="admin-fb-hero-emoji" aria-hidden>
+          <span className="admin-fb-avg-emoji" aria-hidden>
             {stats.avg != null ? feedbackRatingEmoji(Math.round(stats.avg)) : '✦'}
           </span>
-          <div>
+          <div className="admin-fb-avg-copy">
             <strong>{stats.avg != null ? stats.avg.toFixed(1) : '—'}</strong>
             <span>{avgMeta ? `${avgMeta.label} avg` : 'No ratings yet'}</span>
           </div>
         </div>
-      </header>
+      </div>
 
       <section className="admin-fb-metrics" aria-label="Feedback summary">
         <article className="admin-fb-metric">
           <span className="admin-fb-metric-ico" aria-hidden>
-            <MessageSquareQuote size={18} />
+            <MessageSquareQuote size={16} />
           </span>
-          <div>
-            <strong>{rows.length}</strong>
-            <span>Total reviews</span>
+          <div className="admin-fb-metric-body">
+            <strong className="admin-fb-metric-value">{rows.length}</strong>
+            <span className="admin-fb-metric-label">Total reviews</span>
           </div>
         </article>
-        <article className="admin-fb-metric admin-fb-metric--warm">
-          <span className="admin-fb-metric-ico" aria-hidden>
-            <Sparkles size={18} />
+        <article className="admin-fb-metric">
+          <span className="admin-fb-metric-ico admin-fb-metric-ico--amber" aria-hidden>
+            <Sparkles size={16} />
           </span>
-          <div>
-            <strong>{stats.excellent}</strong>
-            <span>Excellent (5★)</span>
+          <div className="admin-fb-metric-body">
+            <strong className="admin-fb-metric-value">{stats.excellent}</strong>
+            <span className="admin-fb-metric-label">Excellent (5★)</span>
           </div>
         </article>
-        <article className="admin-fb-metric admin-fb-metric--mint">
-          <span className="admin-fb-metric-ico" aria-hidden>
-            <ThumbsUp size={18} />
+        <article className="admin-fb-metric">
+          <span className="admin-fb-metric-ico admin-fb-metric-ico--green" aria-hidden>
+            <ThumbsUp size={16} />
           </span>
-          <div>
-            <strong>
-              {stats.recommendTotal
-                ? `${Math.round((stats.recommendYes / stats.recommendTotal) * 100)}%`
-                : '—'}
+          <div className="admin-fb-metric-body">
+            <strong className="admin-fb-metric-value">
+              {recommendPct != null ? `${recommendPct}%` : '0%'}
             </strong>
-            <span>Recommend BLD</span>
+            <span className="admin-fb-metric-label">Recommend BLD</span>
           </div>
         </article>
-        <article className="admin-fb-metric admin-fb-metric--split">
-          <div className="admin-fb-metric-split">
-            <div>
+        <article className="admin-fb-metric">
+          <span className="admin-fb-metric-ico admin-fb-metric-ico--teal" aria-hidden>
+            <Users size={16} />
+          </span>
+          <div className="admin-fb-metric-body admin-fb-metric-body--pair">
+            <div className="admin-fb-metric-pair">
+              <UserRound size={12} aria-hidden />
               <strong>{stats.fromClients}</strong>
               <span>Client</span>
             </div>
-            <div>
+            <div className="admin-fb-metric-pair">
+              <HardHat size={12} aria-hidden />
               <strong>{stats.fromSurveyors}</strong>
               <span>Surveyor</span>
             </div>
@@ -369,11 +369,11 @@ export default function AdminFeedbackPage() {
       {rows.length === 0 ? (
         <div className="admin-fb-empty">
           <div className="admin-fb-empty-ico" aria-hidden>
-            <MessageSquareQuote size={24} />
+            <MessageSquareQuote size={20} />
           </div>
           <h2>No product feedback yet</h2>
           <p>
-            When a match is completed, clients and surveyors can rate BLD’s product and services.
+            After a match completes, clients and surveyors can rate BLD’s product and services.
           </p>
         </div>
       ) : (
@@ -417,10 +417,10 @@ export default function AdminFeedbackPage() {
                   </time>
                   <button
                     type="button"
-                    className="btn secondary admin-fb-view"
+                    className="btn secondary sm admin-fb-view"
                     onClick={() => openDetail(f.id)}
                   >
-                    <Eye size={15} />
+                    <Eye size={14} />
                     View
                   </button>
                 </div>
@@ -432,8 +432,8 @@ export default function AdminFeedbackPage() {
 
       <section className="admin-fb-site" aria-label="Landing page feedback">
         <div className="admin-fb-site-head">
-          <h2>Landing &amp; support feedback</h2>
-          <p>Public notes from the marketing site — no account required.</p>
+          <h2>Landing &amp; support</h2>
+          <p>Public notes from the marketing site.</p>
         </div>
         {siteRows.length === 0 ? (
           <p className="admin-fb-site-empty">No landing feedback yet.</p>

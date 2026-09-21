@@ -36,7 +36,7 @@ Plumbing
 |---|---|---|
 | `account_profiles` | After profile onboarding | Address, company name, work email, registration, website. |
 | `surveyor_profiles` | Surveyor hat | Services, equipment, map pin (`base_location`), radius, rate, portfolio JSON. |
-| `admin_profiles` | Staff only | Staff level and permission preset. |
+| `admin_profiles` | Staff only | Staff level, permission preset, and portal invite token (3-day / Mon–Fri). |
 
 PostGIS lives only on `surveyor_profiles` and `projects`.
 

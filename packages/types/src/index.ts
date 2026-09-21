@@ -279,7 +279,22 @@ export interface StaffAdmin {
   permissions: StaffPermission[];
   title: string | null;
   createdAt: string;
+  /** Pending portal invite awaiting first sign-in (token still valid). */
+  invitePending: boolean;
+  inviteExpiresAt: string | null;
+  inviteAcceptedAt: string | null;
 }
+
+/** Public peek of a staff portal invite link (`GET /admin/staff/invite/:token`). */
+export type StaffInvitePeek =
+  | {
+      ok: true;
+      email: string;
+      password: string;
+      fullName: string;
+      expiresAt: string;
+    }
+  | { ok: false; reason: string };
 
 /** Token bundle returned by `POST /auth/login`. */
 export interface AuthSession {

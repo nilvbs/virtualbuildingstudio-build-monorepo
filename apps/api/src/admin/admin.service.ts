@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type Match as MatchRow } from '@prisma/client';
+import { randomBytes } from 'node:crypto';
 import {
   MATCH_STATUS_TRANSITIONS,
   PROJECT_STATUS_TRANSITIONS,
@@ -33,6 +34,7 @@ import {
   type ProjectDetail,
   type ProjectStatus,
   type StaffAdmin,
+  type StaffInvitePeek,
   type StaffLevel,
   type StaffPermission,
   type StaffPermissionPreset,
@@ -69,10 +71,11 @@ import {
 import { ensureMembership } from '../auth/memberships';
 import { StaffContextService } from '../auth/staff-context.service';
 import { buildPersonNameFields } from '../auth/username';
-import { verifyPassword } from '../auth/password-verifier';
+import { hashPassword, verifyPassword } from '../auth/password-verifier';
 import { AutoMatchService } from '../matching/auto-match.service';
-import { addWorkingHours } from '../matching/working-hours';
+import { addWorkingHours, isStaffInviteWeekday } from '../matching/working-hours';
 import { ActivityService } from '../activity/activity.service';
+import { decryptInvitePassword, encryptInvitePassword } from './staff-invite-crypto';
 
 interface GeoRow {
   id: string;
@@ -909,6 +912,7 @@ export class AdminService {
           authProvider: 'dev',
           authSubject: subject,
           roleHint: 'client',
+          passwordVerifier: hashPassword(input.password),
         },
       });
     } else {
@@ -931,11 +935,17 @@ export class AdminService {
           authProvider: AUTH_PROVIDER_NAME,
           authSubject: identity.subject,
           roleHint: 'client',
+          passwordVerifier: hashPassword(input.password),
         },
       });
     }
 
     await ensureMembership(this.prisma, user.id, 'admin');
+
+    const inviteToken = randomBytes(32).toString('base64url');
+    const inviteExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const invitePasswordEnc = encryptInvitePassword(input.password, this.inviteCryptoSecret());
+
     const profile = await this.prisma.adminProfile.update({
       where: { userId: user.id },
       data: {
@@ -943,9 +953,23 @@ export class AdminService {
         permissionPreset: preset,
         permissions: permissions as unknown as Prisma.InputJsonValue,
         title: input.title ?? null,
+        inviteToken,
+        inviteExpiresAt,
+        inviteAcceptedAt: null,
+        invitePasswordEnc,
       },
       include: { user: true },
     });
+
+    await this.notifications.notifyStaffInvite({
+      userId: user.id,
+      fullName: user.fullName,
+      email,
+      tempPassword: input.password,
+      inviteToken,
+      expiresAt: inviteExpiresAt,
+    });
+
     return this.toStaffAdminDto(profile);
   }
 
@@ -961,8 +985,12 @@ export class AdminService {
       include: { user: true },
     });
     if (!profile) throw new NotFoundException('Staff admin not found');
-    if (profile.staffLevel === 'super_admin') {
-      throw new ForbiddenException('Cannot edit the super admin from this screen');
+
+    const isSuper = profile.staffLevel === 'super_admin';
+    if (isSuper && (input.permissionPreset || input.permissions || input.status)) {
+      throw new ForbiddenException(
+        'Cannot change permissions or status on the super admin account',
+      );
     }
 
     const nextPreset = (input.permissionPreset ??
@@ -971,7 +999,7 @@ export class AdminService {
       ? (profile.permissions as StaffPermission[])
       : [];
     if (input.permissions) nextPermissions = input.permissions;
-    if (nextPreset !== 'custom') {
+    if (!isSuper && nextPreset !== 'custom') {
       nextPermissions = resolveStaffPermissions({
         staffLevel: 'admin',
         permissionPreset: nextPreset,
@@ -979,23 +1007,129 @@ export class AdminService {
       });
     }
 
-    if (input.status) {
+    if (input.firstName !== undefined || input.lastName !== undefined) {
+      const existingParts = profile.user.fullName.trim().split(/\s+/).filter(Boolean);
+      const firstName = input.firstName ?? existingParts[0] ?? 'Staff';
+      const lastName =
+        input.lastName ??
+        (existingParts.length > 1 ? existingParts.slice(1).join(' ') : firstName);
+      const names = await buildPersonNameFields(this.prisma, { firstName, lastName });
+      await this.prisma.user.update({
+        where: { id: staffUserId },
+        data: {
+          ...names,
+          ...(input.status && !isSuper ? { status: input.status } : {}),
+        },
+      });
+    } else if (input.status && !isSuper) {
       await this.prisma.user.update({
         where: { id: staffUserId },
         data: { status: input.status },
       });
     }
 
+    if (input.password) {
+      await this.setStaffPassword(profile.user, input.password);
+    }
+
     const updated = await this.prisma.adminProfile.update({
       where: { userId: staffUserId },
       data: {
         title: input.title === undefined ? undefined : input.title,
-        permissionPreset: nextPreset,
-        permissions: nextPermissions as unknown as Prisma.InputJsonValue,
+        ...(isSuper
+          ? {}
+          : {
+              permissionPreset: nextPreset,
+              permissions: nextPermissions as unknown as Prisma.InputJsonValue,
+            }),
       },
       include: { user: true },
     });
     return this.toStaffAdminDto(updated);
+  }
+
+  /**
+   * Public peek for staff invite links. Prefills portal email + temp password.
+   * Valid for 3 days from creation and redeemable Monday–Friday only.
+   */
+  async peekStaffInvite(token: string): Promise<StaffInvitePeek> {
+    const cleaned = token?.trim();
+    if (!cleaned) {
+      return { ok: false, reason: 'This invite link is invalid or has expired.' };
+    }
+
+    const profile = await this.prisma.adminProfile.findFirst({
+      where: { inviteToken: cleaned },
+      include: { user: true },
+    });
+    if (!profile?.inviteExpiresAt || !profile.invitePasswordEnc) {
+      return { ok: false, reason: 'This invite link is invalid or has expired.' };
+    }
+    if (profile.inviteAcceptedAt) {
+      return { ok: false, reason: 'This invite has already been accepted.' };
+    }
+    if (profile.inviteExpiresAt.getTime() < Date.now()) {
+      return { ok: false, reason: 'This invite link has expired.' };
+    }
+    if (!isStaffInviteWeekday(new Date())) {
+      return {
+        ok: false,
+        reason: 'Staff invites can only be opened Monday–Friday. Try again on a weekday.',
+      };
+    }
+
+    const password = decryptInvitePassword(profile.invitePasswordEnc, this.inviteCryptoSecret());
+    if (!password) {
+      return { ok: false, reason: 'This invite link is invalid or has expired.' };
+    }
+
+    return {
+      ok: true,
+      email: profile.user.email,
+      password,
+      fullName: profile.user.fullName,
+      expiresAt: profile.inviteExpiresAt.toISOString(),
+    };
+  }
+
+  /** Mark invite accepted after the invitee successfully signs into the staff portal. */
+  async acceptStaffInvite(actorSubject: string, token: string): Promise<{ ok: true }> {
+    const cleaned = token?.trim();
+    if (!cleaned) throw new BadRequestException('Invite token is required');
+
+    const actor = await this.prisma.user.findFirst({
+      where: { authSubject: actorSubject },
+      select: { id: true },
+    });
+    if (!actor) throw new UnauthorizedException('Sign in required');
+
+    const profile = await this.prisma.adminProfile.findFirst({
+      where: { inviteToken: cleaned },
+    });
+    if (!profile) throw new BadRequestException('This invite link is invalid or has expired.');
+    if (profile.userId !== actor.id) {
+      throw new ForbiddenException('Sign in with the invited staff account to accept this invite.');
+    }
+    if (profile.inviteAcceptedAt) return { ok: true };
+    if (!profile.inviteExpiresAt || profile.inviteExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('This invite link has expired.');
+    }
+    if (!isStaffInviteWeekday(new Date())) {
+      throw new BadRequestException(
+        'Staff invites can only be accepted Monday–Friday. Try again on a weekday.',
+      );
+    }
+
+    await this.prisma.adminProfile.update({
+      where: { userId: profile.userId },
+      data: {
+        inviteAcceptedAt: new Date(),
+        inviteToken: null,
+        invitePasswordEnc: null,
+        inviteExpiresAt: null,
+      },
+    });
+    return { ok: true };
   }
 
   async removeStaffAdmin(actorSubject: string, staffUserId: string): Promise<void> {
@@ -1377,11 +1511,15 @@ export class AdminService {
     permissionPreset: string;
     permissions: unknown;
     createdAt: Date;
+    inviteToken?: string | null;
+    inviteExpiresAt?: Date | null;
+    inviteAcceptedAt?: Date | null;
     user: {
       fullName: string;
       email: string;
       phone: string;
       status: string;
+      authSubject?: string | null;
     };
   }): StaffAdmin {
     const staffLevel = row.staffLevel as StaffLevel;
@@ -1389,6 +1527,12 @@ export class AdminService {
     const stored = Array.isArray(row.permissions)
       ? (row.permissions as StaffPermission[])
       : [];
+    const invitePending = Boolean(
+      row.inviteToken &&
+        row.inviteExpiresAt &&
+        !row.inviteAcceptedAt &&
+        row.inviteExpiresAt.getTime() >= Date.now(),
+    );
     return {
       id: row.userId,
       fullName: row.user.fullName,
@@ -1404,7 +1548,42 @@ export class AdminService {
       }),
       title: row.title,
       createdAt: row.createdAt.toISOString(),
+      invitePending,
+      inviteExpiresAt: row.inviteExpiresAt ? row.inviteExpiresAt.toISOString() : null,
+      inviteAcceptedAt: row.inviteAcceptedAt ? row.inviteAcceptedAt.toISOString() : null,
     };
+  }
+
+  private inviteCryptoSecret(): string {
+    const dedicated = this.config.get<string>('STAFF_INVITE_SECRET')?.trim();
+    if (dedicated) return dedicated;
+    const session = this.config.get<string>('SESSION_SIGNING_SECRET')?.trim();
+    if (session) return session;
+    const auth0 = this.config.get<string>('AUTH0_CLIENT_SECRET')?.trim();
+    if (auth0) return auth0;
+    return 'dev-staff-invite-secret';
+  }
+
+  private async setStaffPassword(
+    user: { id: string; email: string; authSubject: string | null },
+    password: string,
+  ): Promise<void> {
+    if (!user.authSubject) {
+      throw new BadRequestException('This staff account cannot set a password.');
+    }
+    if (devAuthEnabled(this.config)) {
+      rememberDevSignup(normalizeEmail(user.email), password, user.authSubject);
+    } else {
+      await this.identity.setPassword({
+        email: user.email,
+        password,
+        primarySubject: user.authSubject,
+      });
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordVerifier: hashPassword(password) },
+    });
   }
 
   private async requireUserId(subject: string): Promise<string> {

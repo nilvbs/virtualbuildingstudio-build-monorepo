@@ -10,7 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import type {
+import {
   AdminClient,
   AdminClientDetail,
   AdminOverviewStats,
@@ -24,6 +24,7 @@ import type {
   Match,
   ProjectDetail,
   StaffAdmin,
+  StaffInvitePeek,
 } from '@surveylink/types';
 import {
   adminOverviewQuerySchema,
@@ -53,6 +54,7 @@ import {
 } from '@surveylink/validation';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { AdminService } from './admin.service';
@@ -61,6 +63,27 @@ import { AdminService } from './admin.service';
 @Roles('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
+
+  /**
+   * Public staff invite peek — prefills portal email/password.
+   * Overrides class `@Roles('admin')` so unauthenticated invitees can resolve the link.
+   */
+  @Public()
+  @Roles()
+  @Get('staff/invite/:token')
+  peekStaffInvite(@Param('token') token: string): Promise<StaffInvitePeek> {
+    return this.admin.peekStaffInvite(token);
+  }
+
+  /** Invitee signs in, then accepts — clears invite token (Mon–Fri, within 3 days). */
+  @Post('staff/invite/:token/accept')
+  @HttpCode(200)
+  acceptStaffInvite(
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('token') token: string,
+  ): Promise<{ ok: true }> {
+    return this.admin.acceptStaffInvite(principal.sub, token);
+  }
 
   /** Summary for operations overview (any staff). */
   @Get('queues')

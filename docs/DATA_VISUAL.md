@@ -5,7 +5,7 @@
 > Narrative companion: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Product flows: [`docs/BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md).
 
-Last synced from schema: **2026-09-19**
+Last synced from schema: **2026-09-21**
 
 ---
 
@@ -108,6 +108,10 @@ erDiagram
     string staff_level
     string permission_preset
     json permissions
+    string invite_token UK
+    timestamptz invite_expires_at
+    timestamptz invite_accepted_at
+    string invite_password_enc
   }
 
   projects {
@@ -311,6 +315,7 @@ See `@surveylink/types` for transition maps.
 
 | Date | Change |
 |------|--------|
+| 2026-09-21 | `admin_profiles`: staff invite token / expires / accepted / encrypted temp password |
 | 2026-09-19 | `contact_otps.channel` check allows `password_reset` (forgot-password tokens) |
 | 2026-09-18 | **Doc created** from current `schema.prisma` (full ERD + domain views + cascade notes) |
 
