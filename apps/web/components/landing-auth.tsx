@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, ArrowLeft, Building2, CheckCircle2, HardHat, Info } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Building2, CheckCircle2, Eye, EyeOff, HardHat, Info } from 'lucide-react';
 import { LordIcon } from './lord-icon';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
@@ -60,6 +60,7 @@ export function LandingAuthOverlay({
 
   const [loginEmail, setLoginEmail] = useState(DEV_MODE ? DEV_EMAIL : '');
   const [loginPassword, setLoginPassword] = useState(DEV_MODE ? DEV_PASSWORD : '');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginBusy, setLoginBusy] = useState(false);
 
@@ -75,6 +76,7 @@ export function LandingAuthOverlay({
     email: '',
     password: '',
   });
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [signupPhone, setSignupPhone] = useState(() => defaultPhoneInput());
   const [signupError, setSignupError] = useState<string | null>(null);
   const [signupBusy, setSignupBusy] = useState(false);
@@ -504,12 +506,20 @@ export function LandingAuthOverlay({
                             <LordIcon name="security" size={18} trigger="hover" />
                             <input
                               id="mkt-login-password"
-                              type="password"
+                              type={showLoginPassword ? 'text' : 'password'}
                               autoComplete="current-password"
                               required
                               value={loginPassword}
                               onChange={(e) => setLoginPassword(e.target.value)}
                             />
+                            <button
+                              type="button"
+                              className="pwd-eye"
+                              aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                              onClick={() => setShowLoginPassword((v) => !v)}
+                            >
+                              {showLoginPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                            </button>
                           </div>
                         </div>
                         <button className="btn block" type="submit" disabled={loginBusy}>
@@ -590,7 +600,7 @@ export function LandingAuthOverlay({
                             <LordIcon name="security" size={18} trigger="hover" />
                             <input
                               id="mkt-signup-password"
-                              type="password"
+                              type={showSignupPassword ? 'text' : 'password'}
                               autoComplete="new-password"
                               required
                               minLength={8}
@@ -598,6 +608,14 @@ export function LandingAuthOverlay({
                               aria-describedby="mkt-signup-password-hints"
                               onChange={(e) => setSignup((s) => ({ ...s, password: e.target.value }))}
                             />
+                            <button
+                              type="button"
+                              className="pwd-eye"
+                              aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                              onClick={() => setShowSignupPassword((v) => !v)}
+                            >
+                              {showSignupPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                            </button>
                           </div>
                           <div id="mkt-signup-password-hints">
                             <PasswordStrength password={signup.password} />

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -33,7 +33,7 @@ export function IconCircle({
   dim?: number;
 }) {
   return (
-    <View style={[styles.iconCircle, { width: dim, height: dim, borderRadius: dim / 3, backgroundColor: bg }]}>
+    <View style={[styles.iconCircle, { width: dim, height: dim, borderRadius: dim / 2, backgroundColor: bg }]}>
       <Feather name={name} size={size} color={color} />
     </View>
   );
@@ -85,8 +85,18 @@ export function Button({
 export function Field({
   label,
   icon,
+  secureTextEntry,
+  passwordToggle,
   ...props
-}: { label: string; icon?: FeatherName } & TextInputProps) {
+}: {
+  label: string;
+  icon?: FeatherName;
+  /** Show eye control to reveal password when `secureTextEntry` is used. */
+  passwordToggle?: boolean;
+} & TextInputProps) {
+  const [visible, setVisible] = useState(false);
+  const hide = Boolean(secureTextEntry) && !(passwordToggle && visible);
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -94,10 +104,26 @@ export function Field({
         {icon ? <Feather name={icon} size={17} color={colors.faint} style={styles.inputIcon} /> : null}
         <TextInput
           placeholderTextColor={colors.faint}
-          style={[styles.input, icon ? styles.inputWithIcon : null]}
+          style={[
+            styles.input,
+            icon ? styles.inputWithIcon : null,
+            passwordToggle ? styles.inputWithEye : null,
+          ]}
           autoCapitalize="none"
           {...props}
+          secureTextEntry={hide}
         />
+        {passwordToggle ? (
+          <Pressable
+            onPress={() => setVisible((v) => !v)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={visible ? 'Hide password' : 'Show password'}
+            style={({ pressed }) => [styles.eyeBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Feather name={visible ? 'eye-off' : 'eye'} size={18} color={colors.faint} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -267,6 +293,17 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   inputWithIcon: { paddingLeft: 40 },
+  inputWithEye: { paddingRight: 44 },
+  eyeBtn: {
+    position: 'absolute',
+    right: 10,
+    top: 0,
+    bottom: 0,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
   google: {
     minHeight: 52,
     borderRadius: radius.md,

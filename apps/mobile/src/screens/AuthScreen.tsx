@@ -353,6 +353,7 @@ export function AuthScreen({ navigation, route }: Props) {
                       value={password}
                       onChangeText={setPassword}
                       secureTextEntry
+                      passwordToggle
                       autoComplete={mode === 'login' ? 'password' : 'new-password'}
                     />
                   ) : null}

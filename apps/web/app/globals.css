@@ -10432,6 +10432,33 @@ textarea {
   padding-left: 42px;
 }
 
+.input-icon .pwd-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.input-icon .pwd-eye:hover {
+  background: rgba(113, 104, 246, 0.08);
+  color: var(--accent);
+}
+
+.input-icon:has(.pwd-eye) input[type='password']:not(.MuiInputBase-input),
+.input-icon:has(.pwd-eye) input[type='text']:not(.MuiInputBase-input) {
+  padding-right: 44px;
+}
+
 /* Beat the typed input padding shorthand so icons don't cover text */
 .input-icon input[type='email']:not(.MuiInputBase-input),
 .input-icon input[type='password']:not(.MuiInputBase-input),
