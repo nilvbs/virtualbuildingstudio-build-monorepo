@@ -20,6 +20,7 @@ import {
   AdminSurveyorDetail,
   AdminUser,
   AdminUserDetail,
+  AdminUsersList,
   AuthPrincipal,
   Match,
   ProjectDetail,
@@ -115,7 +116,7 @@ export class AdminController {
   @RequirePermissions('users:view')
   listUsers(
     @Query(new ZodValidationPipe(adminUsersQuerySchema)) query: AdminUsersQuery,
-  ): Promise<AdminUser[]> {
+  ): Promise<AdminUsersList> {
     return this.admin.listUsers(query);
   }
 

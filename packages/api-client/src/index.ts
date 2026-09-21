@@ -25,6 +25,7 @@ import type {
   AdminClientDetail,
   AdminUser,
   AdminUserDetail,
+  AdminUsersList,
   Match,
   MatchStatus,
   ProjectStatus,
@@ -558,13 +559,23 @@ export class SurveyLinkClient {
     q?: string;
     role?: 'client' | 'surveyor' | 'admin';
     status?: 'active' | 'suspended';
-  } = {}): Promise<AdminUser[]> {
+    city?: string;
+    sortBy?: 'fullName' | 'email' | 'phone' | 'city' | 'status' | 'createdAt';
+    sortDir?: 'asc' | 'desc';
+    page?: number;
+    pageSize?: number;
+  } = {}): Promise<AdminUsersList> {
     const qs = new URLSearchParams();
     if (query.q) qs.set('q', query.q);
     if (query.role) qs.set('role', query.role);
     if (query.status) qs.set('status', query.status);
+    if (query.city) qs.set('city', query.city);
+    if (query.sortBy) qs.set('sortBy', query.sortBy);
+    if (query.sortDir) qs.set('sortDir', query.sortDir);
+    if (query.page != null) qs.set('page', String(query.page));
+    if (query.pageSize != null) qs.set('pageSize', String(query.pageSize));
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return this.request<AdminUser[]>('GET', `/admin/users${suffix}`);
+    return this.request<AdminUsersList>('GET', `/admin/users${suffix}`);
   }
 
   async getAdminUser(id: string): Promise<AdminUserDetail> {

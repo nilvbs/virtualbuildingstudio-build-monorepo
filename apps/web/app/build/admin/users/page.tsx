@@ -1,15 +1,42 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, Loader2, Pencil, Search, ShieldAlert, Trash2, Users, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Filter,
+  Loader2,
+  Pencil,
+  Search,
+  ShieldAlert,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react';
 import type { AdminUser, MembershipRole, UserStatus } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../lib/api';
 import { toastError, toastSuccess } from '../../../../lib/action-toast';
 import { displayPhone } from '../../../../lib/country-codes';
 import { StatusBadge } from '../../../../components/status';
+
+type SortBy = 'fullName' | 'email' | 'phone' | 'city' | 'status' | 'createdAt';
+type SortDir = 'asc' | 'desc';
+
+const PAGE_SIZE = 10;
+
+const ROLE_FILTERS: { id: 'all' | MembershipRole; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'client', label: 'Clients' },
+  { id: 'surveyor', label: 'Surveyors' },
+  { id: 'admin', label: 'Admin' },
+];
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -58,12 +85,10 @@ function LoadingState() {
   );
 }
 
-const ROLE_FILTERS: { id: 'all' | MembershipRole; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'client', label: 'Clients' },
-  { id: 'surveyor', label: 'Surveyors' },
-  { id: 'admin', label: 'Admin' },
-];
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ArrowUpDown size={13} aria-hidden />;
+  return dir === 'asc' ? <ArrowUp size={13} aria-hidden /> : <ArrowDown size={13} aria-hidden />;
+}
 
 export default function AdminUsersPage() {
   return (
@@ -77,19 +102,28 @@ function AdminUsersPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const [qDebounced, setQDebounced] = useState('');
   const [role, setRole] = useState<'all' | MembershipRole>(() =>
     roleFromQuery(searchParams.get('role')),
   );
   const [status, setStatus] = useState<'all' | UserStatus>('all');
+  const [city, setCity] = useState('');
+  const [cityDraft, setCityDraft] = useState('');
+  const [sortBy, setSortBy] = useState<SortBy>('createdAt');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState(1);
   const [canManage, setCanManage] = useState(false);
   const [selfId, setSelfId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [openFilter, setOpenFilter] = useState<'role' | 'status' | 'city' | null>(null);
+  const filterRef = useRef<HTMLTableSectionElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -98,6 +132,15 @@ function AdminUsersPageInner() {
   useEffect(() => {
     setRole(roleFromQuery(searchParams.get('role')));
   }, [searchParams]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setQDebounced(q.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [qDebounced, role, status, city, sortBy, sortDir]);
 
   useEffect(() => {
     if (!pendingDelete) return;
@@ -113,9 +156,20 @@ function AdminUsersPageInner() {
     };
   }, [pendingDelete, busyId]);
 
+  useEffect(() => {
+    if (!openFilter) return;
+    function onDoc(e: MouseEvent) {
+      if (!filterRef.current?.contains(e.target as Node)) setOpenFilter(null);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [openFilter]);
+
   const setRoleFilter = useCallback(
     (next: 'all' | MembershipRole) => {
       setRole(next);
+      setPage(1);
+      setOpenFilter(null);
       const params = new URLSearchParams(searchParams.toString());
       if (next === 'all') params.delete('role');
       else params.set('role', next);
@@ -129,17 +183,28 @@ function AdminUsersPageInner() {
     setLoading(true);
     return api
       .listAdminUsers({
+        ...(qDebounced ? { q: qDebounced } : {}),
         ...(role !== 'all' ? { role } : {}),
         ...(status !== 'all' ? { status } : {}),
+        ...(city.trim() ? { city: city.trim() } : {}),
+        sortBy,
+        sortDir,
+        page,
+        pageSize: PAGE_SIZE,
       })
-      .then(setUsers)
+      .then((res) => {
+        setUsers(res.items);
+        setTotal(res.total);
+        setForbidden(false);
+        setError(null);
+      })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) router.replace('/build/admin');
         else if (err instanceof ApiError && err.status === 403) setForbidden(true);
         else setError(errorMessage(err));
       })
       .finally(() => setLoading(false));
-  }, [router, role, status]);
+  }, [router, qDebounced, role, status, city, sortBy, sortDir, page]);
 
   useEffect(() => {
     void api
@@ -159,26 +224,21 @@ function AdminUsersPageInner() {
     void loadUsers();
   }, [loadUsers]);
 
-  const filtered = useMemo(() => {
-    if (!users) return [];
-    const term = q.trim().toLowerCase();
-    if (!term) return users;
-    return users.filter((u) =>
-      [u.fullName, u.email, u.phone, u.username, u.companyName ?? '', u.city ?? '', ...u.roles]
-        .join(' ')
-        .toLowerCase()
-        .includes(term),
-    );
-  }, [users, q]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const headingLabel =
-    role === 'client'
-      ? 'client'
-      : role === 'surveyor'
-        ? 'surveyor'
-        : role === 'admin'
-          ? 'admin'
-          : 'user';
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  function toggleSort(column: SortBy) {
+    if (sortBy === column) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortDir(column === 'createdAt' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  }
 
   function requestDelete(u: AdminUser) {
     if (!canManage) return;
@@ -201,14 +261,11 @@ function AdminUsersPageInner() {
     setError(null);
     try {
       await api.deleteAdminUser(u.id);
-      setUsers((prev) => (prev ? prev.filter((row) => row.id !== u.id) : prev));
       setPendingDelete(null);
       toastSuccess('User deleted', `${u.fullName} was removed.`);
+      await loadUsers();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        // Global onUnauthorized already clears session + redirects to login.
-        return;
-      }
+      if (err instanceof ApiError && err.status === 401) return;
       const message = errorMessage(err);
       setError(message);
       toastError('Delete failed', message);
@@ -284,17 +341,15 @@ function AdminUsersPageInner() {
         )
       : null;
 
+  const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = Math.min(page * PAGE_SIZE, total);
+
   return (
     <div className="admin-cli">
       {deleteModal}
       {!forbidden && (
         <div className="admin-cli-bar admin-cli-bar--users">
-          <h2 className="admin-cli-heading">
-            {loading && !users
-              ? 'Loading users…'
-              : `${filtered.length} ${headingLabel}${filtered.length === 1 ? '' : 's'}`}
-          </h2>
-          <div className="admin-cli-filters admin-cli-filters--inline" role="toolbar" aria-label="User filters">
+          <div className="admin-cli-filters admin-cli-filters--inline admin-cli-filters--start" role="toolbar" aria-label="User filters">
             <div className="admin-users-role-pills" role="group" aria-label="Filter by role">
               {ROLE_FILTERS.map((f) => (
                 <button
@@ -322,15 +377,27 @@ function AdminUsersPageInner() {
               <select
                 className="admin-cli-status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as 'all' | UserStatus)}
+                onChange={(e) => {
+                  setStatus(e.target.value as 'all' | UserStatus);
+                  setPage(1);
+                }}
                 aria-label="Filter by status"
               >
                 <option value="all">All status</option>
                 <option value="active">Active</option>
                 <option value="suspended">Suspended</option>
               </select>
-              {q.trim() ? (
-                <button type="button" className="btn secondary admin-cli-clear" onClick={() => setQ('')}>
+              {q.trim() || city.trim() ? (
+                <button
+                  type="button"
+                  className="btn secondary admin-cli-clear"
+                  onClick={() => {
+                    setQ('');
+                    setCity('');
+                    setCityDraft('');
+                    setPage(1);
+                  }}
+                >
                   Clear
                 </button>
               ) : null}
@@ -352,104 +419,311 @@ function AdminUsersPageInner() {
       )}
 
       {error && <div className="alert error">{error}</div>}
-      {loading && !forbidden && <LoadingState />}
+      {loading && !forbidden && !users && <LoadingState />}
 
       {users && !forbidden && (
         <>
-          {filtered.length === 0 ? (
+          {users.length === 0 ? (
             <div className="empty">
               <div className="empty-ico">
                 <Users size={24} />
               </div>
-              <h3 style={{ fontSize: 17 }}>{q ? 'No matches' : 'No users yet'}</h3>
+              <h3 style={{ fontSize: 17 }}>
+                {qDebounced || city || status !== 'all' || role !== 'all'
+                  ? 'No matches'
+                  : 'No users yet'}
+              </h3>
             </div>
           ) : (
-            <div className="hd-admin-table-wrap">
-              <table className="hd-admin-table admin-users-table">
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Role</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Location</th>
-                    <th>Status</th>
-                    <th>Joined</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((u) => {
-                    const canDelete =
-                      canManage && u.id !== selfId && !u.roles.includes('admin');
-                    return (
-                      <tr key={u.id}>
-                        <td>
-                          <Link
-                            href={`/build/admin/users/${u.id}`}
-                            className="admin-users-person plain"
+            <>
+              <div className="hd-admin-table-wrap">
+                <table className="hd-admin-table admin-users-table">
+                  <thead ref={filterRef}>
+                    <tr>
+                      <th>
+                        <button
+                          type="button"
+                          className={`admin-th-btn${sortBy === 'fullName' ? ' is-active' : ''}`}
+                          onClick={() => toggleSort('fullName')}
+                        >
+                          User
+                          <SortIcon active={sortBy === 'fullName'} dir={sortDir} />
+                        </button>
+                      </th>
+                      <th className="admin-th-filter">
+                        <button
+                          type="button"
+                          className={`admin-th-btn${role !== 'all' ? ' is-active' : ''}`}
+                          aria-expanded={openFilter === 'role'}
+                          onClick={() => setOpenFilter((v) => (v === 'role' ? null : 'role'))}
+                        >
+                          Role
+                          <Filter size={13} aria-hidden />
+                        </button>
+                        {openFilter === 'role' ? (
+                          <div className="admin-th-menu" role="menu">
+                            {ROLE_FILTERS.map((f) => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={role === f.id}
+                                className={role === f.id ? 'is-on' : undefined}
+                                onClick={() => setRoleFilter(f.id)}
+                              >
+                                {f.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </th>
+                      <th>
+                        <button
+                          type="button"
+                          className={`admin-th-btn${sortBy === 'email' ? ' is-active' : ''}`}
+                          onClick={() => toggleSort('email')}
+                        >
+                          Email
+                          <SortIcon active={sortBy === 'email'} dir={sortDir} />
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          type="button"
+                          className={`admin-th-btn${sortBy === 'phone' ? ' is-active' : ''}`}
+                          onClick={() => toggleSort('phone')}
+                        >
+                          Phone
+                          <SortIcon active={sortBy === 'phone'} dir={sortDir} />
+                        </button>
+                      </th>
+                      <th className="admin-th-filter">
+                        <div className="admin-th-split">
+                          <button
+                            type="button"
+                            className={`admin-th-btn${sortBy === 'city' ? ' is-active' : ''}`}
+                            onClick={() => toggleSort('city')}
                           >
-                            <span className="admin-users-avatar" aria-hidden>
-                              {initials(u.fullName)}
-                            </span>
-                            <span className="admin-users-person-text">
-                              <strong>{u.fullName}</strong>
-                              {u.companyName ? <small>{u.companyName}</small> : null}
-                            </span>
-                          </Link>
-                        </td>
-                        <td>{roleLabel(u.roles)}</td>
-                        <td>
-                          <span className="admin-users-mono">{u.email}</span>
-                        </td>
-                        <td>
-                          <span className="admin-users-mono">{displayPhone(u.phone)}</span>
-                        </td>
-                        <td>{u.city ?? '—'}</td>
-                        <td>
-                          <StatusBadge status={u.status} />
-                        </td>
-                        <td>{new Date(u.createdAt).toLocaleDateString()}</td>
-                        <td>
-                          <div className="admin-users-actions">
-                            <Link
-                              href={`/build/admin/users/${u.id}`}
-                              className="btn secondary sm"
-                              title="View"
-                            >
-                              <Eye size={14} />
-                            </Link>
-                            <Link
-                              href={`/build/admin/users/${u.id}#edit`}
-                              className="btn secondary sm"
-                              title="Edit"
-                            >
-                              <Pencil size={14} />
-                            </Link>
-                            {canDelete ? (
+                            Location
+                            <SortIcon active={sortBy === 'city'} dir={sortDir} />
+                          </button>
+                          <button
+                            type="button"
+                            className={`admin-th-icon${city ? ' is-active' : ''}`}
+                            aria-label="Filter by location"
+                            aria-expanded={openFilter === 'city'}
+                            onClick={() => {
+                              setCityDraft(city);
+                              setOpenFilter((v) => (v === 'city' ? null : 'city'));
+                            }}
+                          >
+                            <Filter size={13} aria-hidden />
+                          </button>
+                        </div>
+                        {openFilter === 'city' ? (
+                          <div className="admin-th-menu admin-th-menu--form" role="dialog">
+                            <label>
+                              <span>City</span>
+                              <input
+                                className="admin-th-input"
+                                value={cityDraft}
+                                onChange={(e) => setCityDraft(e.target.value)}
+                                placeholder="Filter city"
+                                autoFocus
+                              />
+                            </label>
+                            <div className="admin-th-menu-actions">
                               <button
                                 type="button"
                                 className="btn secondary sm"
-                                title="Delete"
-                                disabled={busyId === u.id}
-                                onClick={() => requestDelete(u)}
-                                style={{ color: 'var(--danger, #b42318)' }}
+                                onClick={() => {
+                                  setCity('');
+                                  setCityDraft('');
+                                  setOpenFilter(null);
+                                  setPage(1);
+                                }}
                               >
-                                {busyId === u.id ? (
-                                  <Loader2 size={14} className="hd-action-toast-spin" aria-hidden />
-                                ) : (
-                                  <Trash2 size={14} />
-                                )}
+                                Clear
                               </button>
-                            ) : null}
+                              <button
+                                type="button"
+                                className="btn primary sm"
+                                onClick={() => {
+                                  setCity(cityDraft.trim());
+                                  setOpenFilter(null);
+                                  setPage(1);
+                                }}
+                              >
+                                Apply
+                              </button>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        ) : null}
+                      </th>
+                      <th className="admin-th-filter">
+                        <div className="admin-th-split">
+                          <button
+                            type="button"
+                            className={`admin-th-btn${sortBy === 'status' ? ' is-active' : ''}`}
+                            onClick={() => toggleSort('status')}
+                          >
+                            Status
+                            <SortIcon active={sortBy === 'status'} dir={sortDir} />
+                          </button>
+                          <button
+                            type="button"
+                            className={`admin-th-icon${status !== 'all' ? ' is-active' : ''}`}
+                            aria-label="Filter by status"
+                            aria-expanded={openFilter === 'status'}
+                            onClick={() => setOpenFilter((v) => (v === 'status' ? null : 'status'))}
+                          >
+                            <Filter size={13} aria-hidden />
+                          </button>
+                        </div>
+                        {openFilter === 'status' ? (
+                          <div className="admin-th-menu" role="menu">
+                            {(
+                              [
+                                { id: 'all', label: 'All status' },
+                                { id: 'active', label: 'Active' },
+                                { id: 'suspended', label: 'Suspended' },
+                              ] as const
+                            ).map((f) => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={status === f.id}
+                                className={status === f.id ? 'is-on' : undefined}
+                                onClick={() => {
+                                  setStatus(f.id);
+                                  setOpenFilter(null);
+                                  setPage(1);
+                                }}
+                              >
+                                {f.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </th>
+                      <th>
+                        <button
+                          type="button"
+                          className={`admin-th-btn${sortBy === 'createdAt' ? ' is-active' : ''}`}
+                          onClick={() => toggleSort('createdAt')}
+                        >
+                          Joined
+                          <SortIcon active={sortBy === 'createdAt'} dir={sortDir} />
+                        </button>
+                      </th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => {
+                      const canDelete =
+                        canManage && u.id !== selfId && !u.roles.includes('admin');
+                      return (
+                        <tr key={u.id}>
+                          <td>
+                            <Link
+                              href={`/build/admin/users/${u.id}`}
+                              className="admin-users-person plain"
+                            >
+                              <span className="admin-users-avatar" aria-hidden>
+                                {initials(u.fullName)}
+                              </span>
+                              <span className="admin-users-person-text">
+                                <strong>{u.fullName}</strong>
+                                {u.companyName ? <small>{u.companyName}</small> : null}
+                              </span>
+                            </Link>
+                          </td>
+                          <td>{roleLabel(u.roles)}</td>
+                          <td>
+                            <span className="admin-users-mono">{u.email}</span>
+                          </td>
+                          <td>
+                            <span className="admin-users-mono">{displayPhone(u.phone)}</span>
+                          </td>
+                          <td>{u.city ?? '—'}</td>
+                          <td>
+                            <StatusBadge status={u.status} />
+                          </td>
+                          <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                          <td>
+                            <div className="admin-users-actions">
+                              <Link
+                                href={`/build/admin/users/${u.id}`}
+                                className="btn secondary sm"
+                                title="View"
+                              >
+                                <Eye size={14} />
+                              </Link>
+                              <Link
+                                href={`/build/admin/users/${u.id}#edit`}
+                                className="btn secondary sm"
+                                title="Edit"
+                              >
+                                <Pencil size={14} />
+                              </Link>
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  className="btn secondary sm"
+                                  title="Delete"
+                                  disabled={busyId === u.id}
+                                  onClick={() => requestDelete(u)}
+                                  style={{ color: 'var(--danger, #b42318)' }}
+                                >
+                                  {busyId === u.id ? (
+                                    <Loader2 size={14} className="hd-action-toast-spin" aria-hidden />
+                                  ) : (
+                                    <Trash2 size={14} />
+                                  )}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="admin-users-pager" role="navigation" aria-label="Users pagination">
+                <p className="admin-users-pager-meta">
+                  Showing {from}–{to} of {total}
+                </p>
+                <div className="admin-users-pager-controls">
+                  <button
+                    type="button"
+                    className="btn secondary sm"
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft size={15} aria-hidden />
+                    Prev
+                  </button>
+                  <span className="admin-users-pager-page">
+                    Page {page} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn secondary sm"
+                    disabled={page >= totalPages || loading}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    aria-label="Next page"
+                  >
+                    Next
+                    <ChevronRight size={15} aria-hidden />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </>
       )}

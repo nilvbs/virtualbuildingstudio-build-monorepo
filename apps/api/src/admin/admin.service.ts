@@ -1146,31 +1146,77 @@ export class AdminService {
     ]);
   }
 
-  async listUsers(query: AdminUsersQuery = {}): Promise<AdminUser[]> {
+  async listUsers(query: AdminUsersQuery = {}): Promise<{
+    items: AdminUser[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
     const term = query.q?.trim();
-    const rows = await this.prisma.user.findMany({
-      where: {
-        ...(query.status ? { status: query.status } : {}),
-        ...(query.role ? { roles: { some: { role: query.role } } } : {}),
-        ...(term
-          ? {
-              OR: [
-                { fullName: { contains: term, mode: 'insensitive' } },
-                { email: { contains: term, mode: 'insensitive' } },
-                { phone: { contains: term, mode: 'insensitive' } },
-                { username: { contains: term, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-      include: {
-        roles: { select: { role: true } },
-        accountProfile: { select: { companyName: true, city: true } },
-      },
-    });
-    return rows.map((u) => this.toAdminUserDto(u));
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 10;
+    const sortBy = query.sortBy ?? 'createdAt';
+    const sortDir = query.sortDir ?? 'desc';
+    const city = query.city?.trim();
+
+    const where: Prisma.UserWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.role ? { roles: { some: { role: query.role } } } : {}),
+      ...(city
+        ? { accountProfile: { city: { contains: city, mode: 'insensitive' } } }
+        : {}),
+      ...(term
+        ? {
+            OR: [
+              { fullName: { contains: term, mode: 'insensitive' } },
+              { email: { contains: term, mode: 'insensitive' } },
+              { phone: { contains: term, mode: 'insensitive' } },
+              { username: { contains: term, mode: 'insensitive' } },
+              { accountProfile: { city: { contains: term, mode: 'insensitive' } } },
+              { accountProfile: { companyName: { contains: term, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    };
+
+    const orderBy: Prisma.UserOrderByWithRelationInput = (() => {
+      switch (sortBy) {
+        case 'fullName':
+          return { fullName: sortDir };
+        case 'email':
+          return { email: sortDir };
+        case 'phone':
+          return { phone: sortDir };
+        case 'status':
+          return { status: sortDir };
+        case 'city':
+          return { accountProfile: { city: sortDir } };
+        case 'createdAt':
+        default:
+          return { createdAt: sortDir };
+      }
+    })();
+
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          roles: { select: { role: true } },
+          accountProfile: { select: { companyName: true, city: true } },
+        },
+      }),
+    ]);
+
+    return {
+      items: rows.map((u) => this.toAdminUserDto(u)),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async getUser(userId: string): Promise<AdminUserDetail> {

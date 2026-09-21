@@ -432,6 +432,14 @@ export interface AdminUser {
   updatedAt: string;
 }
 
+/** Paginated admin users directory (`GET /admin/users`). */
+export interface AdminUsersList {
+  items: AdminUser[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 /** Full user record for admin view / edit. */
 export interface AdminUserDetail extends AdminUser {
   addressLine1: string | null;

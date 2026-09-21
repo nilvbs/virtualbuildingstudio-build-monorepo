@@ -1345,6 +1345,15 @@ code {
   gap: 12px;
 }
 
+.admin-cli-filters--start {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.admin-cli-bar--users .admin-cli-filters--start {
+  flex: 1 1 auto;
+}
+
 .admin-cli-tools {
   display: inline-flex;
   flex-wrap: nowrap;
@@ -17000,6 +17009,136 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
 
 .admin-users-table {
   min-width: 980px;
+}
+
+.admin-th-btn,
+.admin-th-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.admin-th-btn:hover,
+.admin-th-icon:hover,
+.admin-th-btn.is-active,
+.admin-th-icon.is-active {
+  color: #7168f6;
+}
+
+.admin-th-split {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.admin-th-filter {
+  position: relative;
+}
+
+.admin-th-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 148px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(113, 104, 246, 0.16);
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(42, 37, 88, 0.12);
+  display: grid;
+  gap: 2px;
+}
+
+.admin-th-menu--form {
+  min-width: 200px;
+  padding: 10px;
+  gap: 8px;
+}
+
+.admin-th-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #2a2558;
+  cursor: pointer;
+}
+
+.admin-th-menu button:hover,
+.admin-th-menu button.is-on {
+  background: rgba(113, 104, 246, 0.1);
+  color: #7168f6;
+}
+
+.admin-th-menu label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b668c;
+}
+
+.admin-th-input {
+  width: 100%;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(113, 104, 246, 0.18);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: #2a2558;
+  box-sizing: border-box;
+}
+
+.admin-th-menu-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.admin-users-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 4px 2px;
+}
+
+.admin-users-pager-meta {
+  margin: 0;
+  font-size: 13px;
+  color: #6b668c;
+}
+
+.admin-users-pager-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-users-pager-page {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a2558;
+  min-width: 7.5rem;
+  text-align: center;
 }
 
 .admin-users-role-pills {

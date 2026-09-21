@@ -403,6 +403,11 @@ export const adminUsersQuerySchema = z
     q: z.string().trim().max(120).optional(),
     role: z.enum(['client', 'surveyor', 'admin']).optional(),
     status: z.enum(['active', 'suspended']).optional(),
+    city: z.string().trim().max(120).optional(),
+    sortBy: z.enum(['fullName', 'email', 'phone', 'city', 'status', 'createdAt']).optional(),
+    sortDir: z.enum(['asc', 'desc']).optional(),
+    page: z.coerce.number().int().min(1).optional(),
+    pageSize: z.coerce.number().int().min(1).max(50).optional(),
   })
   .default({});
 export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;
