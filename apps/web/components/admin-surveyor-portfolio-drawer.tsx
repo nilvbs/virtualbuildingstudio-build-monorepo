@@ -329,7 +329,7 @@ export function AdminSurveyorPortfolioDrawer({ userId, open, onClose, canEdit = 
         equipment: form.equipment,
         baseCity: form.baseCity.trim() || undefined,
         radiusKm,
-        dayRateCents: centsFromDollars(form.dayRate),
+        dayRateCents: centsFromDollars(form.dayRate) ?? undefined,
         isMatchable: form.isMatchable,
         details,
         ...(hasLoc ? { location: { lat, lng } } : {}),
