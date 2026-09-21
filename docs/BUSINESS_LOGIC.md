@@ -25,7 +25,7 @@ BLD is a **managed marketplace**: clients post site-survey projects; the platfor
 - Access control uses **memberships**, not `users.role_hint` (legacy display only).
 - Session may carry `activeRole` (`client` \| `surveyor`) for workspace routing.
 - **Dual-role:** signing up again with the same email **adds** the other marketplace role; shared onboarding progress is kept; UI shows an `accountNotice`.
-- **Staff invite (super admin only):** create normal admin → email with **Access portal** CTA + SMS + in-app notification. Link is `/build/admin?invite=…`, valid **3 days**, redeemable **Monday–Friday only**. Portal prefills email + temp password; successful sign-in accepts the invite (clears token). Super admin can edit any staff row (including self) and set passwords; password fields show masked (`***`) with an eye toggle.
+- **Staff invite (super admin only):** create normal admin → email with **Access portal** CTA only (no credentials or paste-URL in the mail) + SMS + in-app. Link is `/build/admin?invite=…`. System enforces **3-day TTL** and **Monday–Friday** redeem silently (not shown in user copy). Portal prefills email + temp password; successful sign-in accepts the invite. Super admin can edit any staff row (including self) and set passwords.
 
 ```mermaid
 flowchart LR
@@ -264,6 +264,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-21 | Staff invite email: Access portal CTA only; no credentials / paste URL / Mon–Fri or TTL copy (rules enforced silently) |
 | 2026-09-21 | Staff invite: right-drawer create, email Access portal CTA + SMS/in-app, 3-day Mon–Fri link prefills portal credentials; super admin pencil edit + password (masked + eye) |
 | 2026-09-21 | Admin sidebar: **Surveyors** nav removed — portfolio managed from Users detail drawer |
 | 2026-09-21 | Admin user detail: view-only by default; pencil unlocks account edit; **View portfolio** drawer also has circled pencil to edit surveyor portfolio |

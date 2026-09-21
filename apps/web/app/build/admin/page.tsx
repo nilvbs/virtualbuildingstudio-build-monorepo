@@ -42,9 +42,7 @@ function AdminLoginInner() {
         setEmail(peek.email);
         setPassword(peek.password);
         setShowPassword(false);
-        setInviteNote(
-          `Invite for ${peek.fullName}. Email and temporary password are filled in — sign in to accept.`,
-        );
+        setInviteNote('Your invite is ready. Sign in to open the staff portal.');
         setError(null);
       } catch (err) {
         if (!cancelled) setError(errorMessage(err));

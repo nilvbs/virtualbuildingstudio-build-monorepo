@@ -965,9 +965,7 @@ export class AdminService {
       userId: user.id,
       fullName: user.fullName,
       email,
-      tempPassword: input.password,
       inviteToken,
-      expiresAt: inviteExpiresAt,
     });
 
     return this.toStaffAdminDto(profile);
@@ -1074,7 +1072,7 @@ export class AdminService {
     if (!isStaffInviteWeekday(new Date())) {
       return {
         ok: false,
-        reason: 'Staff invites can only be opened Monday–Friday. Try again on a weekday.',
+        reason: 'This invite link is unavailable right now. Please try again later.',
       };
     }
 
@@ -1116,7 +1114,7 @@ export class AdminService {
     }
     if (!isStaffInviteWeekday(new Date())) {
       throw new BadRequestException(
-        'Staff invites can only be accepted Monday–Friday. Try again on a weekday.',
+        'This invite link is unavailable right now. Please try again later.',
       );
     }
 

@@ -525,24 +525,19 @@ export class NotificationsService {
     userId: string;
     fullName: string;
     email: string;
-    tempPassword: string;
     inviteToken: string;
-    expiresAt: Date;
   }): Promise<void> {
     const portalUrl = `${this.webAppUrl}/build/admin?invite=${encodeURIComponent(ctx.inviteToken)}`;
     const content = buildStaffInviteEmail({
       fullName: ctx.fullName,
-      email: ctx.email,
-      tempPassword: ctx.tempPassword,
       portalUrl,
-      expiresAt: ctx.expiresAt,
     });
 
     await this.createInApp(
       ctx.userId,
       'staff_invite',
       'Your BLD staff portal access',
-      'You have been invited to the operations portal. Open the link from your email (Mon–Fri, valid 3 days) to sign in.',
+      'You have been invited to the operations portal. Open Access portal from your email to sign in.',
       `/build/admin?invite=${encodeURIComponent(ctx.inviteToken)}`,
     );
 
@@ -563,7 +558,7 @@ export class NotificationsService {
       tasks.push(
         this.sms.send({
           to: user.phone,
-          body: `BLD: You've been invited to the staff portal. Access (Mon–Fri, 3 days): ${portalUrl}`,
+          body: `BLD: You've been invited to the staff portal. Open Access portal in your email to continue.`,
           purpose: 'notification',
           trialTemplate: TWILIO_TRIAL_NOTIFY_TEMPLATE,
         }),

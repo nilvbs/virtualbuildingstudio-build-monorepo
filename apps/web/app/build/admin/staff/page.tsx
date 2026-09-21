@@ -382,11 +382,10 @@ export default function StaffAdminsPage() {
                     <UserPlus size={16} />
                   </span>
                   <div>
-                    <h2 id="staff-drawer-title">Invite a normal admin</h2>
-                    <p className="hd-drawer-sub">
-                      They get an email and mobile notice with an Access portal link (3 days,
-                      Mon–Fri).
-                    </p>
+                          <h2 id="staff-drawer-title">Invite a normal admin</h2>
+                          <p className="hd-drawer-sub">
+                            They receive an email with an Access portal button to sign in.
+                          </p>
                   </div>
                 </div>
                 <button

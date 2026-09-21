@@ -18,59 +18,69 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Branded staff invite with Access portal CTA.
- * Link is valid for 3 days and redeemable Monday–Friday only.
+ * Branded staff invite — Access portal CTA only.
+ * Credentials are never shown; the portal link prefills them server-side.
+ * TTL / weekday rules are enforced by the API, not mentioned in copy.
  */
 export function buildStaffInviteEmail(input: {
   fullName: string;
-  email: string;
-  tempPassword: string;
   portalUrl: string;
-  expiresAt: Date;
 }): StaffInviteEmailContent {
   const name = firstName(input.fullName);
-  const expiresLabel = input.expiresAt.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-  const subject = 'Your BLD staff portal access';
+  const subject = 'You\'re invited to BLD operations';
 
   const text = [
     `Hi ${name},`,
     '',
-    'You have been invited to the BLD operations staff portal.',
+    'You have been invited to the BLD operations portal.',
     '',
-    `Work email: ${input.email}`,
-    `Temporary password: ${input.tempPassword}`,
-    '',
-    `Open the portal (valid until ${expiresLabel}, Monday–Friday only):`,
+    'Open the portal to get started:',
     input.portalUrl,
-    '',
-    'After you sign in, change your password with your super admin if needed.',
     '',
     '— BLD',
   ].join('\n');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BLD staff invite</title></head>
-<body style="margin:0;padding:0;background:#f4f2ff;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#2a2558;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2ff;padding:32px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;border:1px solid rgba(113,104,246,0.16);overflow:hidden;">
-        <tr><td style="padding:28px 28px 8px;">
-          <p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#7168f6;">Staff invite</p>
-          <h1 style="margin:0 0 10px;font-size:22px;letter-spacing:-0.02em;">Welcome to BLD operations</h1>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#6b668c;">Hi ${escapeHtml(name)}, you&rsquo;ve been invited to the staff portal. Use the button below — the link is valid until <strong style="color:#2a2558;">${escapeHtml(expiresLabel)}</strong> and can only be opened <strong style="color:#2a2558;">Monday–Friday</strong>.</p>
-          <p style="margin:0 0 6px;font-size:13px;color:#6b668c;"><strong style="color:#2a2558;">Email:</strong> ${escapeHtml(input.email)}</p>
-          <p style="margin:0 0 22px;font-size:13px;color:#6b668c;"><strong style="color:#2a2558;">Temp password:</strong> ${escapeHtml(input.tempPassword)}</p>
-          <a href="${escapeHtml(input.portalUrl)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#7168f6;color:#ffffff;font-size:14px;font-weight:700;">Access portal</a>
-          <p style="margin:18px 0 0;font-size:12px;line-height:1.45;color:#8a84a8;">If the button doesn&rsquo;t work, paste this link into your browser:<br>${escapeHtml(input.portalUrl)}</p>
-        </td></tr>
-        <tr><td style="padding:16px 28px 24px;font-size:12px;color:#8a84a8;">— BLD</td></tr>
-      </table>
-    </td></tr>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>BLD staff invite</title>
+</head>
+<body style="margin:0;padding:0;background:#ebe8ff;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ebe8ff;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 12px 40px rgba(42,37,88,0.08);">
+          <tr>
+            <td style="height:4px;background:linear-gradient(90deg,#7168f6 0%,#9b93ff 100%);font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding:36px 36px 8px;text-align:center;">
+              <p style="margin:0 0 18px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#7168f6;">Staff invite</p>
+              <h1 style="margin:0 0 14px;font-size:26px;line-height:1.2;letter-spacing:-0.03em;color:#1e1a3a;font-weight:700;">Welcome to BLD operations</h1>
+              <p style="margin:0 auto;max-width:340px;font-size:15px;line-height:1.55;color:#6b668c;">
+                Hi ${escapeHtml(name)}, you&rsquo;ve been invited to the staff portal. Use the button below to continue.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:28px 36px 36px;">
+              <a href="${escapeHtml(input.portalUrl)}"
+                 style="display:inline-block;padding:14px 28px;border-radius:12px;background:#7168f6;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.01em;">
+                Access portal
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 36px 28px;text-align:center;border-top:1px solid rgba(113,104,246,0.1);">
+              <p style="margin:20px 0 0;font-size:12px;line-height:1.45;color:#9a94b8;">— BLD</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
   </table>
 </body>
 </html>`;
