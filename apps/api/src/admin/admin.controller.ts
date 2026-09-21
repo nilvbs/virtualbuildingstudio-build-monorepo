@@ -36,6 +36,7 @@ import {
   updateMatchSchema,
   updateProjectStatusSchema,
   updateStaffAdminSchema,
+  updateSurveyorProfileSchema,
   adminVerifyContactSchema,
   type AdminOverviewQuery,
   type AdminProjectsQuery,
@@ -48,6 +49,7 @@ import {
   type UpdateMatchInput,
   type UpdateProjectStatusInput,
   type UpdateStaffAdminInput,
+  type UpdateSurveyorProfileInput,
 } from '@surveylink/validation';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -157,6 +159,15 @@ export class AdminController {
   @RequirePermissions('surveyors:view')
   getSurveyor(@Param('id', ParseUUIDPipe) id: string): Promise<AdminSurveyorDetail> {
     return this.admin.getSurveyor(id);
+  }
+
+  @Patch('surveyors/:id')
+  @RequirePermissions('users:manage')
+  updateSurveyor(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateSurveyorProfileSchema)) body: UpdateSurveyorProfileInput,
+  ): Promise<AdminSurveyorDetail> {
+    return this.admin.updateSurveyor(id, body);
   }
 
   @Post('matches')

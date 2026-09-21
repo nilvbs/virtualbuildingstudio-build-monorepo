@@ -51,6 +51,7 @@ import type {
   UpdateMatchInput,
   UpdateProjectStatusInput,
   UpdateStaffAdminInput,
+  UpdateSurveyorProfileInput,
 } from '@surveylink/validation';
 import { normalizeEmail } from '@surveylink/validation';
 import { PrismaService } from '../prisma/prisma.service';
@@ -465,9 +466,10 @@ export class AdminService {
     }));
   }
 
-  async getSurveyor(profileId: string): Promise<AdminSurveyorDetail> {
-    const s = await this.prisma.surveyorProfile.findUnique({
-      where: { id: profileId },
+  async getSurveyor(id: string): Promise<AdminSurveyorDetail> {
+    // Accept surveyor profile id (directory) or user id (users detail drawer).
+    const s = await this.prisma.surveyorProfile.findFirst({
+      where: { OR: [{ id }, { userId: id }] },
       include: {
         user: {
           select: {
@@ -485,7 +487,7 @@ export class AdminService {
 
     const geo = await this.prisma.$queryRaw<GeoRow[]>`
       SELECT id::text AS id, ST_X(base_location::geometry) AS lng, ST_Y(base_location::geometry) AS lat
-      FROM surveyor_profiles WHERE id = ${profileId}::uuid`;
+      FROM surveyor_profiles WHERE id = ${s.id}::uuid`;
     const g = geo[0];
     const location =
       g && g.lng != null && g.lat != null ? { lng: Number(g.lng), lat: Number(g.lat) } : null;
@@ -529,6 +531,57 @@ export class AdminService {
       bio: s.bio,
       details,
     };
+  }
+
+  /**
+   * Staff edit of a surveyor portfolio (from user detail / portfolio drawer).
+   * Accepts surveyor profile id or user id, same as getSurveyor.
+   */
+  async updateSurveyor(
+    id: string,
+    input: UpdateSurveyorProfileInput,
+  ): Promise<AdminSurveyorDetail> {
+    const existing = await this.prisma.surveyorProfile.findFirst({
+      where: { OR: [{ id }, { userId: id }] },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Surveyor not found');
+
+    const data: Prisma.SurveyorProfileUpdateInput = {};
+    if (input.bio !== undefined) data.bio = input.bio;
+    if (input.services !== undefined) data.services = input.services as Prisma.InputJsonValue;
+    if (input.equipment !== undefined) data.equipment = input.equipment as Prisma.InputJsonValue;
+    if (input.baseCity !== undefined) data.baseCity = input.baseCity;
+    if (input.radiusKm !== undefined) data.radiusKm = input.radiusKm;
+    if (input.dayRateCents !== undefined) {
+      data.dayRateCents = input.dayRateCents != null ? BigInt(input.dayRateCents) : null;
+    }
+    if (input.portfolio !== undefined) data.portfolio = input.portfolio as Prisma.InputJsonValue;
+    if (input.isMatchable !== undefined) data.isMatchable = input.isMatchable;
+    if (input.details !== undefined) {
+      const details = normalizePortfolioDetails(input.details);
+      data.details = details as unknown as Prisma.InputJsonValue;
+      if (input.bio === undefined) {
+        const identity = details.identity;
+        if (identity?.kind === 'individual') {
+          data.bio = identity.aboutMe || identity.headline || null;
+        } else if (identity?.kind === 'company') {
+          data.bio = identity.aboutCompany || identity.tagline || null;
+        }
+      }
+    }
+
+    await this.prisma.surveyorProfile.update({ where: { id: existing.id }, data });
+
+    if (input.location !== undefined) {
+      await this.prisma.$executeRaw`
+        UPDATE surveyor_profiles
+        SET base_location = ST_SetSRID(ST_MakePoint(${input.location.lng}::double precision, ${input.location.lat}::double precision), 4326)::geography,
+            updated_at = now()
+        WHERE id = ${existing.id}::uuid`;
+    }
+
+    return this.getSurveyor(existing.id);
   }
 
   async browseSurveyors(query: AdminSurveyorQuery): Promise<AdminSurveyor[]> {

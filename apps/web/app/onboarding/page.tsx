@@ -16,6 +16,7 @@ import { clearSession, getActiveRole, getSession, isAuthenticated } from '../../
 import { homePathForWorkspace } from '../../lib/home';
 import { e164ToPhoneInput } from '../../lib/country-codes';
 import { LordIcon } from '../../components/lord-icon';
+import { OtpInput } from '../../components/otp-input';
 import {
   OnboardingPhoneVerify,
   defaultPhoneInput,
@@ -582,23 +583,27 @@ export default function OnboardingPage() {
                     </span>
                   </div>
                   {emailCodeSent ? (
-                    <>
-                      <input
-                        className="input onboarding-input"
+                    <div className="onboarding-otp-stack">
+                      <OtpInput
                         value={emailCode}
-                        onChange={(e) => setEmailCode(e.target.value)}
-                        placeholder="Email verification code"
-                        inputMode="numeric"
+                        onChange={setEmailCode}
+                        disabled={busy === 'email'}
+                        autoFocus
+                        label="Email verification code"
+                        onComplete={(code) => {
+                          if (busy === 'email') return;
+                          void run('email', () => api.verifyEmail(code));
+                        }}
                       />
                       <button
                         type="button"
                         className="btn block"
-                        disabled={busy === 'email'}
+                        disabled={busy === 'email' || emailCode.replace(/\D/g, '').length < 6}
                         onClick={() => void run('email', () => api.verifyEmail(emailCode))}
                       >
                         {busy === 'email' ? 'Verifying…' : 'Verify email'}
                       </button>
-                    </>
+                    </div>
                   ) : null}
                   <button
                     type="button"
@@ -742,21 +747,24 @@ export default function OnboardingPage() {
                       >
                         {busy === 'work-start' ? 'Sending…' : 'Send work email code'}
                       </button>
-                      <input
-                        className="input onboarding-input"
-                        type="text"
+                      <OtpInput
                         value={workEmailCode}
-                        onChange={(e) => setWorkEmailCode(e.target.value)}
-                        placeholder="Work email OTP"
-                        inputMode="numeric"
+                        onChange={setWorkEmailCode}
+                        disabled={busy === 'work'}
+                        autoFocus={false}
+                        label="Work email verification code"
+                        onComplete={(code) => {
+                          if (busy === 'work') return;
+                          void run('work', () => api.verifyWorkEmail(code));
+                        }}
                       />
                       <button
                         type="button"
                         className="btn block"
-                        disabled={busy === 'work' || !workEmailCode.trim()}
+                        disabled={busy === 'work' || workEmailCode.replace(/\D/g, '').length < 6}
                         onClick={() => void run('work', () => api.verifyWorkEmail(workEmailCode))}
                       >
-                        Verify work email
+                        {busy === 'work' ? 'Verifying…' : 'Verify work email'}
                       </button>
                     </div>
                   )}
@@ -808,23 +816,36 @@ export default function OnboardingPage() {
                           <small>Enter the OTP from your inbox</small>
                         </span>
                       </div>
-                      <div className="ob-inline-actions">
-                        <input
-                          className="input onboarding-input"
-                          type="text"
+                      <div className="onboarding-otp-stack">
+                        <OtpInput
                           value={emailCode}
-                          onChange={(e) => setEmailCode(e.target.value)}
-                          placeholder="Email code"
-                          inputMode="numeric"
-                        />
-                        <button
-                          type="button"
-                          className="btn"
+                          onChange={setEmailCode}
                           disabled={busy === 'email'}
-                          onClick={() => void run('email', () => api.verifyEmail(emailCode))}
-                        >
-                          Verify
-                        </button>
+                          autoFocus={false}
+                          label="Email verification code"
+                          onComplete={(code) => {
+                            if (busy === 'email') return;
+                            void run('email', () => api.verifyEmail(code));
+                          }}
+                        />
+                        <div className="ob-inline-actions">
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={busy === 'email' || emailCode.replace(/\D/g, '').length < 6}
+                            onClick={() => void run('email', () => api.verifyEmail(emailCode))}
+                          >
+                            {busy === 'email' ? 'Verifying…' : 'Verify'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            disabled={busy === 'email-start'}
+                            onClick={() => void run('email-start', () => api.startEmailVerification())}
+                          >
+                            {busy === 'email-start' ? 'Sending…' : 'Send code'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}

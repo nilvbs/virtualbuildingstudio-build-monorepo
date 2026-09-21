@@ -635,6 +635,13 @@ export class SurveyLinkClient {
     return this.request<AdminSurveyorDetail>('GET', `/admin/surveyors/${id}`);
   }
 
+  async updateAdminSurveyor(
+    id: string,
+    body: Partial<SurveyorProfileBody>,
+  ): Promise<AdminSurveyorDetail> {
+    return this.request<AdminSurveyorDetail>('PATCH', `/admin/surveyors/${id}`, body);
+  }
+
   async createMatch(body: CreateMatchBody): Promise<Match> {
     return this.request<Match>('POST', '/admin/matches', body);
   }

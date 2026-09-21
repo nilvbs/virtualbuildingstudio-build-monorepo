@@ -18,7 +18,8 @@ export interface PhoneInputValue {
 
 interface PhoneInputProps {
   id?: string;
-  label?: string;
+  /** Pass `null` to omit the label (when the parent already provides one). */
+  label?: string | null;
   value: PhoneInputValue;
   onChange: (next: PhoneInputValue) => void;
   required?: boolean;
@@ -42,8 +43,8 @@ export function PhoneInput({
   const country = useMemo(() => findCountry(value.countryIso), [value.countryIso]);
 
   return (
-    <div className="field phone-field">
-      <label htmlFor={phoneId}>{label}</label>
+    <div className={`field phone-field${label == null ? ' phone-field--bare' : ''}`}>
+      {label != null ? <label htmlFor={phoneId}>{label}</label> : null}
       <div className="phone-row">
         <select
           id={countryId}

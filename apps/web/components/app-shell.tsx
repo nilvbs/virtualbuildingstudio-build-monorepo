@@ -174,7 +174,7 @@ function topbarCopy(section: Section, pathname: string): { label: string; sub: s
       return { label: 'Surveyors', sub: 'Profiles, completeness, and service coverage' };
     }
     if (pathname.startsWith('/build/admin/users/') && pathname !== '/build/admin/users') {
-      return { label: 'User profile', sub: 'View and edit account details' };
+      return { label: 'Users', sub: '' };
     }
     if (pathname.startsWith('/build/admin/users')) {
       return { label: 'Users', sub: 'Clients, surveyors, and accounts — filter by role' };
@@ -397,7 +397,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
         <header className="topbar">
           <div className="topbar-copy">
             <div className="topbar-title">{header.label}</div>
-            <div className="topbar-sub">{header.sub}</div>
+            {header.sub ? <div className="topbar-sub">{header.sub}</div> : null}
           </div>
 
           <div className="topbar-actions">

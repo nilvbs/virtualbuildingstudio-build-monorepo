@@ -677,16 +677,21 @@ export function OnboardingScreen({ navigation }: Props) {
                       <Text style={styles.channelCopy}>Enter the OTP sent to your inbox</Text>
                     </View>
                   </View>
-                  <Field
-                    label="Email verification code"
-                    icon="hash"
+                  <OtpInput
                     value={emailCode}
-                    onChangeText={setEmailCode}
-                    keyboardType="number-pad"
+                    onChange={setEmailCode}
+                    disabled={busy === 'email'}
+                    autoFocus
+                    label="Email verification code"
+                    onComplete={(code) => {
+                      if (busy === 'email') return;
+                      void run('email', () => api.verifyEmail(code));
+                    }}
                   />
                   <Button
                     label={busy === 'email' ? 'Verifying…' : 'Verify email'}
                     busy={busy === 'email'}
+                    disabled={emailCode.replace(/\D/g, '').length < 6}
                     onPress={() => void run('email', () => api.verifyEmail(emailCode))}
                   />
                   <Button
@@ -772,17 +777,21 @@ export function OnboardingScreen({ navigation }: Props) {
                             )
                           }
                         />
-                        <Field
-                          label="Work email OTP"
-                          icon="hash"
+                        <OtpInput
                           value={workEmailCode}
-                          onChangeText={setWorkEmailCode}
-                          keyboardType="number-pad"
+                          onChange={setWorkEmailCode}
+                          disabled={busy === 'work'}
+                          autoFocus={false}
+                          label="Work email verification code"
+                          onComplete={(code) => {
+                            if (busy === 'work') return;
+                            void run('work', () => api.verifyWorkEmail(code));
+                          }}
                         />
                         <Button
                           label={busy === 'work' ? 'Verifying…' : 'Verify work email'}
                           busy={busy === 'work'}
-                          disabled={!workEmailCode.trim()}
+                          disabled={workEmailCode.replace(/\D/g, '').length < 6}
                           onPress={() => void run('work', () => api.verifyWorkEmail(workEmailCode))}
                         />
                       </>
@@ -832,20 +841,28 @@ export function OnboardingScreen({ navigation }: Props) {
                           <Text style={styles.channelCopy}>Enter the code we sent to your inbox</Text>
                         </View>
                       </View>
-                      <TextInput
-                        style={styles.codeInput}
+                      <OtpInput
                         value={emailCode}
-                        onChangeText={setEmailCode}
-                        keyboardType="number-pad"
-                        placeholder="6-digit code"
-                        placeholderTextColor={colors.faint}
-                        underlineColorAndroid="transparent"
-                        maxLength={6}
+                        onChange={setEmailCode}
+                        disabled={busy === 'email'}
+                        autoFocus={false}
+                        label="Email verification code"
+                        onComplete={(code) => {
+                          if (busy === 'email') return;
+                          void run('email', () => api.verifyEmail(code));
+                        }}
                       />
                       <Button
                         label={busy === 'email' ? 'Verifying…' : 'Verify email'}
                         busy={busy === 'email'}
+                        disabled={emailCode.replace(/\D/g, '').length < 6}
                         onPress={() => void run('email', () => api.verifyEmail(emailCode))}
+                      />
+                      <Button
+                        label={busy === 'email-start' ? 'Sending…' : 'Send email code'}
+                        variant="outline"
+                        busy={busy === 'email-start'}
+                        onPress={() => void run('email-start', () => api.startEmailVerification())}
                       />
                     </View>
                   )}
