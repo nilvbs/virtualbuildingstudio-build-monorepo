@@ -86,7 +86,7 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
   }
 </style>
 </head>
-<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'DM Sans','Segoe UI',Helvetica,Arial,sans-serif;">
+<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'Inter','Segoe UI',Helvetica,Arial,sans-serif;">
 
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F7F8FF;">
     Reset your BLD password — this link expires in {{expires_minutes}} minutes. &#8203;&zwnj;&nbsp;
@@ -100,7 +100,7 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
 
           <tr>
             <td align="center" style="padding:0 0 24px 0;">
-              <span style="font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
+              <span style="font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
             </td>
           </tr>
 
@@ -117,10 +117,10 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
                         </td>
                       </tr>
                     </table>
-                    <h1 style="margin:0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:26px; line-height:32px; letter-spacing:-0.02em; color:#FFFFFF;">
+                    <h1 style="margin:0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:26px; line-height:32px; letter-spacing:-0.02em; color:#FFFFFF;">
                       Reset your password
                     </h1>
-                    <p style="margin:12px auto 0 auto; max-width:400px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:23px; color:#EEEAFF;">
+                    <p style="margin:12px auto 0 auto; max-width:400px; font-family:'Inter',Arial,sans-serif; font-size:15px; line-height:23px; color:#EEEAFF;">
                       Choose a new password for your BLD account. This link is unique to you.
                     </p>
                   </td>
@@ -128,7 +128,7 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
 
                 <tr>
                   <td class="px" style="padding:36px 44px 8px 44px;">
-                    <p style="margin:0 0 28px 0; font-family:'DM Sans',Arial,sans-serif; font-size:16px; line-height:25px; color:#6B668C;">
+                    <p style="margin:0 0 28px 0; font-family:'Inter',Arial,sans-serif; font-size:16px; line-height:25px; color:#6B668C;">
                       Hi <strong style="color:#2A2558;">{{first_name}}</strong>, we received a request to reset your password.
                       Click the button below to continue &mdash; the link expires in <strong style="color:#2A2558;">{{expires_minutes}} minutes</strong>.
                     </p>
@@ -136,7 +136,7 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px auto;">
                       <tr>
                         <td align="center" bgcolor="#5B52E0" style="border-radius:12px; background:#5B52E0;">
-                          <a class="btn-pad" href="{{reset_url}}" target="_blank" style="display:inline-block; padding:16px 36px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; font-weight:700; color:#FFFFFF; text-decoration:none; border-radius:12px;">
+                          <a class="btn-pad" href="{{reset_url}}" target="_blank" style="display:inline-block; padding:16px 36px; font-family:'Inter',Arial,sans-serif; font-size:15px; font-weight:700; color:#FFFFFF; text-decoration:none; border-radius:12px;">
                             Set new password
                           </a>
                         </td>
@@ -149,7 +149,7 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
                   <td class="px" style="padding:28px 44px 8px 44px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F7F8FF; border:1px solid rgba(91,82,224,0.12); border-radius:14px;">
                       <tr>
-                        <td style="padding:16px 18px; font-family:'DM Sans',Arial,sans-serif;">
+                        <td style="padding:16px 18px; font-family:'Inter',Arial,sans-serif;">
                           <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                               <td valign="top" width="30" style="font-size:18px; line-height:22px;">&#128737;&#65039;</td>
@@ -169,7 +169,7 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid rgba(91,82,224,0.12);">
                       <tr><td style="height:22px; font-size:0; line-height:0;">&nbsp;</td></tr>
                       <tr>
-                        <td align="center" style="font-family:'DM Sans',Arial,sans-serif;">
+                        <td align="center" style="font-family:'Inter',Arial,sans-serif;">
                           <p style="margin:0; font-size:13.5px; line-height:21px; color:#6B668C;">
                             Need help? Reach us at
                             <a href="mailto:support@bld.online" style="color:#7168F6; font-weight:600;">support@bld.online</a>.
@@ -185,8 +185,8 @@ const RESET_PASSWORD_HTML = `<!DOCTYPE html>
           </tr>
 
           <tr>
-            <td align="center" style="padding:28px 30px 8px 30px; font-family:'DM Sans',Arial,sans-serif;">
-              <p style="margin:0 0 8px 0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:15px; color:#2A2558;">BLD</p>
+            <td align="center" style="padding:28px 30px 8px 30px; font-family:'Inter',Arial,sans-serif;">
+              <p style="margin:0 0 8px 0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:15px; color:#2A2558;">BLD</p>
               <p style="margin:0 0 14px 0; font-size:12px; line-height:18px; color:#6B668C;">
                 The managed marketplace connecting clients with independent site surveyors.
               </p>

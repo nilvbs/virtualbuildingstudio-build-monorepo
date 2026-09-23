@@ -80,7 +80,7 @@ body {
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans), 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans), Inter, ui-sans-serif, system-ui, sans-serif;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -91,6 +91,7 @@ h2,
 h3,
 h4 {
   color: var(--text);
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   letter-spacing: -0.02em;
   font-weight: 700;
   margin: 0;
@@ -459,7 +460,7 @@ code {
 
 .shell--admin .stat-value {
   color: #2a2558;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 600;
   letter-spacing: -0.04em;
 }
@@ -803,7 +804,7 @@ code {
 .ops-chart-axis {
   font-size: 10px;
   fill: var(--ops-muted);
-  font-family: var(--font-sans), 'DM Sans', sans-serif;
+  font-family: var(--font-sans), Inter, system-ui, sans-serif;
 }
 
 .ops-bar-clients {
@@ -3042,7 +3043,7 @@ select.admin-pf-input {
 
 .ops-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-size: 30px;
   font-weight: 550;
   letter-spacing: -0.03em;
@@ -3358,7 +3359,7 @@ select.admin-pf-input {
 }
 
 .ops-metric-value {
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-size: 34px;
   font-weight: 550;
   letter-spacing: -0.04em;
@@ -3814,7 +3815,7 @@ lord-icon {
 
 .personal-profile-hello-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-size: clamp(22px, 2.6vw, 28px);
   font-weight: 550;
   letter-spacing: -0.03em;
@@ -5418,7 +5419,7 @@ lord-icon {
 
 .svy-dash-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-size: clamp(22px, 2.5vw, 28px);
   font-weight: 550;
   letter-spacing: -0.03em;
@@ -6996,7 +6997,9 @@ lord-icon {
 }
 
 .svy-profile-form .field.is-invalid .svy-money,
-.svy-profile-form .field.is-invalid input:not(.MuiInputBase-input) {
+.svy-profile-form .field.is-invalid input:not(.MuiInputBase-input),
+.svy-profile-form .field.is-invalid select:not(.MuiNativeSelect-select),
+.svy-profile-form .field.is-invalid textarea:not(.MuiInputBase-input) {
   border-color: #dc2626;
   background: #fff8f8;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
@@ -7015,11 +7018,39 @@ lord-icon {
 }
 
 .svy-panel.is-invalid {
-  box-shadow: inset 0 0 0 2px #fca5a5;
+  box-shadow: inset 0 0 0 2px #f87171;
+  background: #fffafa;
 }
 
 .svy-avail.is-invalid .svy-opt:not(.is-on) {
+  border-color: #f87171;
+  background: #fff8f8;
+}
+
+.svy-panel.is-invalid .svy-opt:not(.is-on) {
   border-color: #fca5a5;
+}
+
+.alert-dismiss {
+  appearance: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -6px -4px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.alert-dismiss:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .svy-profile-form .req {
@@ -12209,7 +12240,7 @@ a.plain:hover {
 
 .mkt-hero-tagline {
   position: relative;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 500;
   font-size: clamp(14px, 1.9vw, 22px);
   letter-spacing: -0.015em;
@@ -12472,7 +12503,7 @@ a.plain:hover {
 
 .mkt-gate-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 500;
   font-size: clamp(28px, 3.2vw, 40px);
   line-height: 1.02;
@@ -12613,7 +12644,7 @@ a.plain:hover {
 
 .mkt-gate-band-title {
   margin: 0 0 14px;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 500;
   font-size: clamp(32px, 4.2vw, 48px);
   line-height: 1.04;
@@ -12679,7 +12710,7 @@ a.plain:hover {
 }
 
 .mkt-section-title {
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 500;
   font-size: clamp(34px, 4.5vw, 52px);
   line-height: 1.02;
@@ -12803,7 +12834,7 @@ a.plain:hover {
 }
 
 .mkt-path h2 {
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 500;
   font-size: clamp(27px, 3vw, 36px);
   line-height: 1.08;
@@ -12904,7 +12935,7 @@ a.plain:hover {
 
 .mkt-step h3 {
   color: #071b3d;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-size: clamp(20px, 2vw, 24px);
   font-weight: 550;
   letter-spacing: -0.02em;
@@ -13141,7 +13172,7 @@ a.plain:hover {
 
 .mkt-auth-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 500;
   font-size: 30px;
   letter-spacing: -0.02em;
@@ -13918,7 +13949,7 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
 
 .staff-aside-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 550;
   font-size: clamp(26px, 3vw, 34px);
   letter-spacing: -0.03em;
@@ -13985,7 +14016,7 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
 
 .staff-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 550;
   font-size: clamp(26px, 4vw, 32px);
   letter-spacing: -0.03em;
@@ -14266,7 +14297,7 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-size: clamp(22px, 2.6vw, 28px);
   font-weight: 550;
   letter-spacing: -0.03em;
@@ -14635,7 +14666,7 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-size: clamp(22px, 2.6vw, 28px);
   font-weight: 550;
   letter-spacing: -0.03em;
@@ -18995,7 +19026,7 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
 }
 
 .reset-aside-logo--fallback {
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 700;
   font-size: 1.6rem;
   letter-spacing: -0.02em;
@@ -19017,7 +19048,7 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
 
 .reset-aside-title {
   margin: 0;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 550;
   font-size: clamp(26px, 3.2vw, 36px);
   letter-spacing: -0.03em;
@@ -19102,7 +19133,7 @@ select.staff-admin-input:not(.MuiNativeSelect-select) {
 
 .reset-title {
   margin: 0 0 8px;
-  font-family: var(--font-display), Fraunces, Georgia, serif;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
   font-weight: 550;
   font-size: clamp(1.55rem, 2.4vw, 1.85rem);
   letter-spacing: -0.03em;

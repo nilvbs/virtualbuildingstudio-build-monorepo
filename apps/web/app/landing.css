@@ -2,8 +2,6 @@
    BLD Landing — light marketplace design
 ========================================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Inter:wght@400;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
-
 .bld-landing {
   --bld-primary: #7168f6;
   --bld-primary-container: #7168f6;
@@ -20,9 +18,10 @@
   --bld-surface-container-high: #dddfff;
   --bld-surface-container-highest: #d4d6ff;
   --bld-surface-lowest: #ffffff;
-  --bld-font-display: 'Playfair Display', Georgia, serif;
-  --bld-font-elegant: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
-  --bld-font-body: 'Inter', var(--font-sans), system-ui, sans-serif;
+  /* Recommended: Satoshi (display) + Inter (body) — loaded in root layout */
+  --bld-font-display: var(--font-display), Satoshi, system-ui, sans-serif;
+  --bld-font-elegant: var(--font-display), Satoshi, system-ui, sans-serif;
+  --bld-font-body: var(--font-sans), Inter, system-ui, sans-serif;
   --bld-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --bld-container: 1280px;
   --bld-gutter: clamp(16px, 4vw, 48px);

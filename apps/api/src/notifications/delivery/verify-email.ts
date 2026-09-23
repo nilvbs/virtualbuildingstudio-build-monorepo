@@ -93,7 +93,7 @@ const VERIFY_EMAIL_HTML = `<!DOCTYPE html>
   }
 </style>
 </head>
-<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'DM Sans','Segoe UI',Helvetica,Arial,sans-serif;">
+<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'Inter','Segoe UI',Helvetica,Arial,sans-serif;">
 
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F7F8FF;">
     Your BLD verification code is {{otp_code}}. It expires in 10 minutes. &#8203;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
@@ -109,7 +109,7 @@ const VERIFY_EMAIL_HTML = `<!DOCTYPE html>
 
           <tr>
             <td align="center" style="padding:0 0 24px 0;">
-              <span style="font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
+              <span style="font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
             </td>
           </tr>
 
@@ -129,10 +129,10 @@ const VERIFY_EMAIL_HTML = `<!DOCTYPE html>
                       </tr>
                     </table>
 
-                    <h1 style="margin:0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:26px; line-height:32px; letter-spacing:-0.02em; color:#FFFFFF;">
+                    <h1 style="margin:0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:26px; line-height:32px; letter-spacing:-0.02em; color:#FFFFFF;">
                       Your verification code
                     </h1>
-                    <p style="margin:12px auto 0 auto; max-width:400px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:23px; color:#EEEAFF;">
+                    <p style="margin:12px auto 0 auto; max-width:400px; font-family:'Inter',Arial,sans-serif; font-size:15px; line-height:23px; color:#EEEAFF;">
                       Use the one-time code below to sign in to your BLD account.
                     </p>
                   </td>
@@ -140,22 +140,22 @@ const VERIFY_EMAIL_HTML = `<!DOCTYPE html>
 
                 <tr>
                   <td class="px" style="padding:36px 44px 8px 44px;">
-                    <p style="margin:0 0 24px 0; font-family:'DM Sans',Arial,sans-serif; font-size:16px; line-height:25px; color:#6B668C;">
+                    <p style="margin:0 0 24px 0; font-family:'Inter',Arial,sans-serif; font-size:16px; line-height:25px; color:#6B668C;">
                       Hi <strong style="color:#2A2558;">{{first_name}}</strong>, here&rsquo;s your one-time password (OTP). Enter it to continue &mdash; it&rsquo;s valid for the next <strong style="color:#2A2558;">10 minutes</strong>.
                     </p>
 
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="anim-fade">
                       <tr>
                         <td align="center" class="code-panel" style="background:linear-gradient(180deg,#FBFBFF 0%,#EEEAFF 100%); border:1px solid rgba(91,82,224,0.22); border-radius:18px; padding:28px 20px;">
-                          <p style="margin:0 0 10px 0; font-family:'DM Sans',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#6B668C;">Your one-time code</p>
-                          <div class="code-text" style="font-family:'DM Sans',Consolas,Menlo,monospace; font-size:44px; font-weight:700; letter-spacing:14px; color:#2A2558; padding-left:14px;">{{otp_code}}</div>
+                          <p style="margin:0 0 10px 0; font-family:'Inter',Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#6B668C;">Your one-time code</p>
+                          <div class="code-text" style="font-family:'Inter',Consolas,Menlo,monospace; font-size:44px; font-weight:700; letter-spacing:14px; color:#2A2558; padding-left:14px;">{{otp_code}}</div>
                         </td>
                       </tr>
                     </table>
 
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:20px auto 0 auto;">
                       <tr>
-                        <td style="padding:8px 16px; background-color:#EEEAFF; border-radius:100px; font-family:'DM Sans',Arial,sans-serif; font-size:13px; font-weight:600; color:#5B52E0;">
+                        <td style="padding:8px 16px; background-color:#EEEAFF; border-radius:100px; font-family:'Inter',Arial,sans-serif; font-size:13px; font-weight:600; color:#5B52E0;">
                           <span class="glow-dot">&#9679;</span>&nbsp; Expires in 10 minutes
                         </td>
                       </tr>
@@ -167,7 +167,7 @@ const VERIFY_EMAIL_HTML = `<!DOCTYPE html>
                   <td class="px" style="padding:28px 44px 8px 44px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F7F8FF; border:1px solid rgba(91,82,224,0.12); border-radius:14px;">
                       <tr>
-                        <td style="padding:16px 18px; font-family:'DM Sans',Arial,sans-serif;">
+                        <td style="padding:16px 18px; font-family:'Inter',Arial,sans-serif;">
                           <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                               <td valign="top" width="30" style="font-size:18px; line-height:22px;">&#128737;&#65039;</td>
@@ -187,7 +187,7 @@ const VERIFY_EMAIL_HTML = `<!DOCTYPE html>
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid rgba(91,82,224,0.12);">
                       <tr><td style="height:22px; font-size:0; line-height:0;">&nbsp;</td></tr>
                       <tr>
-                        <td align="center" style="font-family:'DM Sans',Arial,sans-serif;">
+                        <td align="center" style="font-family:'Inter',Arial,sans-serif;">
                           <p style="margin:0; font-size:13.5px; line-height:21px; color:#6B668C;">
                             Need help? Reach us at
                             <a href="mailto:support@bld.online" style="color:#7168F6; font-weight:600;">support@bld.online</a>.
@@ -203,8 +203,8 @@ const VERIFY_EMAIL_HTML = `<!DOCTYPE html>
           </tr>
 
           <tr>
-            <td align="center" style="padding:28px 30px 8px 30px; font-family:'DM Sans',Arial,sans-serif;">
-              <p style="margin:0 0 8px 0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:15px; color:#2A2558;">BLD</p>
+            <td align="center" style="padding:28px 30px 8px 30px; font-family:'Inter',Arial,sans-serif;">
+              <p style="margin:0 0 8px 0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:15px; color:#2A2558;">BLD</p>
               <p style="margin:0 0 14px 0; font-size:12px; line-height:18px; color:#6B668C;">
                 The managed marketplace connecting clients with independent site surveyors.
               </p>

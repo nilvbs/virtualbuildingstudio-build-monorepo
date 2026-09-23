@@ -35,6 +35,7 @@ import {
   emptyPortfolioDetails,
   normalizePortfolioDetails,
   surveyorProfileCompletion,
+  SURVEYOR_PROFILE_COMPLETION_CHECKS,
   type AccountType,
   type AvailabilityOption,
   type CoverageCountryId,
@@ -135,8 +136,8 @@ type ProfileStepId = 'services' | 'coverage' | 'commercial' | 'work';
 
 const PROFILE_STEP_KEYS: Record<ProfileStepId, SurveyorProfileCompletionKey[]> = {
   services: ['services'],
-  coverage: ['baseCity', 'location'],
-  commercial: ['equipment', 'availability', 'pricing'],
+  coverage: ['baseCity', 'location', 'availability'],
+  commercial: ['equipment', 'pricing'],
   work: ['yearsRealityCapture', 'industries', 'generalLiabilityInsurance'],
 };
 
@@ -375,7 +376,15 @@ export default function SurveyorProfilePage() {
   function tryContinue() {
     if (stepFill[step]?.incomplete) {
       setShowFieldErrors(true);
-      setError('Fill the highlighted fields before continuing.');
+      const keys = PROFILE_STEP_KEYS[PROFILE_STEPS[step]!.id];
+      const labels = SURVEYOR_PROFILE_COMPLETION_CHECKS.filter(
+        (c) => keys.includes(c.key) && missingKeys.has(c.key),
+      ).map((c) => c.label);
+      setError(
+        labels.length > 0
+          ? `Fill the highlighted fields before continuing: ${labels.join(', ')}.`
+          : 'Fill the highlighted fields before continuing.',
+      );
       scrollToFirstInvalid();
       return;
     }
@@ -755,7 +764,19 @@ export default function SurveyorProfilePage() {
       </div>
 
       <form className="svy-profile-form" onSubmit={onSubmit} noValidate>
-        {error && <div className="alert error">{error}</div>}
+        {error ? (
+          <div className="alert error" role="alert">
+            <span style={{ flex: 1 }}>{error}</span>
+            <button
+              type="button"
+              className="alert-dismiss"
+              aria-label="Dismiss"
+              onClick={() => setError(null)}
+            >
+              <X size={16} strokeWidth={2.25} />
+            </button>
+          </div>
+        ) : null}
 
         <AnimatePresence mode="wait">
           <motion.div

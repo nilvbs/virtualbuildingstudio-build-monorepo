@@ -1,9 +1,13 @@
 import { Platform } from 'react-native';
 
-/** Display face — matches web Fraunces headlines. */
+/** Display face — matches web Satoshi headlines. */
 export const fonts = {
-  display: 'Fraunces_600SemiBold',
-  displayItalic: 'Fraunces_600SemiBold_Italic',
+  display: 'Satoshi_700Bold',
+  displayMedium: 'Satoshi_500Medium',
+  sans: 'Inter_400Regular',
+  sansMedium: 'Inter_500Medium',
+  sansSemiBold: 'Inter_600SemiBold',
+  sansBold: 'Inter_700Bold',
 };
 
 /** Brand palette: ice #CADCFC · sky #8AB6F9 · navy #00246B — page stays white; brand colors tint sections. */

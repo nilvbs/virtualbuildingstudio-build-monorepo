@@ -1,17 +1,36 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { DM_Sans, Fraunces } from 'next/font/google';
+import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import 'leaflet/dist/leaflet.css';
 import './globals.css';
 
-const dmSans = DM_Sans({
+/** Recommended product stack: Satoshi (display) + Inter (UI/body). */
+const inter = Inter({
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
   variable: '--font-sans',
   display: 'swap',
 });
 
-const fraunces = Fraunces({
-  subsets: ['latin'],
+const satoshi = localFont({
+  src: [
+    {
+      path: '../public/fonts/satoshi/Satoshi-Medium.woff2',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../public/fonts/satoshi/Satoshi-Bold.woff2',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: '../public/fonts/satoshi/Satoshi-Black.woff2',
+      weight: '900',
+      style: 'normal',
+    },
+  ],
   variable: '--font-display',
   display: 'swap',
 });
@@ -36,7 +55,7 @@ export const dynamic = 'force-dynamic';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${fraunces.variable}`}>
+    <html lang="en" className={`${inter.variable} ${satoshi.variable}`}>
       {/* Browser extensions (e.g. ColorZilla's cz-shortcut-listen) mutate
           <body> before hydration; ignore those attribute-only mismatches. */}
       <body suppressHydrationWarning>{children}</body>

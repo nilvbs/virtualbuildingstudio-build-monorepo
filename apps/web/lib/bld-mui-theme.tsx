@@ -13,7 +13,7 @@ export const bldMuiTheme = createTheme({
   },
   shape: { borderRadius: 12 },
   typography: {
-    fontFamily: 'var(--font-sans), "DM Sans", system-ui, sans-serif',
+    fontFamily: 'var(--font-sans), Inter, system-ui, sans-serif',
     button: { textTransform: 'none', fontWeight: 600 },
     subtitle2: { fontWeight: 700, color: '#2a2558' },
     body2: { color: '#6b668c' },

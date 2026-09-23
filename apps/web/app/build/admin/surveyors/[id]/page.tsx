@@ -34,6 +34,7 @@ import {
   type SurveyorProfileCompletionKey,
 } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../../lib/api';
+import { formatMilesFromKm } from '../../../../../lib/geocode';
 import { LocationMapPreview } from '../../../../../components/location-map-preview';
 
 function cents(v: number | null | undefined): string | null {
@@ -179,7 +180,7 @@ export default function AdminSurveyorDetailPage({ params }: { params: Promise<{ 
             </div>
             <div>
               <dt>Coverage radius</dt>
-              <dd>{surveyor.radiusKm} km</dd>
+              <dd>{formatMilesFromKm(surveyor.radiusKm)} mi</dd>
             </div>
             <div>
               <dt>Verification</dt>

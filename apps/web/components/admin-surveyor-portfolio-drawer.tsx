@@ -32,6 +32,7 @@ import {
 } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
 import { toastError, toastSuccess } from '../lib/action-toast';
+import { formatMilesFromKm, kmToMiles, milesToKm } from '../lib/geocode';
 
 const CoverageMapPreview = dynamic(
   () => import('./coverage-map-preview').then((m) => m.CoverageMapPreview),
@@ -100,7 +101,8 @@ type EditForm = {
   hourlyRate: string;
   availability: AvailabilityOption | '';
   isMatchable: boolean;
-  radiusKm: string;
+  /** UI stores miles; API persists km. */
+  radiusMiles: string;
   baseCity: string;
   lat: string;
   lng: string;
@@ -115,7 +117,7 @@ function formFromSurveyor(s: AdminSurveyorDetail): EditForm {
     hourlyRate: dollarsFromCents(s.details?.hourlyRateCents),
     availability: (s.details?.availability as AvailabilityOption | null) ?? '',
     isMatchable: s.isMatchable,
-    radiusKm: String(s.radiusKm ?? 25),
+    radiusMiles: String(Math.max(1, Math.round(kmToMiles(s.radiusKm ?? 40)))),
     baseCity: s.baseCity ?? '',
     lat: s.location ? String(s.location.lat) : '',
     lng: s.location ? String(s.location.lng) : '',
@@ -180,7 +182,7 @@ export function AdminSurveyorPortfolioDrawer({ userId, open, onClose, canEdit = 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [openStep, setOpenStep] = useState<AccordionId>('overview');
+  const [openStep, setOpenStep] = useState<AccordionId | null>('overview');
   const [error, setError] = useState<string | null>(null);
   const [surveyor, setSurveyor] = useState<AdminSurveyorDetail | null>(null);
   const [form, setForm] = useState<EditForm | null>(null);
@@ -248,7 +250,7 @@ export function AdminSurveyorPortfolioDrawer({ userId, open, onClose, canEdit = 
   }, [open, onClose, editing]);
 
   function toggleStep(id: AccordionId) {
-    setOpenStep(id);
+    setOpenStep((prev) => (prev === id ? null : id));
   }
 
   function enterEdit() {
@@ -295,12 +297,13 @@ export function AdminSurveyorPortfolioDrawer({ userId, open, onClose, canEdit = 
       setOpenStep('services');
       return;
     }
-    const radiusKm = Number(form.radiusKm);
-    if (!Number.isFinite(radiusKm) || radiusKm < 1) {
-      setError('Coverage radius must be at least 1 km.');
+    const radiusMiles = Number(form.radiusMiles);
+    if (!Number.isFinite(radiusMiles) || radiusMiles < 1) {
+      setError('Coverage radius must be at least 1 mile.');
       setOpenStep('coverage');
       return;
     }
+    const radiusKm = Math.max(1, Math.round(milesToKm(radiusMiles)));
 
     const details: SurveyorPortfolioDetails = {
       ...surveyor.details,
@@ -530,7 +533,10 @@ export function AdminSurveyorPortfolioDrawer({ userId, open, onClose, canEdit = 
                             className="admin-pf-coverage-map"
                             lat={parseCoord(form.lat)}
                             lng={parseCoord(form.lng)}
-                            radiusKm={Math.max(1, Number(form.radiusKm) || 25)}
+                            radiusKm={Math.max(
+                              1,
+                              Math.round(milesToKm(Number(form.radiusMiles) || 25)),
+                            )}
                             label={form.baseCity || null}
                             showRadius
                             counties={(details.coverageCounties ?? []).filter(
@@ -551,12 +557,12 @@ export function AdminSurveyorPortfolioDrawer({ userId, open, onClose, canEdit = 
                             />
                           </label>
                           <label className="admin-pf-field">
-                            <span>Radius (km)</span>
+                            <span>Radius (mi)</span>
                             <input
                               className="admin-pf-input"
                               inputMode="numeric"
-                              value={form.radiusKm}
-                              onChange={(e) => setForm({ ...form, radiusKm: e.target.value })}
+                              value={form.radiusMiles}
+                              onChange={(e) => setForm({ ...form, radiusMiles: e.target.value })}
                             />
                           </label>
                           <label className="admin-pf-field">
@@ -588,7 +594,7 @@ export function AdminSurveyorPortfolioDrawer({ userId, open, onClose, canEdit = 
                             {surveyor.location
                               ? ` · ${surveyor.location.lat.toFixed(4)}, ${surveyor.location.lng.toFixed(4)}`
                               : ''}
-                            {` · ${surveyor.radiusKm} km`}
+                            {` · ${formatMilesFromKm(surveyor.radiusKm)} mi`}
                           </span>
                         </p>
                         <div className="admin-pf-map">

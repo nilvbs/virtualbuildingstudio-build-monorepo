@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     lineHeight: 42,
   },
   taglineAccent: {
-    fontFamily: fonts.displayItalic,
+    fontFamily: fonts.displayMedium,
     color: colors.accent,
   },
   lede: {

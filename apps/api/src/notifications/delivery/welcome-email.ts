@@ -158,7 +158,7 @@ const CLIENT_WELCOME_HTML = `<!DOCTYPE html>
 ${EMAIL_CSS}
 </style>
 </head>
-<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'DM Sans','Segoe UI',Helvetica,Arial,sans-serif;">
+<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'Inter','Segoe UI',Helvetica,Arial,sans-serif;">
 
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F7F8FF;">
     Welcome to BLD &mdash; your account is ready. Post your first survey in minutes. &#8203;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
@@ -174,7 +174,7 @@ ${EMAIL_CSS}
 
           <tr>
             <td align="center" style="padding:0 0 26px 0;">
-              <span style="font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
+              <span style="font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
             </td>
           </tr>
 
@@ -188,7 +188,7 @@ ${EMAIL_CSS}
 
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 22px auto;" class="anim-fade1">
                       <tr>
-                        <td class="anim-badge" style="padding:7px 16px; background-color:rgba(255,255,255,0.16); border:1px solid rgba(255,255,255,0.34); border-radius:100px; font-family:'DM Sans',Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#FFFFFF;">
+                        <td class="anim-badge" style="padding:7px 16px; background-color:rgba(255,255,255,0.16); border:1px solid rgba(255,255,255,0.34); border-radius:100px; font-family:'Inter',Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#FFFFFF;">
                           <span class="glow-dot">&#9679;</span>&nbsp; Account activated
                         </td>
                       </tr>
@@ -202,11 +202,11 @@ ${EMAIL_CSS}
                       </tr>
                     </table>
 
-                    <h1 class="h1 anim-fade2" style="margin:0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:34px; line-height:40px; letter-spacing:-0.02em; color:#FFFFFF;">
+                    <h1 class="h1 anim-fade2" style="margin:0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:34px; line-height:40px; letter-spacing:-0.02em; color:#FFFFFF;">
                       Welcome to BLD, {{first_name}}
                     </h1>
 
-                    <p class="anim-fade3" style="margin:16px auto 0 auto; max-width:420px; font-family:'DM Sans',Arial,sans-serif; font-size:16px; line-height:25px; color:#EEEAFF;">
+                    <p class="anim-fade3" style="margin:16px auto 0 auto; max-width:420px; font-family:'Inter',Arial,sans-serif; font-size:16px; line-height:25px; color:#EEEAFF;">
                       You&rsquo;re in. We connect you with vetted, independent site surveyors &mdash; anywhere, on your schedule.
                     </p>
 
@@ -214,7 +214,7 @@ ${EMAIL_CSS}
                       <tr>
                         <td align="center" class="cta-wrap btn-solid" style="border-radius:12px; background-color:#FFFFFF; box-shadow:0 8px 20px rgba(42,37,88,0.24);">
                           <span class="cta-sheen"></span>
-                          <a href="{{dashboard_url}}" target="_blank" style="display:inline-block; position:relative; padding:16px 40px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; font-weight:700; color:#5B52E0; border-radius:12px; letter-spacing:0.01em;">
+                          <a href="{{dashboard_url}}" target="_blank" style="display:inline-block; position:relative; padding:16px 40px; font-family:'Inter',Arial,sans-serif; font-size:15px; font-weight:700; color:#5B52E0; border-radius:12px; letter-spacing:0.01em;">
                             Post your first project &nbsp;<span class="cta-arrow">&rarr;</span>
                           </a>
                         </td>
@@ -226,7 +226,7 @@ ${EMAIL_CSS}
 
                 <tr>
                   <td class="px" style="padding:40px 44px 10px 44px;">
-                    <p style="margin:0; font-family:'DM Sans',Arial,sans-serif; font-size:16px; line-height:26px; color:#6B668C;">
+                    <p style="margin:0; font-family:'Inter',Arial,sans-serif; font-size:16px; line-height:26px; color:#6B668C;">
                       Thanks for joining <strong style="color:#2A2558;">BLD</strong> &mdash; the managed marketplace built to get your site surveys done faster, with less hassle. Here&rsquo;s how it works.
                     </p>
                   </td>
@@ -239,7 +239,7 @@ ${EMAIL_CSS}
                         <td class="col" valign="top" width="50%" style="padding-right:8px;">
                           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card" style="background:linear-gradient(180deg,#FBFBFF 0%,#EEEAFF 100%); border:1px solid rgba(91,82,224,0.12); border-radius:16px;">
                             <tr>
-                              <td style="padding:22px 20px; font-family:'DM Sans',Arial,sans-serif;">
+                              <td style="padding:22px 20px; font-family:'Inter',Arial,sans-serif;">
                                 <div class="icon-tile" style="width:44px; height:44px; background-color:#FFFFFF; border-radius:12px; text-align:center; line-height:44px; font-size:22px; margin-bottom:14px; box-shadow:0 4px 10px rgba(42,37,88,0.10);">&#128221;</div>
                                 <p style="margin:0 0 4px 0; font-size:15px; font-weight:700; color:#2A2558;">Post your project</p>
                                 <p style="margin:0; font-size:13.5px; line-height:20px; color:#6B668C;">Scope, location, timeline &mdash; in under 5 minutes.</p>
@@ -250,7 +250,7 @@ ${EMAIL_CSS}
                         <td class="col col-last" valign="top" width="50%" style="padding-left:8px;">
                           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card" style="background:linear-gradient(180deg,#FBFBFF 0%,#EEEAFF 100%); border:1px solid rgba(91,82,224,0.12); border-radius:16px;">
                             <tr>
-                              <td style="padding:22px 20px; font-family:'DM Sans',Arial,sans-serif;">
+                              <td style="padding:22px 20px; font-family:'Inter',Arial,sans-serif;">
                                 <div class="icon-tile" style="width:44px; height:44px; background-color:#FFFFFF; border-radius:12px; text-align:center; line-height:44px; font-size:22px; margin-bottom:14px; box-shadow:0 4px 10px rgba(42,37,88,0.10);">&#129309;</div>
                                 <p style="margin:0 0 4px 0; font-size:15px; font-weight:700; color:#2A2558;">Get matched</p>
                                 <p style="margin:0; font-size:13.5px; line-height:20px; color:#6B668C;">We connect you to vetted surveyors near your site.</p>
@@ -266,7 +266,7 @@ ${EMAIL_CSS}
                   <td class="px" style="padding:16px 44px 8px 44px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card" style="background:linear-gradient(180deg,#FBFBFF 0%,#EEEAFF 100%); border:1px solid rgba(91,82,224,0.12); border-radius:16px;">
                       <tr>
-                        <td style="padding:22px 20px; font-family:'DM Sans',Arial,sans-serif;">
+                        <td style="padding:22px 20px; font-family:'Inter',Arial,sans-serif;">
                           <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                               <td valign="top" width="58">
@@ -288,18 +288,18 @@ ${EMAIL_CSS}
                   <td class="px" style="padding:28px 44px 40px 44px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="anim-hero" style="background:#7168F6; background:linear-gradient(135deg,#7168F6 0%,#5B52E0 60%,#4A42C9 100%); background-size:220% 220%; border-radius:18px;">
                       <tr>
-                        <td style="padding:26px 28px; font-family:'DM Sans',Arial,sans-serif;">
+                        <td style="padding:26px 28px; font-family:'Inter',Arial,sans-serif;">
                           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                               <td class="col" valign="middle" style="padding-right:12px;">
-                                <p style="margin:0 0 4px 0; font-family:'Fraunces',Georgia,serif; font-size:18px; font-weight:700; color:#FFFFFF;">Ready when you are</p>
+                                <p style="margin:0 0 4px 0; font-family:'Inter',Arial,sans-serif; font-size:18px; font-weight:700; color:#FFFFFF;">Ready when you are</p>
                                 <p style="margin:0; font-size:13.5px; line-height:20px; color:#EEEAFF;">Your dashboard is set up and waiting.</p>
                               </td>
                               <td class="col col-last" valign="middle" align="right" width="180" style="text-align:right;">
                                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right">
                                   <tr>
                                     <td class="btn-ghost" style="border-radius:12px; background-color:#FFFFFF;">
-                                      <a href="{{dashboard_url}}" target="_blank" style="display:inline-block; padding:13px 26px; font-family:'DM Sans',Arial,sans-serif; font-size:14px; font-weight:700; color:#5B52E0; border-radius:12px;">Open dashboard</a>
+                                      <a href="{{dashboard_url}}" target="_blank" style="display:inline-block; padding:13px 26px; font-family:'Inter',Arial,sans-serif; font-size:14px; font-weight:700; color:#5B52E0; border-radius:12px;">Open dashboard</a>
                                     </td>
                                   </tr>
                                 </table>
@@ -317,7 +317,7 @@ ${EMAIL_CSS}
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid rgba(91,82,224,0.12);">
                       <tr><td style="height:28px; font-size:0; line-height:0;">&nbsp;</td></tr>
                       <tr>
-                        <td align="center" style="font-family:'DM Sans',Arial,sans-serif;">
+                        <td align="center" style="font-family:'Inter',Arial,sans-serif;">
                           <p style="margin:0 0 6px 0; font-size:14.5px; font-weight:700; color:#2A2558;">Need a hand getting started?</p>
                           <p style="margin:0; font-size:13.5px; line-height:21px; color:#6B668C;">
                             Just reply to this email, or reach us at
@@ -334,8 +334,8 @@ ${EMAIL_CSS}
           </tr>
 
           <tr>
-            <td align="center" style="padding:30px 30px 8px 30px; font-family:'DM Sans',Arial,sans-serif;">
-              <p style="margin:0 0 8px 0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:16px; color:#2A2558;">BLD</p>
+            <td align="center" style="padding:30px 30px 8px 30px; font-family:'Inter',Arial,sans-serif;">
+              <p style="margin:0 0 8px 0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:16px; color:#2A2558;">BLD</p>
               <p style="margin:0 0 16px 0; font-size:12.5px; line-height:19px; color:#6B668C;">
                 The managed marketplace connecting clients with independent site surveyors.
               </p>
@@ -377,7 +377,7 @@ const SURVEYOR_WELCOME_HTML = `<!DOCTYPE html>
 ${EMAIL_CSS}
 </style>
 </head>
-<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'DM Sans','Segoe UI',Helvetica,Arial,sans-serif;">
+<body style="margin:0; padding:0; background-color:#F7F8FF; font-family:'Inter','Segoe UI',Helvetica,Arial,sans-serif;">
 
   <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F7F8FF;">
     Welcome to BLD &mdash; complete your profile to start getting matched with survey work near you. &#8203;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
@@ -393,7 +393,7 @@ ${EMAIL_CSS}
 
           <tr>
             <td align="center" style="padding:0 0 26px 0;">
-              <span style="font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
+              <span style="font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:24px; letter-spacing:-0.02em; color:#2A2558;">BLD</span>
             </td>
           </tr>
 
@@ -407,7 +407,7 @@ ${EMAIL_CSS}
 
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 22px auto;" class="anim-fade1">
                       <tr>
-                        <td class="anim-badge" style="padding:7px 16px; background-color:rgba(255,255,255,0.16); border:1px solid rgba(255,255,255,0.34); border-radius:100px; font-family:'DM Sans',Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#FFFFFF;">
+                        <td class="anim-badge" style="padding:7px 16px; background-color:rgba(255,255,255,0.16); border:1px solid rgba(255,255,255,0.34); border-radius:100px; font-family:'Inter',Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#FFFFFF;">
                           <span class="glow-dot">&#9679;</span>&nbsp; Welcome aboard
                         </td>
                       </tr>
@@ -421,11 +421,11 @@ ${EMAIL_CSS}
                       </tr>
                     </table>
 
-                    <h1 class="h1 anim-fade2" style="margin:0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:34px; line-height:40px; letter-spacing:-0.02em; color:#FFFFFF;">
+                    <h1 class="h1 anim-fade2" style="margin:0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:34px; line-height:40px; letter-spacing:-0.02em; color:#FFFFFF;">
                       Welcome to BLD, {{first_name}}
                     </h1>
 
-                    <p class="anim-fade3" style="margin:16px auto 0 auto; max-width:430px; font-family:'DM Sans',Arial,sans-serif; font-size:16px; line-height:25px; color:#EEEAFF;">
+                    <p class="anim-fade3" style="margin:16px auto 0 auto; max-width:430px; font-family:'Inter',Arial,sans-serif; font-size:16px; line-height:25px; color:#EEEAFF;">
                       You&rsquo;re now part of our network of independent site surveyors. Let&rsquo;s get you set up to receive work.
                     </p>
 
@@ -433,7 +433,7 @@ ${EMAIL_CSS}
                       <tr>
                         <td align="center" class="cta-wrap btn-solid" style="border-radius:12px; background-color:#FFFFFF; box-shadow:0 8px 20px rgba(42,37,88,0.24);">
                           <span class="cta-sheen"></span>
-                          <a href="{{profile_url}}" target="_blank" style="display:inline-block; position:relative; padding:16px 40px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; font-weight:700; color:#5B52E0; border-radius:12px; letter-spacing:0.01em;">
+                          <a href="{{profile_url}}" target="_blank" style="display:inline-block; position:relative; padding:16px 40px; font-family:'Inter',Arial,sans-serif; font-size:15px; font-weight:700; color:#5B52E0; border-radius:12px; letter-spacing:0.01em;">
                             Complete your profile &nbsp;<span class="cta-arrow">&rarr;</span>
                           </a>
                         </td>
@@ -445,7 +445,7 @@ ${EMAIL_CSS}
 
                 <tr>
                   <td class="px" style="padding:40px 44px 10px 44px;">
-                    <p style="margin:0; font-family:'DM Sans',Arial,sans-serif; font-size:16px; line-height:26px; color:#6B668C;">
+                    <p style="margin:0; font-family:'Inter',Arial,sans-serif; font-size:16px; line-height:26px; color:#6B668C;">
                       Thanks for joining <strong style="color:#2A2558;">BLD</strong> as a site surveyor &mdash; the managed marketplace that brings vetted survey work straight to you. A complete profile gets you matched faster. Here&rsquo;s how it works.
                     </p>
                   </td>
@@ -458,7 +458,7 @@ ${EMAIL_CSS}
                         <td class="col" valign="top" width="50%" style="padding-right:8px;">
                           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card" style="background:linear-gradient(180deg,#FBFBFF 0%,#EEEAFF 100%); border:1px solid rgba(91,82,224,0.12); border-radius:16px;">
                             <tr>
-                              <td style="padding:22px 20px; font-family:'DM Sans',Arial,sans-serif;">
+                              <td style="padding:22px 20px; font-family:'Inter',Arial,sans-serif;">
                                 <div class="icon-tile" style="width:44px; height:44px; background-color:#FFFFFF; border-radius:12px; text-align:center; line-height:44px; font-size:22px; margin-bottom:14px; box-shadow:0 4px 10px rgba(42,37,88,0.10);">&#128100;</div>
                                 <p style="margin:0 0 4px 0; font-size:15px; font-weight:700; color:#2A2558;">Complete your profile</p>
                                 <p style="margin:0; font-size:13.5px; line-height:20px; color:#6B668C;">Add your skills, equipment, and coverage area to get verified.</p>
@@ -469,7 +469,7 @@ ${EMAIL_CSS}
                         <td class="col col-last" valign="top" width="50%" style="padding-left:8px;">
                           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card" style="background:linear-gradient(180deg,#FBFBFF 0%,#EEEAFF 100%); border:1px solid rgba(91,82,224,0.12); border-radius:16px;">
                             <tr>
-                              <td style="padding:22px 20px; font-family:'DM Sans',Arial,sans-serif;">
+                              <td style="padding:22px 20px; font-family:'Inter',Arial,sans-serif;">
                                 <div class="icon-tile" style="width:44px; height:44px; background-color:#FFFFFF; border-radius:12px; text-align:center; line-height:44px; font-size:22px; margin-bottom:14px; box-shadow:0 4px 10px rgba(42,37,88,0.10);">&#128205;</div>
                                 <p style="margin:0 0 4px 0; font-size:15px; font-weight:700; color:#2A2558;">Get matched to jobs</p>
                                 <p style="margin:0; font-size:13.5px; line-height:20px; color:#6B668C;">We surface survey jobs near you that fit your expertise.</p>
@@ -485,7 +485,7 @@ ${EMAIL_CSS}
                   <td class="px" style="padding:16px 44px 8px 44px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="card" style="background:linear-gradient(180deg,#FBFBFF 0%,#EEEAFF 100%); border:1px solid rgba(91,82,224,0.12); border-radius:16px;">
                       <tr>
-                        <td style="padding:22px 20px; font-family:'DM Sans',Arial,sans-serif;">
+                        <td style="padding:22px 20px; font-family:'Inter',Arial,sans-serif;">
                           <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                               <td valign="top" width="58">
@@ -507,18 +507,18 @@ ${EMAIL_CSS}
                   <td class="px" style="padding:28px 44px 40px 44px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="anim-hero" style="background:#7168F6; background:linear-gradient(135deg,#7168F6 0%,#5B52E0 60%,#4A42C9 100%); background-size:220% 220%; border-radius:18px;">
                       <tr>
-                        <td style="padding:26px 28px; font-family:'DM Sans',Arial,sans-serif;">
+                        <td style="padding:26px 28px; font-family:'Inter',Arial,sans-serif;">
                           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                               <td class="col" valign="middle" style="padding-right:12px;">
-                                <p style="margin:0 0 4px 0; font-family:'Fraunces',Georgia,serif; font-size:18px; font-weight:700; color:#FFFFFF;">Unlock your first job</p>
+                                <p style="margin:0 0 4px 0; font-family:'Inter',Arial,sans-serif; font-size:18px; font-weight:700; color:#FFFFFF;">Unlock your first job</p>
                                 <p style="margin:0; font-size:13.5px; line-height:20px; color:#EEEAFF;">Finish your profile to start getting matched.</p>
                               </td>
                               <td class="col col-last" valign="middle" align="right" width="180" style="text-align:right;">
                                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right">
                                   <tr>
                                     <td class="btn-ghost" style="border-radius:12px; background-color:#FFFFFF;">
-                                      <a href="{{profile_url}}" target="_blank" style="display:inline-block; padding:13px 26px; font-family:'DM Sans',Arial,sans-serif; font-size:14px; font-weight:700; color:#5B52E0; border-radius:12px;">Finish profile</a>
+                                      <a href="{{profile_url}}" target="_blank" style="display:inline-block; padding:13px 26px; font-family:'Inter',Arial,sans-serif; font-size:14px; font-weight:700; color:#5B52E0; border-radius:12px;">Finish profile</a>
                                     </td>
                                   </tr>
                                 </table>
@@ -536,7 +536,7 @@ ${EMAIL_CSS}
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid rgba(91,82,224,0.12);">
                       <tr><td style="height:28px; font-size:0; line-height:0;">&nbsp;</td></tr>
                       <tr>
-                        <td align="center" style="font-family:'DM Sans',Arial,sans-serif;">
+                        <td align="center" style="font-family:'Inter',Arial,sans-serif;">
                           <p style="margin:0 0 6px 0; font-size:14.5px; font-weight:700; color:#2A2558;">Questions about getting started?</p>
                           <p style="margin:0; font-size:13.5px; line-height:21px; color:#6B668C;">
                             Just reply to this email, or reach us at
@@ -553,8 +553,8 @@ ${EMAIL_CSS}
           </tr>
 
           <tr>
-            <td align="center" style="padding:30px 30px 8px 30px; font-family:'DM Sans',Arial,sans-serif;">
-              <p style="margin:0 0 8px 0; font-family:'Fraunces',Georgia,serif; font-weight:700; font-size:16px; color:#2A2558;">BLD</p>
+            <td align="center" style="padding:30px 30px 8px 30px; font-family:'Inter',Arial,sans-serif;">
+              <p style="margin:0 0 8px 0; font-family:'Inter',Arial,sans-serif; font-weight:700; font-size:16px; color:#2A2558;">BLD</p>
               <p style="margin:0 0 16px 0; font-size:12.5px; line-height:19px; color:#6B668C;">
                 The managed marketplace connecting clients with independent site surveyors.
               </p>
