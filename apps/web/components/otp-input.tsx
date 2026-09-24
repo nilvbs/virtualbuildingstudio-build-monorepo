@@ -8,13 +8,15 @@ import {
   type KeyboardEvent,
   type ChangeEvent,
 } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
 const DIGITS = 6;
 
 function onlyDigits(raw: string, max = DIGITS): string {
   return raw.replace(/\D/g, '').slice(0, max);
 }
+
+export type OtpStatus = 'idle' | 'checking' | 'success' | 'error';
 
 type OtpInputProps = {
   value: string;
@@ -26,10 +28,13 @@ type OtpInputProps = {
   /** Accessible label for the group. */
   label?: string;
   className?: string;
+  /** Visual state while verifying / after result. */
+  status?: OtpStatus;
 };
 
 /**
- * Six single-digit OTP boxes with paste + autofill support and soft pop animation.
+ * Six single-digit OTP boxes with paste + autofill, spacing that holds on
+ * small screens, and border animations for checking / success / error.
  */
 export function OtpInput({
   value,
@@ -39,6 +44,7 @@ export function OtpInput({
   autoFocus = true,
   label = 'Verification code',
   className,
+  status = 'idle',
 }: OtpInputProps) {
   const groupId = useId();
   const reduceMotion = useReducedMotion();
@@ -48,12 +54,13 @@ export function OtpInput({
   onCompleteRef.current = onComplete;
   const digits = onlyDigits(value).padEnd(DIGITS, ' ').slice(0, DIGITS).split('');
   const filled = onlyDigits(value);
+  const locked = disabled || status === 'checking' || status === 'success';
 
   useEffect(() => {
-    if (!autoFocus || disabled) return;
+    if (!autoFocus || locked) return;
     const t = window.setTimeout(() => refs.current[0]?.focus(), 40);
     return () => window.clearTimeout(t);
-  }, [autoFocus, disabled]);
+  }, [autoFocus, locked]);
 
   useEffect(() => {
     if (filled.length !== DIGITS) {
@@ -82,7 +89,6 @@ export function OtpInput({
 
   function handleChange(index: number, e: ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value;
-    // Autofill / paste into a single box may dump the whole code.
     const cleaned = onlyDigits(raw);
     if (cleaned.length > 1) {
       onChange(cleaned);
@@ -133,33 +139,62 @@ export function OtpInput({
     focusIndex(Math.min(pasted.length, DIGITS) - 1);
   }
 
+  const statusLabel =
+    status === 'checking'
+      ? 'Verifying code…'
+      : status === 'success'
+        ? 'Verified'
+        : status === 'error'
+          ? 'Code didn’t match — try again'
+          : null;
+
   return (
     <div
-      className={`otp-input${className ? ` ${className}` : ''}${disabled ? ' is-disabled' : ''}`}
+      className={`otp-input${className ? ` ${className}` : ''}${locked ? ' is-disabled' : ''}${status !== 'idle' ? ` is-${status}` : ''}`}
       role="group"
       aria-labelledby={groupId}
+      aria-busy={status === 'checking' || undefined}
+      data-status={status}
     >
       <span id={groupId} className="otp-input-label">
         {label}
       </span>
-      <div className="otp-input-row">
+      <div className="otp-input-row" aria-live="polite">
         {digits.map((char, index) => {
           const digit = char.trim();
           const isFilled = Boolean(digit);
-          const isActive = filled.length === index;
+          const isActive = status === 'idle' && filled.length === index;
           return (
             <motion.div
               key={index}
               className={`otp-cell${isFilled ? ' is-filled' : ''}${isActive ? ' is-active' : ''}`}
+              style={
+                reduceMotion
+                  ? undefined
+                  : status === 'checking'
+                    ? { animationDelay: `${index * 80}ms` }
+                    : status === 'success'
+                      ? { animationDelay: `${index * 70}ms` }
+                      : undefined
+              }
               animate={
                 reduceMotion
                   ? undefined
-                  : isFilled
-                    ? { scale: [1, 1.08, 1], y: [0, -3, 0] }
-                    : { scale: 1, y: 0 }
+                  : status === 'error'
+                    ? { x: [0, -5, 5, -4, 4, 0] }
+                    : status === 'success'
+                      ? { scale: [1, 1.06, 1] }
+                      : isFilled && status === 'idle'
+                        ? { scale: [1, 1.06, 1], y: [0, -2, 0] }
+                        : { scale: 1, y: 0, x: 0 }
               }
-              transition={{ type: 'spring', stiffness: 420, damping: 22, mass: 0.55 }}
+              transition={
+                status === 'error'
+                  ? { duration: 0.42, ease: 'easeInOut' }
+                  : { type: 'spring', stiffness: 420, damping: 22, mass: 0.55 }
+              }
             >
+              <span className="otp-cell-ring" aria-hidden />
               <input
                 ref={(el) => {
                   refs.current[index] = el;
@@ -173,7 +208,7 @@ export function OtpInput({
                 spellCheck={false}
                 maxLength={index === 0 ? DIGITS : 1}
                 value={digit}
-                disabled={disabled}
+                disabled={locked}
                 aria-label={`Digit ${index + 1} of ${DIGITS}`}
                 onChange={(e) => handleChange(index, e)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
@@ -185,6 +220,27 @@ export function OtpInput({
           );
         })}
       </div>
+      <AnimatePresence mode="wait">
+        {statusLabel ? (
+          <motion.p
+            key={status}
+            className={`otp-status otp-status--${status}`}
+            initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
+            transition={{ duration: 0.22 }}
+          >
+            {status === 'checking' ? (
+              <span className="otp-status-dot" aria-hidden />
+            ) : status === 'success' ? (
+              <span className="otp-status-check" aria-hidden>
+                ✓
+              </span>
+            ) : null}
+            {statusLabel}
+          </motion.p>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

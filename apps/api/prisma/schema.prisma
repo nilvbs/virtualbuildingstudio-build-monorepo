@@ -63,6 +63,11 @@ model User {
    * API-issued sessions after signup and local login fallback.
    */
   passwordVerifier String? @map("password_verifier")
+  /**
+   * When set, OTP send/verify lockout ignores ContactOtp rows created at or before
+   * this time (admin immediate unlock after abuse lockout).
+   */
+  otpUnlockedAt  DateTime? @map("otp_unlocked_at") @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

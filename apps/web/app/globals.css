@@ -1824,6 +1824,26 @@ code {
   align-items: flex-end;
 }
 
+.admin-user-otp-lockout .admin-dossier-card-head {
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-user-otp-lockout .admin-dossier-card-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #7f1d1d;
+}
+
+.admin-user-otp-lockout-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #4b4458;
+}
+
 .admin-user-edit-card {
   min-width: 0;
   padding: 12px 14px 14px;
@@ -4053,7 +4073,12 @@ lord-icon {
 .personal-verify-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
+}
+
+.personal-verify-actions .otp-resend {
+  flex: 1 1 160px;
 }
 
 .personal-profile-edit {
@@ -4456,11 +4481,12 @@ lord-icon {
 
 .ob-aside-kicker {
   margin: 0;
-  font-size: 12px;
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(238, 234, 255, 0.88);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: #fff;
 }
 
 .ob-aside-title {
@@ -4484,28 +4510,48 @@ lord-icon {
   margin: auto 0 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
+  position: relative;
+}
+
+.ob-aside-steps::before {
+  content: '';
+  position: absolute;
+  left: 27px;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  pointer-events: none;
 }
 
 .ob-aside-step {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px 14px;
+  padding: 12px 12px 12px 10px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.86);
   font-size: 14px;
   font-weight: 650;
   text-align: left;
   cursor: default;
   backdrop-filter: blur(8px);
   transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    transform 0.18s ease;
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .ob-aside-step.is-reachable {
@@ -4513,43 +4559,88 @@ lord-icon {
 }
 
 .ob-aside-step.is-reachable:hover {
-  background: rgba(255, 255, 255, 0.16);
-  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateX(3px);
 }
 
 .ob-aside-step:disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 
 .ob-aside-step.is-active {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.38);
-  color: #fff;
-  box-shadow: 0 10px 28px rgba(42, 37, 88, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  border-color: #fff;
+  color: #4a42c9;
+  box-shadow: 0 14px 32px rgba(42, 37, 88, 0.22);
 }
 
 .ob-aside-step.is-done {
   color: #efeaff;
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.ob-aside-step-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
+}
+
+.ob-aside-step.is-active .ob-aside-step-icon {
+  background: #eeeaff;
+}
+
+.ob-aside-step.is-active .ob-aside-step-icon lord-icon {
+  /* Keep purple icons readable on white active card */
+  filter: none;
+}
+
+.ob-aside-step-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ob-aside-step-label {
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.ob-aside-step-hint {
+  font-size: 11.5px;
+  font-weight: 500;
+  opacity: 0.78;
+  line-height: 1.25;
+}
+
+.ob-aside-step.is-active .ob-aside-step-hint {
+  color: #6b668c;
+  opacity: 1;
 }
 
 .ob-aside-step-num {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  font-size: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 11px;
   font-weight: 750;
   flex-shrink: 0;
 }
 
 .ob-aside-step.is-active .ob-aside-step-num {
-  background: #fff;
-  color: #5b52e0;
+  background: #5b52e0;
+  color: #fff;
 }
 
 .ob-aside-signout {
@@ -4589,34 +4680,37 @@ lord-icon {
   overflow: auto;
   min-height: 0;
   height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .ob-content {
   width: 100%;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 28px 28px 40px;
+  max-width: 640px;
+  margin: auto;
+  padding: clamp(20px, 4vh, 36px) 28px clamp(28px, 5vh, 48px);
   display: grid;
-  gap: 16px;
-  align-content: start;
+  gap: 14px;
+  align-content: center;
   box-sizing: border-box;
+  flex: 1 0 auto;
 }
 
 .ob-step-stage {
   min-height: 0;
-  padding: 18px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.88);
+  padding: 22px 22px 20px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(113, 104, 246, 0.12);
   box-shadow:
-    0 18px 40px rgba(42, 37, 88, 0.06),
+    0 16px 36px rgba(42, 37, 88, 0.07),
     0 2px 8px rgba(42, 37, 88, 0.04);
   backdrop-filter: blur(10px);
 }
 
 .ob-head {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .ob-back {
@@ -4640,17 +4734,26 @@ lord-icon {
 
 .ob-kicker {
   margin: 0;
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ob-navy);
+  font-family: var(--font-display), Satoshi, system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: #5b52e0;
+}
+
+.ob-step-chip {
+  margin: 0 0 6px !important;
+  font-size: 12.5px !important;
+  font-weight: 650;
+  color: #6b668c !important;
+  letter-spacing: 0.01em;
 }
 
 .ob-head h1 {
   margin: 0;
-  font-size: clamp(22px, 2.4vw, 30px);
-  line-height: 1.15;
+  font-size: clamp(22px, 2.4vw, 28px);
+  line-height: 1.18;
   letter-spacing: -0.03em;
   color: var(--ob-ink);
 }
@@ -4660,12 +4763,12 @@ lord-icon {
   color: #6b668c;
   font-size: 14px;
   line-height: 1.45;
-  max-width: 42rem;
+  max-width: 40rem;
 }
 
 .onboarding-form {
   display: grid;
-  gap: 8px;
+  gap: 14px;
 }
 
 .ob-profile-form {
@@ -4772,6 +4875,9 @@ lord-icon {
 }
 
 .ob-progress-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   font-weight: 650;
   color: #6b668c;
@@ -5012,13 +5118,73 @@ lord-icon {
 
 .onboarding-otp-stack {
   display: grid;
+  gap: 12px;
+}
+
+.otp-resend {
+  display: grid;
   gap: 8px;
+}
+
+.otp-resend.is-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.otp-resend-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #6b668c);
+}
+
+.otp-resend-warn {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #b45309 12%, transparent);
+  border: 1px solid color-mix(in srgb, #b45309 28%, transparent);
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.otp-resend-lockout {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #b91c1c 10%, transparent);
+  border: 1px solid color-mix(in srgb, #b91c1c 25%, transparent);
+  color: #7f1d1d;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.otp-resend-lockout p {
+  margin: 0;
+}
+
+.otp-resend-lockout p + p {
+  margin-top: 6px;
+}
+
+.otp-resend-support {
+  color: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.otp-resend-support:hover {
+  opacity: 0.85;
 }
 
 /* ===== Segmented OTP input ===== */
 .otp-input {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .otp-input-label {
@@ -5028,47 +5194,84 @@ lord-icon {
 }
 
 .otp-input-row {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: clamp(10px, 2.8vw, 16px);
+  width: 100%;
+  max-width: 400px;
 }
 
 .otp-cell {
   position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 56px;
   display: grid;
   place-items: center;
-  aspect-ratio: 0.88;
+  aspect-ratio: 1;
+  min-height: 48px;
   border-radius: 14px;
-  border: 1.5px solid rgba(113, 104, 246, 0.22);
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f7f6ff 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  border: 2px solid rgba(113, 104, 246, 0.2);
+  background: linear-gradient(180deg, #ffffff 0%, #f8f7ff 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
   transition:
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    background 0.18s ease;
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+  isolation: isolate;
+}
+
+.otp-cell-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
 }
 
 .otp-cell.is-active {
-  border-color: rgba(113, 104, 246, 0.7);
+  border-color: #7168f6;
   box-shadow:
-    0 0 0 4px rgba(113, 104, 246, 0.14),
+    0 0 0 4px rgba(113, 104, 246, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
+.otp-cell.is-active .otp-cell-ring {
+  opacity: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(113, 104, 246, 0.55) 90deg,
+    transparent 180deg
+  );
+  animation: otpActiveSweep 1.6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 2px;
+}
+
 .otp-cell.is-filled {
-  border-color: rgba(113, 104, 246, 0.55);
-  background:
-    linear-gradient(180deg, #f3f1ff 0%, #ebe8ff 100%);
+  border-color: rgba(113, 104, 246, 0.5);
+  background: linear-gradient(180deg, #f5f3ff 0%, #ebe8ff 100%);
 }
 
 .otp-cell-input {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   border: 0;
   background: transparent;
   text-align: center;
-  font-size: clamp(1.15rem, 4.2vw, 1.45rem);
+  font-size: clamp(1.2rem, 4.5vw, 1.5rem);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: #2a2558;
@@ -5079,6 +5282,7 @@ lord-icon {
 
 .otp-caret {
   position: absolute;
+  z-index: 2;
   width: 2px;
   height: 1.35em;
   border-radius: 2px;
@@ -5098,17 +5302,194 @@ lord-icon {
   }
 }
 
+@keyframes otpActiveSweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.otp-input.is-checking .otp-cell {
+  border-color: rgba(113, 104, 246, 0.35);
+  background: #f7f6ff;
+}
+
+.otp-input.is-checking .otp-cell-ring {
+  opacity: 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    #7168f6 18%,
+    #a29bff 32%,
+    transparent 48%
+  );
+  animation: otpCheckSpin 1.05s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 2.5px;
+}
+
+@keyframes otpCheckSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.otp-input.is-success .otp-cell {
+  border-color: #0e9f6e;
+  background: linear-gradient(180deg, #f0fdf7 0%, #e7f7f0 100%);
+  box-shadow: 0 0 0 3px rgba(14, 159, 110, 0.14);
+}
+
+.otp-input.is-success .otp-cell-ring {
+  opacity: 1;
+  background: conic-gradient(
+    from 200deg,
+    transparent 0%,
+    #0e9f6e 22%,
+    #34d399 40%,
+    transparent 58%
+  );
+  animation: otpSuccessSweep 0.85s ease-out both;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 2.5px;
+}
+
+@keyframes otpSuccessSweep {
+  0% {
+    opacity: 0;
+    transform: rotate(-40deg) scale(0.92);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.35;
+    transform: rotate(280deg) scale(1);
+  }
+}
+
+.otp-input.is-error .otp-cell {
+  border-color: #dc2626;
+  background: #fff8f8;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.otp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.otp-status--checking {
+  color: #5b52e0;
+}
+
+.otp-status--success {
+  color: #0e9f6e;
+}
+
+.otp-status--error {
+  color: #b91c1c;
+}
+
+.otp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7168f6;
+  box-shadow: 0 0 0 0 rgba(113, 104, 246, 0.45);
+  animation: otpPulse 1s ease-out infinite;
+}
+
+.otp-status-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0e9f6e;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@keyframes otpPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(113, 104, 246, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(113, 104, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(113, 104, 246, 0);
+  }
+}
+
 .otp-input.is-disabled {
-  opacity: 0.55;
   pointer-events: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .otp-caret {
-    animation: none;
-    opacity: 0.85;
+.otp-input.is-disabled:not(.is-checking):not(.is-success) {
+  opacity: 0.55;
+}
+
+.onboarding-channel.is-verified {
+  animation: otpVerifiedIn 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  border-color: rgba(14, 159, 110, 0.35);
+  background: linear-gradient(180deg, #f4fdf8 0%, #eefaf4 100%);
+}
+
+@keyframes otpVerifiedIn {
+  from {
+    opacity: 0.4;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
+
+@media (max-width: 420px) {
+  .otp-input-row {
+    gap: 8px;
+    max-width: 100%;
+  }
+
+  .otp-cell {
+    min-height: 44px;
+    border-radius: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .otp-caret,
+  .otp-cell.is-active .otp-cell-ring,
+  .otp-input.is-checking .otp-cell-ring,
+  .otp-input.is-success .otp-cell-ring,
+  .otp-status-dot,
+  .onboarding-channel.is-verified {
+    animation: none !important;
+  }
+}
+
 
 .onboarding-hint {
   margin: 0;
@@ -5135,9 +5516,9 @@ lord-icon {
 .onboarding-account-card {
   display: grid;
   justify-items: center;
-  gap: 12px;
-  min-height: 148px;
-  padding: 24px 16px;
+  gap: 8px;
+  min-height: 152px;
+  padding: 20px 16px 18px;
   border: 1.5px solid rgba(113, 104, 246, 0.16);
   border-radius: 20px;
   background: #fff;
@@ -5154,6 +5535,28 @@ lord-icon {
     transform 0.15s var(--ease);
 }
 
+.onboarding-account-card-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: #f4f5ff;
+  border: 1px solid rgba(113, 104, 246, 0.12);
+}
+
+.onboarding-account-card strong {
+  font-size: 15px;
+  font-weight: 750;
+  color: inherit;
+}
+
+.onboarding-account-card small {
+  font-size: 12px;
+  font-weight: 550;
+  color: #8a84a8;
+}
+
 .onboarding-account-card:hover {
   border-color: rgba(113, 104, 246, 0.34);
   transform: translateY(-2px);
@@ -5165,6 +5568,12 @@ lord-icon {
   background: linear-gradient(180deg, #f7f8ff 0%, #eeeaff 100%);
   color: var(--ob-ink);
   box-shadow: 0 16px 36px rgba(113, 104, 246, 0.16);
+}
+
+.onboarding-account-card.is-active .onboarding-account-card-icon {
+  background: #fff;
+  border-color: rgba(113, 104, 246, 0.22);
+  box-shadow: 0 8px 18px rgba(91, 82, 224, 0.12);
 }
 
 .onboarding-account-card svg {
@@ -5199,8 +5608,10 @@ lord-icon {
 
 @media (max-width: 640px) {
   .ob-content {
-    padding: 12px 14px 20px;
-    gap: 10px;
+    margin: 0 auto;
+    padding: 16px 14px 24px;
+    gap: 12px;
+    align-content: start;
   }
 
   .ob-head h1 {
@@ -5231,9 +5642,17 @@ lord-icon {
   .onboarding-account-card {
     min-height: 88px;
     grid-auto-flow: column;
+    grid-template-columns: auto 1fr;
     justify-content: start;
+    justify-items: start;
     align-items: center;
     padding: 14px 16px;
+    text-align: left;
+  }
+
+  .onboarding-account-card-icon {
+    width: 44px;
+    height: 44px;
   }
 
   .ob-progress-label {

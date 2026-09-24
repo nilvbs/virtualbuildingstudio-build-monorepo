@@ -5,18 +5,20 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  AlertCircle,
   ArrowLeft,
   ArrowRight,
   LogOut,
 } from 'lucide-react';
 import type { AccountType, OnboardingStatus, OnboardingStep, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
+import { toastError } from '../../lib/action-toast';
 import { clearSession, getActiveRole, getSession, isAuthenticated } from '../../lib/session';
 import { homePathForWorkspace } from '../../lib/home';
 import { e164ToPhoneInput } from '../../lib/country-codes';
+import { parseOtpBlocked, useOtpResendGate } from '../../lib/otp-resend-gate';
 import { LordIcon } from '../../components/lord-icon';
 import { OtpInput } from '../../components/otp-input';
+import { OtpResendControls } from '../../components/otp-resend-controls';
 import {
   OnboardingPhoneVerify,
   defaultPhoneInput,
@@ -25,12 +27,42 @@ import {
 import { AddressFields } from '../../components/address-fields';
 import { AccountNoticeBanner } from '../../components/account-notice-banner';
 
-const ONBOARDING_STEPS: { id: OnboardingStep; label: string }[] = [
-  { id: 'select_account_type', label: 'Account type' },
-  { id: 'accept_terms', label: 'Terms & NDA' },
-  { id: 'verify_contact', label: 'Verify contact' },
-  { id: 'complete_profile', label: 'Your details' },
-  { id: 'portfolio', label: 'Portfolio' },
+const ONBOARDING_STEPS: {
+  id: OnboardingStep;
+  label: string;
+  hint: string;
+  icon: 'account' | 'document' | 'mail' | 'avatar' | 'briefcase';
+}[] = [
+  {
+    id: 'select_account_type',
+    label: 'Account type',
+    hint: 'Individual or company',
+    icon: 'account',
+  },
+  {
+    id: 'accept_terms',
+    label: 'Terms & NDA',
+    hint: 'Required agreements',
+    icon: 'document',
+  },
+  {
+    id: 'verify_contact',
+    label: 'Verify contact',
+    hint: 'Email and mobile',
+    icon: 'mail',
+  },
+  {
+    id: 'complete_profile',
+    label: 'Your details',
+    hint: 'Profile basics',
+    icon: 'avatar',
+  },
+  {
+    id: 'portfolio',
+    label: 'Portfolio',
+    hint: 'Services and kit',
+    icon: 'briefcase',
+  },
 ];
 
 function stepIndex(step: OnboardingStep): number {
@@ -47,6 +79,14 @@ function initials(name: string) {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
 }
+
+function firstName(name: string | null | undefined) {
+  const part = name?.trim().split(/\s+/)[0];
+  return part || null;
+}
+
+const LORD_ON_PURPLE = 'primary:#ffffff,secondary:#c8c3ff';
+const LORD_ON_LIGHT = 'primary:#5b52e0,secondary:#9b94ff';
 
 const EMPTY_ADDRESS = {
   line1: '',
@@ -75,12 +115,19 @@ export default function OnboardingPage() {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptNda, setAcceptNda] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [otpUi, setOtpUi] = useState<{
+    email: 'idle' | 'checking' | 'success' | 'error';
+    phone: 'idle' | 'checking' | 'success' | 'error';
+    work: 'idle' | 'checking' | 'success' | 'error';
+  }>({ email: 'idle', phone: 'idle', work: 'idle' });
   /** UI step; may lag behind server when the user revisits an earlier step. */
   const [viewStep, setViewStep] = useState<OnboardingStep | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const role = getActiveRole();
   const reduceMotion = useReducedMotion();
+  const emailGate = useOtpResendGate();
+  const phoneGate = useOtpResendGate();
+  const workGate = useOtpResendGate();
 
   async function load() {
     const next = await api.getOnboarding();
@@ -115,17 +162,23 @@ export default function OnboardingPage() {
       router.replace('/login');
       return;
     }
-    load().catch((err) => setError(errorMessage(err)));
+    load().catch((err) => toastError('Couldn’t load onboarding', errorMessage(err)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   async function sendPhoneCode(phone: string) {
     setBusy('phone-start');
-    setError(null);
     try {
       await api.startPhoneVerification(phone);
+      phoneGate.markSent();
     } catch (err) {
-      setError(errorMessage(err));
+      const blocked = parseOtpBlocked(err);
+      if (blocked) {
+        phoneGate.applyBlocked(blocked);
+        toastError(blocked.message);
+      } else {
+        toastError(errorMessage(err));
+      }
       throw err;
     } finally {
       setBusy(null);
@@ -133,14 +186,84 @@ export default function OnboardingPage() {
     await load();
   }
 
+  async function sendEmailCode() {
+    setBusy('email-start');
+    try {
+      await api.startEmailVerification();
+      emailGate.markSent();
+      setEmailCodeSent(true);
+    } catch (err) {
+      const blocked = parseOtpBlocked(err);
+      if (blocked) {
+        emailGate.applyBlocked(blocked);
+        toastError(blocked.message);
+      } else {
+        toastError(errorMessage(err));
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendWorkEmailCode() {
+    setBusy('work-start');
+    try {
+      await api.startWorkEmailVerification(workEmail.trim());
+      workGate.markSent();
+    } catch (err) {
+      const blocked = parseOtpBlocked(err);
+      if (blocked) {
+        workGate.applyBlocked(blocked);
+        toastError(blocked.message);
+      } else {
+        toastError(errorMessage(err));
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function run(label: string, action: () => Promise<unknown>) {
     setBusy(label);
-    setError(null);
     try {
       await action();
       await load();
     } catch (err) {
-      setError(errorMessage(err));
+      toastError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Verify OTP with checking → success border animation before refreshing status. */
+  async function runVerify(
+    label: 'email' | 'phone' | 'work',
+    action: () => Promise<unknown>,
+  ) {
+    const gate = label === 'email' ? emailGate : label === 'phone' ? phoneGate : workGate;
+    if (!gate.canVerify) {
+      toastError('Verification is paused. Try again after the lockout or open a support ticket.');
+      return;
+    }
+    setBusy(label);
+    setOtpUi((prev) => ({ ...prev, [label]: 'checking' }));
+    try {
+      await action();
+      setOtpUi((prev) => ({ ...prev, [label]: 'success' }));
+      await new Promise((r) => window.setTimeout(r, 780));
+      await load();
+      setOtpUi((prev) => ({ ...prev, [label]: 'idle' }));
+      gate.reset();
+    } catch (err) {
+      const blocked = parseOtpBlocked(err);
+      if (blocked) {
+        gate.applyBlocked(blocked);
+        setOtpUi((prev) => ({ ...prev, [label]: 'idle' }));
+        toastError(blocked.message);
+      } else {
+        setOtpUi((prev) => ({ ...prev, [label]: 'error' }));
+        toastError(errorMessage(err));
+      }
     } finally {
       setBusy(null);
     }
@@ -148,7 +271,6 @@ export default function OnboardingPage() {
 
   async function signOut() {
     setBusy('sign-out');
-    setError(null);
     try {
       const session = getSession();
       await api.logout(session?.refreshToken);
@@ -172,15 +294,13 @@ export default function OnboardingPage() {
     const next = visible[idx + 1];
     if (next && stepIndex(next.id) <= serverIdx) {
       setViewStep(next.id);
-      setError(null);
-    }
+      }
   }
 
   /** Leave Verify contact once both channels are verified. */
   function continueFromContact() {
     if (!status?.canCompleteProfile) return;
     setViewStep('complete_profile');
-    setError(null);
   }
 
   function goBack() {
@@ -190,15 +310,13 @@ export default function OnboardingPage() {
     const idx = visible.findIndex((item) => item.id === display);
     if (idx > 0) {
       setViewStep(visible[idx - 1]!.id);
-      setError(null);
-    }
+      }
   }
 
   function jumpToStep(step: OnboardingStep) {
     if (!status) return;
     if (stepIndex(step) > stepIndex(status.step)) return;
     setViewStep(step);
-    setError(null);
   }
 
   async function submitAccountType(e: FormEvent) {
@@ -217,7 +335,7 @@ export default function OnboardingPage() {
       return;
     }
     if (!acceptTerms || !acceptNda) {
-      setError('You must accept both the Terms & Conditions and the NDA to continue.');
+      toastError('Accept required agreements', 'You must accept both the Terms & Conditions and the NDA to continue.');
       return;
     }
     await run('terms', () => api.acceptTerms());
@@ -234,7 +352,7 @@ export default function OnboardingPage() {
     }
     const isCompany = status?.accountType === 'company';
     if (isCompany && !status?.workEmailVerified) {
-      setError('Verify your work email before continuing.');
+      toastError('Work email required', 'Verify your work email before continuing.');
       return;
     }
     await run('profile', () =>
@@ -262,21 +380,20 @@ export default function OnboardingPage() {
     event.target.value = '';
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setError('Profile photo must be a JPG, PNG, or WebP image.');
+      toastError('Invalid photo', 'Profile photo must be a JPG, PNG, or WebP image.');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError('Profile photo must be 5 MB or smaller.');
+      toastError('Photo too large', 'Profile photo must be 5 MB or smaller.');
       return;
     }
 
     setBusy('photo');
-    setError(null);
     try {
       const next = await api.uploadAvatar(file, file.name);
       setStatus((current) => (current ? { ...current, avatarKey: next.avatarKey } : current));
     } catch (err) {
-      setError(errorMessage(err));
+      toastError(errorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -335,6 +452,10 @@ export default function OnboardingPage() {
               : 'Verify your email and mobile, then add your base address to finish setup.'
           : 'Add project examples next so clients can understand your work.';
 
+  const welcomeName =
+    firstName(fullName) || firstName(status.fullName) || firstName(status.companyName);
+  const welcomeKicker = welcomeName ? `Hi, ${welcomeName}` : 'Welcome to BLD';
+
   return (
     <main className="ob">
       <aside className="ob-aside" aria-hidden>
@@ -347,10 +468,12 @@ export default function OnboardingPage() {
             className="ob-aside-logo"
             priority
           />
-          <p className="ob-aside-kicker">Account setup</p>
-          <h2 className="ob-aside-title">Get your workspace ready</h2>
+          <p className="ob-aside-kicker">{welcomeKicker}</p>
+          <h2 className="ob-aside-title">Let&apos;s get you set up</h2>
           <p className="ob-aside-copy">
-            A few quick steps so we know who you are and how to match you on BLD.
+            {welcomeName
+              ? `${welcomeName}, a few quick steps and your workspace will be ready to match on BLD.`
+              : 'A few quick steps so we know who you are and how to match you on BLD.'}
           </p>
           <ol className="ob-aside-steps">
             {visibleSteps.map((item, index) => {
@@ -365,8 +488,28 @@ export default function OnboardingPage() {
                     disabled={!reachable}
                     onClick={() => jumpToStep(item.id)}
                   >
-                    <span className="ob-aside-step-num">{done ? '✓' : index + 1}</span>
-                    <span>{item.label}</span>
+                    <span className="ob-aside-step-icon" aria-hidden>
+                      {done ? (
+                        <LordIcon
+                          name="check"
+                          size={22}
+                          trigger="in"
+                          colors={active ? LORD_ON_LIGHT : LORD_ON_PURPLE}
+                        />
+                      ) : (
+                        <LordIcon
+                          name={item.icon}
+                          size={22}
+                          trigger={active ? 'loop' : 'hover'}
+                          colors={active ? LORD_ON_LIGHT : LORD_ON_PURPLE}
+                        />
+                      )}
+                    </span>
+                    <span className="ob-aside-step-copy">
+                      <span className="ob-aside-step-label">{item.label}</span>
+                      <span className="ob-aside-step-hint">{item.hint}</span>
+                    </span>
+                    <span className="ob-aside-step-num">{index + 1}</span>
                   </button>
                 </li>
               );
@@ -421,7 +564,13 @@ export default function OnboardingPage() {
                 >
                   <span className="ob-progress-bar" />
                   <span className="ob-progress-label">
-                    {done ? '✓' : index + 1} {item.label}
+                    <LordIcon
+                      name={done ? 'check' : item.icon}
+                      size={14}
+                      trigger={active ? 'loop' : 'hover'}
+                      colors={active || done ? LORD_ON_LIGHT : 'primary:#6b668c,secondary:#9b94ff'}
+                    />
+                    {item.label}
                   </span>
                 </button>
               );
@@ -440,17 +589,10 @@ export default function OnboardingPage() {
                   Previous step
                 </button>
               ) : null}
-              <p className="ob-kicker">Account setup</p>
+              <p className="ob-kicker">{welcomeKicker}</p>
               <h1>{title}</h1>
               <p>{lede}</p>
             </div>
-
-            {error && (
-              <div className="alert error" role="alert">
-                <AlertCircle size={17} />
-                <span>{error}</span>
-              </div>
-            )}
 
           <AnimatePresence mode="wait">
             <motion.div
@@ -473,8 +615,16 @@ export default function OnboardingPage() {
                     onClick={() => !accountTypeLocked && setAccountType('individual')}
                     disabled={accountTypeLocked}
                   >
-                    <LordIcon name="avatar" size={28} trigger="hover" />
-                    Individual
+                    <span className="onboarding-account-card-icon" aria-hidden>
+                      <LordIcon
+                        name="avatar"
+                        size={36}
+                        trigger={accountType === 'individual' && !reduceMotion ? 'loop' : 'hover'}
+                        colors={LORD_ON_LIGHT}
+                      />
+                    </span>
+                    <strong>Individual</strong>
+                    <small>Personal workspace</small>
                   </button>
                   <button
                     type="button"
@@ -482,8 +632,16 @@ export default function OnboardingPage() {
                     onClick={() => !accountTypeLocked && setAccountType('company')}
                     disabled={accountTypeLocked}
                   >
-                    <LordIcon name="home" size={28} trigger="hover" />
-                    Company
+                    <span className="onboarding-account-card-icon" aria-hidden>
+                      <LordIcon
+                        name="home"
+                        size={36}
+                        trigger={accountType === 'company' && !reduceMotion ? 'loop' : 'hover'}
+                        colors={LORD_ON_LIGHT}
+                      />
+                    </span>
+                    <strong>Company</strong>
+                    <small>Team or business</small>
                   </button>
                 </div>
                 {accountTypeLocked ? (
@@ -586,42 +744,55 @@ export default function OnboardingPage() {
                     <div className="onboarding-otp-stack">
                       <OtpInput
                         value={emailCode}
-                        onChange={setEmailCode}
-                        disabled={busy === 'email'}
+                        onChange={(code) => {
+                          setEmailCode(code);
+                          if (otpUi.email === 'error') {
+                            setOtpUi((prev) => ({ ...prev, email: 'idle' }));
+                          }
+                        }}
+                        disabled={busy === 'email' || !emailGate.canVerify}
+                        status={otpUi.email}
                         autoFocus
                         label="Email verification code"
                         onComplete={(code) => {
-                          if (busy === 'email') return;
-                          void run('email', () => api.verifyEmail(code));
+                          if (busy === 'email' || !emailGate.canVerify) return;
+                          void runVerify('email', () => api.verifyEmail(code));
                         }}
                       />
                       <button
                         type="button"
                         className="btn block"
-                        disabled={busy === 'email' || emailCode.replace(/\D/g, '').length < 6}
-                        onClick={() => void run('email', () => api.verifyEmail(emailCode))}
+                        disabled={
+                          busy === 'email' ||
+                          !emailGate.canVerify ||
+                          emailCode.replace(/\D/g, '').length < 6
+                        }
+                        onClick={() => void runVerify('email', () => api.verifyEmail(emailCode))}
                       >
-                        {busy === 'email' ? 'Verifying…' : 'Verify email'}
+                        {busy === 'email'
+                          ? 'Verifying…'
+                          : emailGate.locked
+                            ? 'Verification paused'
+                            : 'Verify email'}
                       </button>
+                      <OtpResendControls
+                        gate={emailGate}
+                        role={role}
+                        busy={busy === 'email-start'}
+                        onResend={() => void sendEmailCode()}
+                        resendLabel="Resend email code"
+                      />
                     </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={`btn ${emailCodeSent ? 'secondary' : ''} block`}
-                    disabled={busy === 'email-start'}
-                    onClick={() =>
-                      void run('email-start', async () => {
-                        await api.startEmailVerification();
-                        setEmailCodeSent(true);
-                      })
-                    }
-                  >
-                    {busy === 'email-start'
-                      ? 'Sending…'
-                      : emailCodeSent
-                        ? 'Resend email code'
-                        : 'Send email code'}
-                  </button>
+                  ) : (
+                    <OtpResendControls
+                      gate={emailGate}
+                      role={role}
+                      busy={busy === 'email-start'}
+                      onResend={() => void sendEmailCode()}
+                      sendLabel="Send email code"
+                      resendLabel="Resend email code"
+                    />
+                  )}
                 </div>
               )}
 
@@ -639,13 +810,21 @@ export default function OnboardingPage() {
               <OnboardingPhoneVerify
                 verified={status.phoneVerified}
                 phoneCode={phoneCode}
-                onPhoneCodeChange={setPhoneCode}
+                onPhoneCodeChange={(code) => {
+                  setPhoneCode(code);
+                  if (otpUi.phone === 'error') {
+                    setOtpUi((prev) => ({ ...prev, phone: 'idle' }));
+                  }
+                }}
                 phoneInput={phoneInput}
                 onPhoneInputChange={setPhoneInput}
                 busy={busy}
-                onError={setError}
+                otpStatus={otpUi.phone}
+                onError={(msg) => toastError(msg)}
                 onSendCode={sendPhoneCode}
-                onVerify={() => run('phone', () => api.verifyPhone(phoneCode))}
+                onVerify={() => runVerify('phone', () => api.verifyPhone(phoneCode))}
+                resendGate={phoneGate}
+                role={role}
               />
               {status.canCompleteProfile ? (
                 <button type="button" className="btn block" onClick={continueFromContact}>
@@ -736,35 +915,49 @@ export default function OnboardingPage() {
                         onChange={(e) => setWorkEmail(e.target.value)}
                         placeholder="name@company.com"
                         required
+                        disabled={workGate.locked}
                       />
-                      <button
-                        type="button"
-                        className="btn secondary block"
-                        disabled={busy === 'work-start' || !workEmail.trim()}
-                        onClick={() =>
-                          void run('work-start', () => api.startWorkEmailVerification(workEmail.trim()))
-                        }
-                      >
-                        {busy === 'work-start' ? 'Sending…' : 'Send work email code'}
-                      </button>
+                      <OtpResendControls
+                        gate={workGate}
+                        role={role}
+                        busy={busy === 'work-start'}
+                        disabled={!workEmail.trim()}
+                        onResend={() => void sendWorkEmailCode()}
+                        sendLabel="Send work email code"
+                        resendLabel="Resend work email code"
+                      />
                       <OtpInput
                         value={workEmailCode}
-                        onChange={setWorkEmailCode}
-                        disabled={busy === 'work'}
+                        onChange={(code) => {
+                          setWorkEmailCode(code);
+                          if (otpUi.work === 'error') {
+                            setOtpUi((prev) => ({ ...prev, work: 'idle' }));
+                          }
+                        }}
+                        disabled={busy === 'work' || !workGate.canVerify}
+                        status={otpUi.work}
                         autoFocus={false}
                         label="Work email verification code"
                         onComplete={(code) => {
-                          if (busy === 'work') return;
-                          void run('work', () => api.verifyWorkEmail(code));
+                          if (busy === 'work' || !workGate.canVerify) return;
+                          void runVerify('work', () => api.verifyWorkEmail(code));
                         }}
                       />
                       <button
                         type="button"
                         className="btn block"
-                        disabled={busy === 'work' || workEmailCode.replace(/\D/g, '').length < 6}
-                        onClick={() => void run('work', () => api.verifyWorkEmail(workEmailCode))}
+                        disabled={
+                          busy === 'work' ||
+                          !workGate.canVerify ||
+                          workEmailCode.replace(/\D/g, '').length < 6
+                        }
+                        onClick={() => void runVerify('work', () => api.verifyWorkEmail(workEmailCode))}
                       >
-                        {busy === 'work' ? 'Verifying…' : 'Verify work email'}
+                        {busy === 'work'
+                          ? 'Verifying…'
+                          : workGate.locked
+                            ? 'Verification paused'
+                            : 'Verify work email'}
                       </button>
                     </div>
                   )}
@@ -819,32 +1012,43 @@ export default function OnboardingPage() {
                       <div className="onboarding-otp-stack">
                         <OtpInput
                           value={emailCode}
-                          onChange={setEmailCode}
-                          disabled={busy === 'email'}
+                          onChange={(code) => {
+                            setEmailCode(code);
+                            if (otpUi.email === 'error') {
+                              setOtpUi((prev) => ({ ...prev, email: 'idle' }));
+                            }
+                          }}
+                          disabled={busy === 'email' || !emailGate.canVerify}
+                          status={otpUi.email}
                           autoFocus={false}
                           label="Email verification code"
                           onComplete={(code) => {
-                            if (busy === 'email') return;
-                            void run('email', () => api.verifyEmail(code));
+                            if (busy === 'email' || !emailGate.canVerify) return;
+                            void runVerify('email', () => api.verifyEmail(code));
                           }}
                         />
                         <div className="ob-inline-actions">
                           <button
                             type="button"
                             className="btn"
-                            disabled={busy === 'email' || emailCode.replace(/\D/g, '').length < 6}
-                            onClick={() => void run('email', () => api.verifyEmail(emailCode))}
+                            disabled={
+                              busy === 'email' ||
+                              !emailGate.canVerify ||
+                              emailCode.replace(/\D/g, '').length < 6
+                            }
+                            onClick={() => void runVerify('email', () => api.verifyEmail(emailCode))}
                           >
                             {busy === 'email' ? 'Verifying…' : 'Verify'}
                           </button>
-                          <button
-                            type="button"
-                            className="btn secondary"
-                            disabled={busy === 'email-start'}
-                            onClick={() => void run('email-start', () => api.startEmailVerification())}
-                          >
-                            {busy === 'email-start' ? 'Sending…' : 'Send code'}
-                          </button>
+                          <OtpResendControls
+                            gate={emailGate}
+                            role={role}
+                            busy={busy === 'email-start'}
+                            compact
+                            onResend={() => void sendEmailCode()}
+                            sendLabel="Send code"
+                            resendLabel="Resend"
+                          />
                         </div>
                       </div>
                     </div>
@@ -867,9 +1071,11 @@ export default function OnboardingPage() {
                       onPhoneInputChange={setPhoneInput}
                       busy={busy}
                       compact
-                      onError={setError}
+                      onError={(msg) => toastError(msg)}
                       onSendCode={sendPhoneCode}
-                      onVerify={() => run('phone', () => api.verifyPhone(phoneCode))}
+                      onVerify={() => runVerify('phone', () => api.verifyPhone(phoneCode))}
+                      resendGate={phoneGate}
+                      role={role}
                     />
                   )}
                 </div>

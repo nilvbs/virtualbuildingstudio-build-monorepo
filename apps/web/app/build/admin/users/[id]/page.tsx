@@ -17,6 +17,7 @@ import {
   Phone,
   ShieldAlert,
   Trash2,
+  Unlock,
   X,
 } from 'lucide-react';
 import type { AdminUserDetail } from '@surveylink/types';
@@ -111,6 +112,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   const [verifying, setVerifying] = useState(false);
   const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [unlockingOtp, setUnlockingOtp] = useState(false);
 
   function enterEdit() {
     if (!user || !canManage) return;
@@ -200,7 +202,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   async function onVerifyContact() {
     if (!user || !verifyChannel) return;
     if (!verifyPassword.trim()) {
-      setError('Enter your super admin password to confirm.');
+      setError('Enter your password to confirm.');
       return;
     }
     setVerifying(true);
@@ -214,10 +216,30 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       setForm(formFromUser(updated));
       setVerifyChannel(null);
       setVerifyPassword('');
+      toastSuccess(
+        verifyChannel === 'email' ? 'Email marked verified' : 'Phone marked verified',
+      );
     } catch (err) {
       setError(errorMessage(err));
+      toastError(errorMessage(err));
     } finally {
       setVerifying(false);
+    }
+  }
+
+  async function onUnlockOtp() {
+    if (!user || unlockingOtp) return;
+    setUnlockingOtp(true);
+    setError(null);
+    try {
+      const updated = await api.unlockAdminUserOtp(user.id);
+      setUser(updated);
+      toastSuccess('OTP lockout cleared — user can request codes again');
+    } catch (err) {
+      setError(errorMessage(err));
+      toastError(errorMessage(err));
+    } finally {
+      setUnlockingOtp(false);
     }
   }
 
@@ -497,6 +519,59 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       </header>
 
       {error && <div className="alert error">{error}</div>}
+
+      {user.otpLockouts?.some((l) => l.locked) ? (
+        <section className="admin-dossier-card admin-user-otp-lockout" role="alert">
+          <div className="admin-dossier-card-head">
+            <h2>
+              <ShieldAlert size={18} aria-hidden /> OTP verification locked
+            </h2>
+            {canManage ? (
+              <button
+                type="button"
+                className="btn secondary sm"
+                disabled={unlockingOtp}
+                onClick={() => void onUnlockOtp()}
+              >
+                {unlockingOtp ? (
+                  <>
+                    <Loader2 size={14} className="hd-action-toast-spin" aria-hidden />
+                    Unlocking…
+                  </>
+                ) : (
+                  <>
+                    <Unlock size={14} aria-hidden />
+                    Clear OTP lockout
+                  </>
+                )}
+              </button>
+            ) : null}
+          </div>
+          <ul className="admin-user-otp-lockout-list">
+            {user.otpLockouts
+              .filter((l) => l.locked)
+              .map((l) => (
+                <li key={l.channel}>
+                  <strong>
+                    {l.channel === 'work_email'
+                      ? 'Work email'
+                      : l.channel === 'phone'
+                        ? 'Phone'
+                        : 'Email'}
+                  </strong>
+                  {' · '}
+                  {l.sendsUsed} codes
+                  {l.unlockAt
+                    ? ` · auto-unlocks ${new Date(l.unlockAt).toLocaleString()}`
+                    : null}
+                </li>
+              ))}
+          </ul>
+          <p className="admin-dossier-sub" style={{ margin: '8px 0 0' }}>
+            Clearing the lockout lets this user request verification codes again immediately.
+          </p>
+        </section>
+      ) : null}
 
       {editing && verifyChannel ? (
         <section className="admin-dossier-card admin-user-verify">

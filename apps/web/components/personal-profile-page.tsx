@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 import type { AccountType, AuthenticatedUser, OnboardingStatus, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
+import { parseOtpBlocked, useOtpResendGate } from '../lib/otp-resend-gate';
 import { AddressFields } from './address-fields';
 import { OtpInput } from './otp-input';
+import { OtpResendControls } from './otp-resend-controls';
 
 const EMPTY_ADDRESS = {
   line1: '',
@@ -64,8 +66,10 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   const [verifyChannel, setVerifyChannel] = useState<VerifyChannel | null>(null);
   const [otpCode, setOtpCode] = useState('');
   const [verifyBusy, setVerifyBusy] = useState(false);
+  const [otpStatus, setOtpStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
   const [verifySending, setVerifySending] = useState(false);
   const verifyingRef = useRef(false);
+  const otpGate = useOtpResendGate();
 
   function applyOnboarding(onboarding: OnboardingStatus) {
     setAccountType(onboarding.accountType);
@@ -137,16 +141,25 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   }
 
   async function sendCodeFor(channel: VerifyChannel) {
+    if (!otpGate.canSend) return;
     setVerifySending(true);
     setError(null);
     setOtpCode('');
     try {
       if (channel === 'email') await api.startEmailVerification();
       else await api.startPhoneVerification();
+      otpGate.markSent();
       setVerifyChannel(channel);
     } catch (err) {
-      setError(errorMessage(err));
-      setVerifyChannel(null);
+      const blocked = parseOtpBlocked(err);
+      if (blocked) {
+        otpGate.applyBlocked(blocked);
+        setError(blocked.message);
+        if (blocked.code === 'OTP_LOCKOUT') setVerifyChannel(channel);
+      } else {
+        setError(errorMessage(err));
+        setVerifyChannel(null);
+      }
     } finally {
       setVerifySending(false);
     }
@@ -157,37 +170,56 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
     const channel = nextPendingChannel(user);
     if (!channel) return;
     setSavedMessage(null);
+    otpGate.reset();
     await sendCodeFor(channel);
   }
 
   async function submitOtp(code: string) {
     if (!verifyChannel || verifyingRef.current) return;
+    if (!otpGate.canVerify) {
+      setError('Verification is paused. Try again after the lockout or open a support ticket.');
+      return;
+    }
     const cleaned = code.replace(/\D/g, '');
     if (cleaned.length < 6) return;
     verifyingRef.current = true;
     setVerifyBusy(true);
+    setOtpStatus('checking');
     setError(null);
     try {
       const nextUser =
         verifyChannel === 'email'
           ? await api.verifyEmail(cleaned)
           : await api.verifyPhone(cleaned);
+      setOtpStatus('success');
+      await new Promise((r) => window.setTimeout(r, 700));
       setUser(nextUser);
       window.dispatchEvent(new Event('bld:user-updated'));
       setOtpCode('');
+      setOtpStatus('idle');
       const next = nextPendingChannel(nextUser);
       if (next) {
         setSavedMessage(
           verifyChannel === 'email' ? 'Email verified. Sending a code to your phone…' : null,
         );
+        otpGate.reset();
         await sendCodeFor(next);
       } else {
         setVerifyChannel(null);
+        otpGate.reset();
         setSavedMessage('Contact verified.');
       }
     } catch (err) {
-      setError(errorMessage(err));
-      setOtpCode('');
+      const blocked = parseOtpBlocked(err);
+      if (blocked) {
+        otpGate.applyBlocked(blocked);
+        setOtpStatus('idle');
+        setError(blocked.message);
+      } else {
+        setOtpStatus('error');
+        setError(errorMessage(err));
+        setOtpCode('');
+      }
     } finally {
       verifyingRef.current = false;
       setVerifyBusy(false);
@@ -195,7 +227,7 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
   }
 
   async function resendCode() {
-    if (!verifyChannel || verifySending || verifyBusy) return;
+    if (!verifyChannel || verifySending || verifyBusy || !otpGate.canSend) return;
     await sendCodeFor(verifyChannel);
   }
 
@@ -365,8 +397,12 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
                   </p>
                   <OtpInput
                     value={otpCode}
-                    onChange={setOtpCode}
-                    disabled={verifyBusy || verifySending}
+                    onChange={(code) => {
+                      setOtpCode(code);
+                      if (otpStatus === 'error') setOtpStatus('idle');
+                    }}
+                    disabled={verifyBusy || verifySending || !otpGate.canVerify}
+                    status={otpStatus}
                     autoFocus
                     label={
                       verifyChannel === 'email'
@@ -378,14 +414,14 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
                     }}
                   />
                   <div className="personal-verify-actions">
-                    <button
-                      type="button"
-                      className="btn secondary sm"
-                      disabled={verifySending || verifyBusy}
-                      onClick={() => void resendCode()}
-                    >
-                      {verifySending ? 'Sending…' : 'Resend code'}
-                    </button>
+                    <OtpResendControls
+                      gate={otpGate}
+                      role={role}
+                      busy={verifySending}
+                      compact
+                      onResend={() => void resendCode()}
+                      resendLabel="Resend code"
+                    />
                     <button
                       type="button"
                       className="btn ghost sm"
@@ -393,6 +429,7 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
                       onClick={() => {
                         setVerifyChannel(null);
                         setOtpCode('');
+                        otpGate.reset();
                       }}
                     >
                       Cancel

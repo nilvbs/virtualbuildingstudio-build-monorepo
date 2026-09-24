@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import twilio from 'twilio';
@@ -13,7 +14,13 @@ import {
   TWILIO_TRIAL_OTP_CODE,
   TWILIO_TRIAL_OTP_TEMPLATE,
 } from '../../notifications/delivery/twilio.sms-sender';
+import { NotificationsService } from '../../notifications/notifications.service';
 import type { PhoneVerifier } from './phone-verifier';
+import {
+  assertOtpSendAllowed,
+  getOtpLockoutIfActive,
+  OTP_MAX_SENDS_PER_WINDOW,
+} from '../otp-send-guard';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const CHANNEL = 'phone';
@@ -33,6 +40,8 @@ export class LocalPhoneVerifier implements PhoneVerifier {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications: NotificationsService,
   ) {
     const accountSid = config.get<string>('TWILIO_ACCOUNT_SID')?.trim();
     const authToken = config.get<string>('TWILIO_AUTH_TOKEN')?.trim();
@@ -48,10 +57,36 @@ export class LocalPhoneVerifier implements PhoneVerifier {
   }
 
   async startVerification(userId: string, phone: string): Promise<{ messageId?: string }> {
-    if (this.client && this.verifySid) {
-      return this.startTwilioVerify(userId, phone);
+    await assertOtpSendAllowed(this.prisma, userId, CHANNEL);
+    const result =
+      this.client && this.verifySid
+        ? await this.startTwilioVerify(userId, phone)
+        : await this.startLocalSmsOtp(userId, phone);
+    await this.maybeAlertLockout(userId, phone);
+    return result;
+  }
+
+  private async maybeAlertLockout(userId: string, phone: string): Promise<void> {
+    try {
+      const lock = await getOtpLockoutIfActive(this.prisma, userId, CHANNEL);
+      if (!lock || lock.sendsUsed !== OTP_MAX_SENDS_PER_WINDOW) return;
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { fullName: true, firstName: true, email: true },
+      });
+      await this.notifications.notifyOtpLockout({
+        userId,
+        fullName: user?.fullName || user?.firstName || 'User',
+        email: user?.email || phone,
+        channel: CHANNEL,
+        unlockAt: lock.unlockAt,
+        sendsUsed: lock.sendsUsed,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `OTP lockout admin notify failed for ${userId}/phone: ${(err as Error).message}`,
+      );
     }
-    return this.startLocalSmsOtp(userId, phone);
   }
 
   async checkVerification(userId: string, phone: string, code: string): Promise<boolean> {

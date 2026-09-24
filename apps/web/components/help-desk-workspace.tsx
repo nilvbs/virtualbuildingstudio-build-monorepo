@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ImagePlus, Ticket, X } from 'lucide-react';
 import {
   HELP_TICKET_CATEGORIES,
@@ -286,6 +287,9 @@ function MessageAttachments({ items }: { items: HelpTicketAttachment[] }) {
 }
 
 export function HelpDeskWorkspace({ workspace }: { workspace: HelpTicketWorkspace }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [tickets, setTickets] = useState<HelpTicket[]>([]);
   const [selected, setSelected] = useState<HelpTicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -328,6 +332,7 @@ export function HelpDeskWorkspace({ workspace }: { workspace: HelpTicketWorkspac
   function openNewTicket() {
     setSelected(null);
     setError(null);
+    resetTicketForm();
     setShowForm(true);
     requestAnimationFrame(() => setFormVisible(true));
   }
@@ -337,8 +342,18 @@ export function HelpDeskWorkspace({ workspace }: { workspace: HelpTicketWorkspac
     window.setTimeout(() => {
       setShowForm(false);
       resetTicketForm();
+      if (searchParams.get('new') === '1') {
+        router.replace(pathname);
+      }
     }, 280);
   }
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      openNewTicket();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const refresh = useCallback(async () => {
     const rows = await api.listMyHelpTickets(workspace);

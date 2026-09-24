@@ -10,7 +10,6 @@ import type { AuthenticatedUser, StaffPermission } from '@surveylink/types';
 import { api, ApiError } from '../lib/api';
 import { clearSession, isAuthenticated } from '../lib/session';
 import { IncompleteProfileModal, SidebarProfileMeter } from './profile-completion';
-import { ActionToasts } from './action-toasts';
 import { NotificationToasts } from './notification-toasts';
 import { NotificationBell } from './notification-bell';
 import { AccountNoticeBanner } from './account-notice-banner';
@@ -500,7 +499,6 @@ export function AppShell({ section, children }: { section: Section; children: Re
       )}
 
       <NotificationToasts section={section} />
-      <ActionToasts />
     </div>
   );
 }

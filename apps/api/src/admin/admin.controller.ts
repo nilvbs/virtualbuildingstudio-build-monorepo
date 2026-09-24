@@ -155,6 +155,12 @@ export class AdminController {
     return this.admin.verifyUserContact(principal.sub, id, body);
   }
 
+  @Post('users/:id/unlock-otp')
+  @RequirePermissions('users:manage')
+  unlockUserOtp(@Param('id', ParseUUIDPipe) id: string): Promise<AdminUserDetail> {
+    return this.admin.unlockUserOtp(id);
+  }
+
   @Get('projects')
   @RequirePermissions('projects:view')
   listAllProjects(

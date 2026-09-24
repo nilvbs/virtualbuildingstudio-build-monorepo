@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import localFont from 'next/font/local';
 import 'leaflet/dist/leaflet.css';
 import './globals.css';
+import { AppToasts } from '../components/app-toasts';
 
 /** Recommended product stack: Satoshi (display) + Inter (UI/body). */
 const inter = Inter({
@@ -58,7 +59,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={`${inter.variable} ${satoshi.variable}`}>
       {/* Browser extensions (e.g. ColorZilla's cz-shortcut-listen) mutate
           <body> before hydration; ignore those attribute-only mismatches. */}
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {children}
+        <AppToasts />
+      </body>
     </html>
   );
 }

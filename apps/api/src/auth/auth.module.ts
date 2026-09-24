@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
@@ -21,6 +21,7 @@ import { SMS_SENDER } from '../notifications/delivery/sms-sender';
 import { TwilioSmsSender } from '../notifications/delivery/twilio.sms-sender';
 import { AvatarStorageService } from './avatar-storage.service';
 import { MediaModule } from '../media/media.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 /**
  * Auth module — signup, email/phone OTP, onboarding, sessions via Auth0 +
@@ -28,7 +29,7 @@ import { MediaModule } from '../media/media.module';
  * role / permissions guards.
  */
 @Module({
-  imports: [PassportModule, MediaModule],
+  imports: [PassportModule, MediaModule, forwardRef(() => NotificationsModule)],
   controllers: [AuthController],
   providers: [
     AuthService,

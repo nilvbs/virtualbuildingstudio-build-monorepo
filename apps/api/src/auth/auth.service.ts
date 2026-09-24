@@ -50,6 +50,7 @@ import { EMAIL_SENDER, type EmailSender } from '../notifications/delivery/email-
 import { buildWelcomeEmail } from '../notifications/delivery/welcome-email';
 import { buildResetPasswordEmail } from '../notifications/delivery/reset-password-email';
 import { EmailOtpService } from './email/email-otp.service';
+import { assertOtpVerifyAllowed } from './otp-send-guard';
 import { S3MediaStorageService } from '../media/s3-media.storage';
 import {
   isAuth0GrantMisconfigured,
@@ -1306,6 +1307,7 @@ export class AuthService {
   /** Confirm email OTP — both email and phone must be verified before profile. */
   async verifyEmail(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
+    await assertOtpVerifyAllowed(this.prisma, user.id, 'email');
     const approved = await this.emailOtp.check(user.id, user.email, code);
     if (!approved) {
       throw new BadRequestException('Invalid or expired email verification code');
@@ -1322,6 +1324,7 @@ export class AuthService {
   /** Confirm the SMS OTP — both email and phone must be verified before profile. */
   async verifyPhone(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
+    await assertOtpVerifyAllowed(this.prisma, user.id, 'phone');
     const approved = await this.phone.checkVerification(user.id, user.phone, code);
     if (!approved) {
       throw new UnauthorizedException('Invalid or expired verification code');
@@ -1425,6 +1428,7 @@ export class AuthService {
   /** Company-only: confirm the work email OTP. */
   async verifyWorkEmail(principal: AuthPrincipal, code: string): Promise<AuthenticatedUser> {
     const user = await this.requireUser(principal.sub);
+    await assertOtpVerifyAllowed(this.prisma, user.id, 'work_email');
     const profile = await this.prisma.accountProfile.findUnique({ where: { userId: user.id } });
     if (!profile?.workEmail) {
       throw new BadRequestException('Add your work email before verifying it');

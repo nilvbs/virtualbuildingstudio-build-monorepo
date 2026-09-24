@@ -30,6 +30,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     authProvider: 'auth0',
     authSubject: 'auth0|123',
     passwordVerifier: null,
+    otpUnlockedAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -60,6 +61,7 @@ describe('AuthService', () => {
       upsert: jest.Mock;
     };
     accountProfile: { upsert: jest.Mock; findUnique: jest.Mock };
+    contactOtp: { findMany: jest.Mock };
     surveyorProfile: { upsert: jest.Mock };
     adminProfile: { findUnique: jest.Mock; upsert: jest.Mock };
   };
@@ -83,6 +85,9 @@ describe('AuthService', () => {
       accountProfile: {
         upsert: jest.fn().mockResolvedValue({}),
         findUnique: jest.fn().mockResolvedValue(null),
+      },
+      contactOtp: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       surveyorProfile: { upsert: jest.fn().mockResolvedValue({}) },
       adminProfile: {

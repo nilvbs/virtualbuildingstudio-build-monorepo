@@ -454,6 +454,13 @@ export interface AdminUserDetail extends AdminUser {
   projectCount: number;
   isStaff: boolean;
   staffLevel: StaffLevel | null;
+  /** Per-channel OTP abuse lockout (email / phone / work_email). */
+  otpLockouts: Array<{
+    channel: 'email' | 'phone' | 'work_email';
+    locked: boolean;
+    sendsUsed: number;
+    unlockAt: string | null;
+  }>;
 }
 
 export interface AdminQueueProject {

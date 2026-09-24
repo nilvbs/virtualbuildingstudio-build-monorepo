@@ -618,6 +618,11 @@ export class SurveyLinkClient {
     return this.request<AdminUserDetail>('POST', `/admin/users/${id}/verify-contact`, body);
   }
 
+  /** Clear OTP abuse lockout so the user can request codes again immediately. */
+  async unlockAdminUserOtp(id: string): Promise<AdminUserDetail> {
+    return this.request<AdminUserDetail>('POST', `/admin/users/${id}/unlock-otp`);
+  }
+
   async listAdminOpenProjects(query: AdminProjectsQueryBody = {}): Promise<AdminQueueProject[]> {
     const qs = new URLSearchParams();
     if (query.clientId) qs.set('clientId', query.clientId);

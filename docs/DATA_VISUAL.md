@@ -5,7 +5,7 @@
 > Narrative companion: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Product flows: [`docs/BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md).
 
-Last synced from schema: **2026-09-21**
+Last synced from schema: **2026-09-24**
 
 ---
 
@@ -61,6 +61,7 @@ erDiagram
     string auth_provider
     string auth_subject UK
     string password_verifier
+    timestamp otp_unlocked_at
   }
 
   user_roles {
@@ -315,6 +316,7 @@ See `@surveylink/types` for transition maps.
 
 | Date | Change |
 |------|--------|
+| 2026-09-24 | `users.otp_unlocked_at` — admin clears OTP abuse lockout without deleting codes |
 | 2026-09-21 | `admin_profiles`: staff invite token / expires / accepted / encrypted temp password |
 | 2026-09-19 | `contact_otps.channel` check allows `password_reset` (forgot-password tokens) |
 | 2026-09-18 | **Doc created** from current `schema.prisma` (full ERD + domain views + cascade notes) |

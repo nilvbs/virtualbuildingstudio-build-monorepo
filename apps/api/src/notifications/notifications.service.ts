@@ -447,6 +447,55 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * OTP abuse lockout: staff in-app + ADMIN_NOTIFY_EMAIL with link to unlock the user.
+   */
+  async notifyOtpLockout(ctx: {
+    userId: string;
+    fullName: string;
+    email: string;
+    channel: 'email' | 'work_email' | 'phone';
+    unlockAt: Date;
+    sendsUsed: number;
+  }): Promise<void> {
+    const channelLabel =
+      ctx.channel === 'work_email'
+        ? 'work email'
+        : ctx.channel === 'phone'
+          ? 'phone'
+          : 'email';
+    const adminPath = `/build/admin/users/${ctx.userId}`;
+    const adminLink = `${this.webAppUrl}${adminPath}`;
+    const unlockLocal = ctx.unlockAt.toLocaleString();
+    const title = `OTP lockout · ${ctx.fullName}`;
+    const body = `${ctx.fullName} (${ctx.email}) hit the ${channelLabel} verification limit (${ctx.sendsUsed} codes). Locked until ${unlockLocal}.`;
+
+    const admins = await this.prisma.user.findMany({
+      where: { roles: { some: { role: 'admin' } }, status: 'active' },
+      select: { id: true },
+      take: 40,
+    });
+    await Promise.allSettled(
+      admins.map((admin) =>
+        this.createInApp(admin.id, 'otp_lockout', title, body, adminPath),
+      ),
+    );
+
+    const notifyEmail =
+      this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
+      this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
+    if (notifyEmail) {
+      await Promise.allSettled([
+        this.email.send({
+          to: notifyEmail,
+          subject: `BLD OTP lockout: ${ctx.fullName} (${channelLabel})`,
+          text: `${body}\n\nClear the lockout: ${adminLink}`,
+          html: `<p>${body.replace(/</g, '&lt;')}</p><p><a href="${adminLink}">Open user · clear OTP lockout</a></p>`,
+        }),
+      ]);
+    }
+  }
+
   /** Reply on a ticket — notify the other side. */
   async notifyHelpTicketReply(ctx: {
     ticketId: string;

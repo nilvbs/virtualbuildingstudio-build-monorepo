@@ -76,6 +76,10 @@ import { AutoMatchService } from '../matching/auto-match.service';
 import { addWorkingHours, isStaffInviteWeekday } from '../matching/working-hours';
 import { ActivityService } from '../activity/activity.service';
 import { decryptInvitePassword, encryptInvitePassword } from './staff-invite-crypto';
+import {
+  listOtpChannelLockouts,
+  type OtpChannelLockout,
+} from '../auth/otp-send-guard';
 
 interface GeoRow {
   id: string;
@@ -1230,7 +1234,8 @@ export class AdminService {
       },
     });
     if (!u) throw new NotFoundException('User not found');
-    return this.toAdminUserDetailDto(u);
+    const otpLockouts = await listOtpChannelLockouts(this.prisma, userId);
+    return this.toAdminUserDetailDto(u, otpLockouts);
   }
 
   async updateUser(userId: string, input: UpdateAdminUserInput): Promise<AdminUserDetail> {
@@ -1412,6 +1417,22 @@ export class AdminService {
     return this.getUser(userId);
   }
 
+  /** Clear OTP abuse lockout so the user can send/verify codes again immediately. */
+  async unlockUserOtp(userId: string): Promise<AdminUserDetail> {
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('User not found');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { otpUnlockedAt: new Date() },
+    });
+
+    return this.getUser(userId);
+  }
+
   private toAdminUserDto(u: {
     id: string;
     fullName: string;
@@ -1489,7 +1510,7 @@ export class AdminService {
     } | null;
     adminProfile: { staffLevel: string } | null;
     _count: { projects: number };
-  }): AdminUserDetail {
+  }, otpLockouts: OtpChannelLockout[] = []): AdminUserDetail {
     const base = this.toAdminUserDto({
       ...u,
       accountProfile: u.accountProfile
@@ -1511,6 +1532,7 @@ export class AdminService {
       projectCount: u._count.projects,
       isStaff: Boolean(u.adminProfile),
       staffLevel: (u.adminProfile?.staffLevel as StaffLevel | undefined) ?? null,
+      otpLockouts,
     };
   }
 

@@ -79,6 +79,7 @@ flowchart TD
 - Google: complete registration (phone + role) then same onboarding gates.
 - Welcome email: branded HTML; client vs surveyor templates; SendGrid (`TwilioEmailSender`).
 - Email OTP: branded verify template (`buildVerifyEmail`).
+- **OTP resend guard (email / work email / phone):** 30s between sends; max **1 initial + 3 resends** per channel per hour; after the 4th send, send **and** verify are locked for 1 hour. UI disables Resend until the timer ends, warns on the last resend, and links to create a support ticket. On lockout: **staff in-app notification** + email to `ADMIN_NOTIFY_EMAIL` (fallback `SUPER_ADMIN_EMAIL`) with link to the user. Admins with `users:manage` can **Clear OTP lockout** immediately (`otp_unlocked_at`).
 - **Forgot password (marketplace only):** client/surveyor request → branded reset email with one-time **button** link (`/reset-password?token=…`, 1h TTL, bound to that `userId` via `contact_otps` channel `password_reset`). No raw paste-URL block in the HTML. UI shows success + resend + back to login. Completing the link sets Auth0 + local password verifier for that user only; token is single-use. Staff/admin accounts are never emailed a reset. Anti-enumeration: API always returns the same ok message.
 
 ```mermaid
@@ -116,7 +117,7 @@ flowchart LR
 |------|----------------|
 | `select_account_type` | Individual vs company |
 | `accept_terms` | T&C + NDA (required) |
-| `verify_contact` | **Email OTP + phone OTP (both required)** before profile |
+| `verify_contact` | **Email OTP + phone OTP (both required)** before profile. Resend: **30s cooldown**, **3 resends** (4 sends/hour/channel), then **1h lockout** on send + verify; last-resend warning + helpdesk ticket link. Lockout alerts admins (in-app + ops email); staff can clear via **Clear OTP lockout**. |
 | `complete_profile` | Address / company fields → `account_profiles` |
 | `portfolio` | Surveyors only (or client-first then adding surveyor) |
 | `done` | Workspace unlocked |
@@ -264,6 +265,9 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-24 | OTP lockout: admin in-app + email alert; staff can clear OTP lockout immediately on user detail |
+| 2026-09-24 | OTP resend: 30s cooldown, 3 resends then 1h lockout (send+verify), last-attempt warning, support ticket link |
+| 2026-09-24 | Onboarding UI: personalized **Hi, {name}** welcome through the flow; step rail with animated icons + clearer active/done states |
 | 2026-09-21 | Profile **Complete verification**: stays on profile; sends email/SMS OTP immediately, inline 6-digit entry auto-verifies (no onboarding redirect) |
 | 2026-09-21 | Staff invite email: Access portal CTA only; no credentials / paste URL / Mon–Fri or TTL copy (rules enforced silently) |
 | 2026-09-21 | Staff invite: right-drawer create, email Access portal CTA + SMS/in-app, 3-day Mon–Fri link prefills portal credentials; super admin pencil edit + password (masked + eye) |
