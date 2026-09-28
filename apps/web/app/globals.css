@@ -4775,10 +4775,40 @@ lord-icon {
   gap: 12px;
 }
 
+.ob-profile-stack {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  width: 100%;
+}
+
+.ob-work-email-block {
+  gap: 12px;
+}
+
+.ob-work-email-block .onboarding-channel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ob-profile-form .otp-input,
+.ob-profile-form .otp-input-row,
+.ob-profile-form .onboarding-otp-stack {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ob-profile-form .otp-input-row {
+  width: 100%;
+}
+
 .ob-profile-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -5184,12 +5214,13 @@ lord-icon {
 /* ===== Segmented OTP input ===== */
 .otp-input {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .otp-input-label {
   font-size: 13px;
   font-weight: 650;
+  letter-spacing: 0.01em;
   color: var(--text, #1a1a2e);
 }
 
@@ -5197,45 +5228,80 @@ lord-icon {
   display: flex;
   justify-content: space-between;
   align-items: stretch;
-  gap: clamp(10px, 2.8vw, 16px);
+  gap: clamp(8px, 2.4vw, 14px);
   width: 100%;
-  max-width: 400px;
+  max-width: 380px;
+}
+
+.otp-input-row.is-shaking {
+  animation: otpShake 0.48s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes otpShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  12% {
+    transform: translateX(-9px);
+  }
+  24% {
+    transform: translateX(9px);
+  }
+  36% {
+    transform: translateX(-7px);
+  }
+  48% {
+    transform: translateX(7px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  72% {
+    transform: translateX(4px);
+  }
+  84% {
+    transform: translateX(-2px);
+  }
 }
 
 .otp-cell {
   position: relative;
   flex: 1 1 0;
   min-width: 0;
-  max-width: 56px;
+  max-width: 54px;
   display: grid;
   place-items: center;
   aspect-ratio: 1;
-  min-height: 48px;
-  border-radius: 14px;
-  border: 2px solid rgba(113, 104, 246, 0.2);
-  background: linear-gradient(180deg, #ffffff 0%, #f8f7ff 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(42, 37, 88, 0.14);
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(42, 37, 88, 0.04),
+    0 4px 12px rgba(42, 37, 88, 0.04);
   transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background 0.2s ease;
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
   isolation: isolate;
 }
 
 .otp-cell-ring {
   position: absolute;
   inset: -3px;
-  border-radius: 16px;
+  border-radius: 14px;
   pointer-events: none;
   opacity: 0;
   z-index: 0;
 }
 
 .otp-cell.is-active {
-  border-color: #7168f6;
+  border-color: #5b52e0;
   box-shadow:
-    0 0 0 4px rgba(113, 104, 246, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 0 0 3px rgba(91, 82, 224, 0.16),
+    0 6px 16px rgba(91, 82, 224, 0.1);
 }
 
 .otp-cell.is-active .otp-cell-ring {
@@ -5243,7 +5309,7 @@ lord-icon {
   background: conic-gradient(
     from 0deg,
     transparent 0deg,
-    rgba(113, 104, 246, 0.55) 90deg,
+    rgba(91, 82, 224, 0.5) 90deg,
     transparent 180deg
   );
   animation: otpActiveSweep 1.6s linear infinite;
@@ -5259,8 +5325,21 @@ lord-icon {
 }
 
 .otp-cell.is-filled {
-  border-color: rgba(113, 104, 246, 0.5);
-  background: linear-gradient(180deg, #f5f3ff 0%, #ebe8ff 100%);
+  border-color: rgba(91, 82, 224, 0.45);
+  background: linear-gradient(180deg, #faf9ff 0%, #f3f1ff 100%);
+  animation: otpCellPop 0.28s ease-out both;
+}
+
+@keyframes otpCellPop {
+  0% {
+    transform: scale(0.94);
+  }
+  70% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .otp-cell-input {
@@ -5271,10 +5350,11 @@ lord-icon {
   border: 0;
   background: transparent;
   text-align: center;
-  font-size: clamp(1.2rem, 4.5vw, 1.5rem);
+  font-family: inherit;
+  font-size: clamp(1.25rem, 4.8vw, 1.55rem);
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: #2a2558;
+  color: #1f1a45;
   caret-color: transparent;
   outline: none;
   padding: 0;
@@ -5286,7 +5366,7 @@ lord-icon {
   width: 2px;
   height: 1.35em;
   border-radius: 2px;
-  background: #7168f6;
+  background: #5b52e0;
   animation: otpCaretBlink 1s steps(1) infinite;
   pointer-events: none;
 }
@@ -5309,8 +5389,8 @@ lord-icon {
 }
 
 .otp-input.is-checking .otp-cell {
-  border-color: rgba(113, 104, 246, 0.35);
-  background: #f7f6ff;
+  border-color: rgba(91, 82, 224, 0.32);
+  background: #f8f7ff;
 }
 
 .otp-input.is-checking .otp-cell-ring {
@@ -5318,8 +5398,8 @@ lord-icon {
   background: conic-gradient(
     from 0deg,
     transparent 0%,
-    #7168f6 18%,
-    #a29bff 32%,
+    #5b52e0 18%,
+    #9b94f5 32%,
     transparent 48%
   );
   animation: otpCheckSpin 1.05s linear infinite;
@@ -5341,9 +5421,10 @@ lord-icon {
 }
 
 .otp-input.is-success .otp-cell {
-  border-color: #0e9f6e;
-  background: linear-gradient(180deg, #f0fdf7 0%, #e7f7f0 100%);
-  box-shadow: 0 0 0 3px rgba(14, 159, 110, 0.14);
+  border-color: #0d9488;
+  background: linear-gradient(180deg, #f0fdfa 0%, #e6f9f5 100%);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.14);
+  animation: otpCellPop 0.32s ease-out both;
 }
 
 .otp-input.is-success .otp-cell-ring {
@@ -5351,8 +5432,8 @@ lord-icon {
   background: conic-gradient(
     from 200deg,
     transparent 0%,
-    #0e9f6e 22%,
-    #34d399 40%,
+    #0d9488 22%,
+    #2dd4bf 40%,
     transparent 58%
   );
   animation: otpSuccessSweep 0.85s ease-out both;
@@ -5382,63 +5463,81 @@ lord-icon {
 }
 
 .otp-input.is-error .otp-cell {
-  border-color: #dc2626;
-  background: #fff8f8;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+  border-color: #e11d48;
+  background: linear-gradient(180deg, #fff5f7 0%, #ffeef1 100%);
+  box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.14);
 }
 
 .otp-status {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin: 0;
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.3;
+  max-width: 380px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .otp-status--checking {
-  color: #5b52e0;
+  color: #4f46c7;
 }
 
 .otp-status--success {
-  color: #0e9f6e;
+  color: #0f766e;
 }
 
 .otp-status--error {
-  color: #b91c1c;
+  color: #be123c;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(225, 29, 72, 0.08);
+  border: 1px solid rgba(225, 29, 72, 0.18);
 }
 
 .otp-status-dot {
   width: 8px;
   height: 8px;
+  margin-top: 5px;
   border-radius: 50%;
-  background: #7168f6;
-  box-shadow: 0 0 0 0 rgba(113, 104, 246, 0.45);
-  animation: otpPulse 1s ease-out infinite;
+  background: #5b52e0;
+  flex: 0 0 auto;
+  animation: otpStatusPulse 0.9s ease-in-out infinite;
 }
 
-.otp-status-check {
-  display: grid;
+.otp-status-check,
+.otp-status-x {
+  display: inline-grid;
   place-items: center;
   width: 18px;
   height: 18px;
+  margin-top: 1px;
   border-radius: 50%;
-  background: #0e9f6e;
-  color: #fff;
   font-size: 11px;
   font-weight: 800;
+  line-height: 1;
+  flex: 0 0 auto;
 }
 
-@keyframes otpPulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(113, 104, 246, 0.45);
-  }
-  70% {
-    box-shadow: 0 0 0 8px rgba(113, 104, 246, 0);
-  }
+.otp-status-check {
+  background: rgba(13, 148, 136, 0.16);
+  color: #0f766e;
+}
+
+.otp-status-x {
+  background: rgba(225, 29, 72, 0.16);
+  color: #be123c;
+}
+
+@keyframes otpStatusPulse {
+  0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(113, 104, 246, 0);
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -5447,12 +5546,12 @@ lord-icon {
 }
 
 .otp-input.is-disabled:not(.is-checking):not(.is-success) {
-  opacity: 0.55;
+  opacity: 0.72;
 }
 
 .onboarding-channel.is-verified {
   animation: otpVerifiedIn 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  border-color: rgba(14, 159, 110, 0.35);
+  border-color: rgba(13, 148, 136, 0.35);
   background: linear-gradient(180deg, #f4fdf8 0%, #eefaf4 100%);
 }
 
@@ -5469,13 +5568,13 @@ lord-icon {
 
 @media (max-width: 420px) {
   .otp-input-row {
-    gap: 8px;
+    gap: 6px;
     max-width: 100%;
   }
 
   .otp-cell {
-    min-height: 44px;
-    border-radius: 12px;
+    min-height: 46px;
+    border-radius: 10px;
   }
 }
 
@@ -5485,10 +5584,14 @@ lord-icon {
   .otp-input.is-checking .otp-cell-ring,
   .otp-input.is-success .otp-cell-ring,
   .otp-status-dot,
+  .otp-cell.is-filled,
+  .otp-input.is-success .otp-cell,
+  .otp-input-row.is-shaking,
   .onboarding-channel.is-verified {
     animation: none !important;
   }
 }
+
 
 
 .onboarding-hint {
@@ -5601,7 +5704,8 @@ lord-icon {
     height: auto;
   }
 
-  .ob-profile-grid {
+  .ob-profile-grid,
+  .ob-profile-stack {
     grid-template-columns: 1fr;
   }
 }

@@ -4,6 +4,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ClipboardEvent,
   type KeyboardEvent,
   type ChangeEvent,
@@ -30,11 +31,13 @@ type OtpInputProps = {
   className?: string;
   /** Visual state while verifying / after result. */
   status?: OtpStatus;
+  /** Override the default mismatch copy. */
+  errorMessage?: string;
 };
 
 /**
- * Six single-digit OTP boxes with paste + autofill, spacing that holds on
- * small screens, and border animations for checking / success / error.
+ * Six single-digit OTP boxes with paste + autofill, CSS status animations
+ * (shake on error; spring is avoided for multi-keyframe sequences).
  */
 export function OtpInput({
   value,
@@ -45,6 +48,7 @@ export function OtpInput({
   label = 'Verification code',
   className,
   status = 'idle',
+  errorMessage = 'The code you entered doesn’t match. Please try again.',
 }: OtpInputProps) {
   const groupId = useId();
   const reduceMotion = useReducedMotion();
@@ -52,6 +56,7 @@ export function OtpInput({
   const completedRef = useRef<string | null>(null);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const [shakeTick, setShakeTick] = useState(0);
   const digits = onlyDigits(value).padEnd(DIGITS, ' ').slice(0, DIGITS).split('');
   const filled = onlyDigits(value);
   const locked = disabled || status === 'checking' || status === 'success';
@@ -71,6 +76,11 @@ export function OtpInput({
     completedRef.current = filled;
     onCompleteRef.current?.(filled);
   }, [filled]);
+
+  useEffect(() => {
+    if (status !== 'error' || reduceMotion) return;
+    setShakeTick((n) => n + 1);
+  }, [status, reduceMotion]);
 
   function setAt(index: number, digit: string) {
     const next = onlyDigits(value).split('');
@@ -143,9 +153,9 @@ export function OtpInput({
     status === 'checking'
       ? 'Verifying code…'
       : status === 'success'
-        ? 'Verified'
+        ? 'Code verified'
         : status === 'error'
-          ? 'Code didn’t match — try again'
+          ? errorMessage
           : null;
 
   return (
@@ -154,44 +164,35 @@ export function OtpInput({
       role="group"
       aria-labelledby={groupId}
       aria-busy={status === 'checking' || undefined}
+      aria-invalid={status === 'error' || undefined}
       data-status={status}
     >
       <span id={groupId} className="otp-input-label">
         {label}
       </span>
-      <div className="otp-input-row" aria-live="polite">
+      <div
+        key={shakeTick}
+        className={`otp-input-row${status === 'error' && !reduceMotion ? ' is-shaking' : ''}`}
+        aria-live="polite"
+      >
         {digits.map((char, index) => {
           const digit = char.trim();
           const isFilled = Boolean(digit);
           const isActive = status === 'idle' && filled.length === index;
           return (
-            <motion.div
+            <div
               key={index}
               className={`otp-cell${isFilled ? ' is-filled' : ''}${isActive ? ' is-active' : ''}`}
               style={
                 reduceMotion
                   ? undefined
                   : status === 'checking'
-                    ? { animationDelay: `${index * 80}ms` }
+                    ? { animationDelay: `${index * 70}ms` }
                     : status === 'success'
-                      ? { animationDelay: `${index * 70}ms` }
-                      : undefined
-              }
-              animate={
-                reduceMotion
-                  ? undefined
-                  : status === 'error'
-                    ? { x: [0, -5, 5, -4, 4, 0] }
-                    : status === 'success'
-                      ? { scale: [1, 1.06, 1] }
+                      ? { animationDelay: `${index * 55}ms` }
                       : isFilled && status === 'idle'
-                        ? { scale: [1, 1.06, 1], y: [0, -2, 0] }
-                        : { scale: 1, y: 0, x: 0 }
-              }
-              transition={
-                status === 'error'
-                  ? { duration: 0.42, ease: 'easeInOut' }
-                  : { type: 'spring', stiffness: 420, damping: 22, mass: 0.55 }
+                        ? { animationDelay: `${index * 25}ms` }
+                        : undefined
               }
             >
               <span className="otp-cell-ring" aria-hidden />
@@ -216,7 +217,7 @@ export function OtpInput({
                 onFocus={(e) => e.target.select()}
               />
               {!isFilled && isActive ? <span className="otp-caret" aria-hidden /> : null}
-            </motion.div>
+            </div>
           );
         })}
       </div>
@@ -225,16 +226,21 @@ export function OtpInput({
           <motion.p
             key={status}
             className={`otp-status otp-status--${status}`}
-            initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+            role={status === 'error' ? 'alert' : 'status'}
+            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
-            transition={{ duration: 0.22 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             {status === 'checking' ? (
               <span className="otp-status-dot" aria-hidden />
             ) : status === 'success' ? (
               <span className="otp-status-check" aria-hidden>
                 ✓
+              </span>
+            ) : status === 'error' ? (
+              <span className="otp-status-x" aria-hidden>
+                !
               </span>
             ) : null}
             {statusLabel}

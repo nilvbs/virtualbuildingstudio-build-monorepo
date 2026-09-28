@@ -874,94 +874,205 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              <div className="ob-profile-grid">
-                <div className="ob-profile-col">
-              {isCompany && (
-                <>
-                  <div className="field">
-                    <label htmlFor="companyName">Company name</label>
-                    <div className="input-icon">
-                      <LordIcon name="home" size={18} trigger="hover" />
-                      <input
-                        id="companyName"
-                        type="text"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        placeholder="Legal company name"
-                      />
+              <div className={`ob-profile-stack${isCompany ? ' is-company' : ''}`}>
+                {isCompany ? (
+                  <>
+                    <div className="field">
+                      <label htmlFor="companyName">Company name</label>
+                      <div className="input-icon">
+                        <LordIcon name="home" size={18} trigger="hover" />
+                        <input
+                          id="companyName"
+                          type="text"
+                          value={companyName}
+                          onChange={(e) => setCompanyName(e.target.value)}
+                          placeholder="Legal company name"
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="onboarding-channel is-verified" style={{ cursor: 'default' }}>
-                    <LordIcon name="mail" size={20} trigger="in" />
-                    <span className="onboarding-channel-copy">
-                      <strong>Work email</strong>
-                      <small>
-                        {status.workEmailVerified
-                          ? `Verified · ${status.workEmail}`
-                          : 'Corporate email requiring OTP verification'}
-                      </small>
-                    </span>
-                    {status.workEmailVerified && (
-                      <LordIcon name="check" size={20} trigger="in" />
+                    <div className="onboarding-channel-block ob-work-email-block">
+                      <div
+                        className={`onboarding-channel${status.workEmailVerified ? ' is-verified' : ''}`}
+                        style={{ cursor: 'default' }}
+                      >
+                        <LordIcon name="mail" size={20} trigger="in" />
+                        <span className="onboarding-channel-copy">
+                          <strong>Work email</strong>
+                          <small>
+                            {status.workEmailVerified
+                              ? `Verified · ${status.workEmail}`
+                              : 'Corporate email requiring OTP verification'}
+                          </small>
+                        </span>
+                        {status.workEmailVerified ? (
+                          <LordIcon name="check" size={20} trigger="in" />
+                        ) : null}
+                      </div>
+                      {!status.workEmailVerified ? (
+                        <div className="onboarding-otp-stack">
+                          <input
+                            className="input onboarding-input"
+                            type="email"
+                            value={workEmail}
+                            onChange={(e) => setWorkEmail(e.target.value)}
+                            placeholder="name@company.com"
+                            required
+                            disabled={workGate.locked}
+                          />
+                          <OtpResendControls
+                            gate={workGate}
+                            role={role}
+                            busy={busy === 'work-start'}
+                            disabled={!workEmail.trim()}
+                            onResend={() => void sendWorkEmailCode()}
+                            sendLabel="Send work email code"
+                            resendLabel="Resend work email code"
+                          />
+                          <OtpInput
+                            value={workEmailCode}
+                            onChange={(code) => {
+                              setWorkEmailCode(code);
+                              if (otpUi.work === 'error') {
+                                setOtpUi((prev) => ({ ...prev, work: 'idle' }));
+                              }
+                            }}
+                            disabled={busy === 'work' || !workGate.canVerify}
+                            status={otpUi.work}
+                            autoFocus={false}
+                            label="Work email verification code"
+                            onComplete={(code) => {
+                              if (busy === 'work' || !workGate.canVerify) return;
+                              void runVerify('work', () => api.verifyWorkEmail(code));
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="btn block"
+                            disabled={
+                              busy === 'work' ||
+                              !workGate.canVerify ||
+                              workEmailCode.replace(/\D/g, '').length < 6
+                            }
+                            onClick={() =>
+                              void runVerify('work', () => api.verifyWorkEmail(workEmailCode))
+                            }
+                          >
+                            {busy === 'work'
+                              ? 'Verifying…'
+                              : workGate.locked
+                                ? 'Verification paused'
+                                : 'Verify work email'}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <div className="ob-verify-inline">
+                    {status.emailVerified ? (
+                      <div className="onboarding-channel is-verified">
+                        <LordIcon name="mail" size={20} trigger="in" />
+                        <span className="onboarding-channel-copy">
+                          <strong>Email</strong>
+                          <small>Verified</small>
+                        </span>
+                        <LordIcon name="check" size={20} trigger="in" />
+                      </div>
+                    ) : (
+                      <div className="onboarding-channel-block">
+                        <div className="onboarding-channel">
+                          <LordIcon name="mail" size={20} trigger="in" />
+                          <span className="onboarding-channel-copy">
+                            <strong>Email</strong>
+                            <small>Enter the OTP from your inbox</small>
+                          </span>
+                        </div>
+                        <div className="onboarding-otp-stack">
+                          <OtpInput
+                            value={emailCode}
+                            onChange={(code) => {
+                              setEmailCode(code);
+                              if (otpUi.email === 'error') {
+                                setOtpUi((prev) => ({ ...prev, email: 'idle' }));
+                              }
+                            }}
+                            disabled={busy === 'email' || !emailGate.canVerify}
+                            status={otpUi.email}
+                            autoFocus={false}
+                            label="Email verification code"
+                            onComplete={(code) => {
+                              if (busy === 'email' || !emailGate.canVerify) return;
+                              void runVerify('email', () => api.verifyEmail(code));
+                            }}
+                          />
+                          <div className="ob-inline-actions">
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={
+                                busy === 'email' ||
+                                !emailGate.canVerify ||
+                                emailCode.replace(/\D/g, '').length < 6
+                              }
+                              onClick={() =>
+                                void runVerify('email', () => api.verifyEmail(emailCode))
+                              }
+                            >
+                              {busy === 'email' ? 'Verifying…' : 'Verify'}
+                            </button>
+                            <OtpResendControls
+                              gate={emailGate}
+                              role={role}
+                              busy={busy === 'email-start'}
+                              compact
+                              onResend={() => void sendEmailCode()}
+                              sendLabel="Send code"
+                              resendLabel="Resend"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {status.phoneVerified ? (
+                      <div className="onboarding-channel is-verified">
+                        <LordIcon name="bell" size={20} trigger="in" />
+                        <span className="onboarding-channel-copy">
+                          <strong>Mobile number</strong>
+                          <small>Verified{status.phone ? ` · ${status.phone}` : ''}</small>
+                        </span>
+                        <LordIcon name="check" size={20} trigger="in" />
+                      </div>
+                    ) : (
+                      <OnboardingPhoneVerify
+                        verified={false}
+                        phoneCode={phoneCode}
+                        onPhoneCodeChange={setPhoneCode}
+                        phoneInput={phoneInput}
+                        onPhoneInputChange={setPhoneInput}
+                        busy={busy}
+                        compact
+                        onError={(msg) => toastError(msg)}
+                        onSendCode={sendPhoneCode}
+                        onVerify={() => runVerify('phone', () => api.verifyPhone(phoneCode))}
+                        resendGate={phoneGate}
+                        role={role}
+                      />
                     )}
                   </div>
-                  {!status.workEmailVerified && (
-                    <div className="onboarding-otp-stack">
-                      <input
-                        className="input onboarding-input"
-                        type="email"
-                        value={workEmail}
-                        onChange={(e) => setWorkEmail(e.target.value)}
-                        placeholder="name@company.com"
-                        required
-                        disabled={workGate.locked}
-                      />
-                      <OtpResendControls
-                        gate={workGate}
-                        role={role}
-                        busy={busy === 'work-start'}
-                        disabled={!workEmail.trim()}
-                        onResend={() => void sendWorkEmailCode()}
-                        sendLabel="Send work email code"
-                        resendLabel="Resend work email code"
-                      />
-                      <OtpInput
-                        value={workEmailCode}
-                        onChange={(code) => {
-                          setWorkEmailCode(code);
-                          if (otpUi.work === 'error') {
-                            setOtpUi((prev) => ({ ...prev, work: 'idle' }));
-                          }
-                        }}
-                        disabled={busy === 'work' || !workGate.canVerify}
-                        status={otpUi.work}
-                        autoFocus={false}
-                        label="Work email verification code"
-                        onComplete={(code) => {
-                          if (busy === 'work' || !workGate.canVerify) return;
-                          void runVerify('work', () => api.verifyWorkEmail(code));
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="btn block"
-                        disabled={
-                          busy === 'work' ||
-                          !workGate.canVerify ||
-                          workEmailCode.replace(/\D/g, '').length < 6
-                        }
-                        onClick={() => void runVerify('work', () => api.verifyWorkEmail(workEmailCode))}
-                      >
-                        {busy === 'work'
-                          ? 'Verifying…'
-                          : workGate.locked
-                            ? 'Verification paused'
-                            : 'Verify work email'}
-                      </button>
-                    </div>
-                  )}
+                )}
 
+                <div className="ob-address">
+                  <AddressFields
+                    value={address}
+                    onChange={setAddress}
+                    variant="onboarding"
+                    line1Label={isCompany ? 'Company address' : 'Base address'}
+                    idPrefix="ob"
+                  />
+                </div>
+
+                {isCompany ? (
                   <div className="ob-two-col">
                     <div className="field">
                       <label htmlFor="registrationNumber">Registration number</label>
@@ -986,112 +1097,7 @@ export default function OnboardingPage() {
                       />
                     </div>
                   </div>
-                </>
-              )}
-
-              {!isCompany && (
-                <div className="ob-verify-inline">
-                  {status.emailVerified ? (
-                    <div className="onboarding-channel is-verified">
-                      <LordIcon name="mail" size={20} trigger="in" />
-                      <span className="onboarding-channel-copy">
-                        <strong>Email</strong>
-                        <small>Verified</small>
-                      </span>
-                      <LordIcon name="check" size={20} trigger="in" />
-                    </div>
-                  ) : (
-                    <div className="onboarding-channel-block">
-                      <div className="onboarding-channel">
-                        <LordIcon name="mail" size={20} trigger="in" />
-                        <span className="onboarding-channel-copy">
-                          <strong>Email</strong>
-                          <small>Enter the OTP from your inbox</small>
-                        </span>
-                      </div>
-                      <div className="onboarding-otp-stack">
-                        <OtpInput
-                          value={emailCode}
-                          onChange={(code) => {
-                            setEmailCode(code);
-                            if (otpUi.email === 'error') {
-                              setOtpUi((prev) => ({ ...prev, email: 'idle' }));
-                            }
-                          }}
-                          disabled={busy === 'email' || !emailGate.canVerify}
-                          status={otpUi.email}
-                          autoFocus={false}
-                          label="Email verification code"
-                          onComplete={(code) => {
-                            if (busy === 'email' || !emailGate.canVerify) return;
-                            void runVerify('email', () => api.verifyEmail(code));
-                          }}
-                        />
-                        <div className="ob-inline-actions">
-                          <button
-                            type="button"
-                            className="btn"
-                            disabled={
-                              busy === 'email' ||
-                              !emailGate.canVerify ||
-                              emailCode.replace(/\D/g, '').length < 6
-                            }
-                            onClick={() => void runVerify('email', () => api.verifyEmail(emailCode))}
-                          >
-                            {busy === 'email' ? 'Verifying…' : 'Verify'}
-                          </button>
-                          <OtpResendControls
-                            gate={emailGate}
-                            role={role}
-                            busy={busy === 'email-start'}
-                            compact
-                            onResend={() => void sendEmailCode()}
-                            sendLabel="Send code"
-                            resendLabel="Resend"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {status.phoneVerified ? (
-                    <div className="onboarding-channel is-verified">
-                      <LordIcon name="bell" size={20} trigger="in" />
-                      <span className="onboarding-channel-copy">
-                        <strong>Mobile number</strong>
-                        <small>Verified{status.phone ? ` · ${status.phone}` : ''}</small>
-                      </span>
-                      <LordIcon name="check" size={20} trigger="in" />
-                    </div>
-                  ) : (
-                    <OnboardingPhoneVerify
-                      verified={false}
-                      phoneCode={phoneCode}
-                      onPhoneCodeChange={setPhoneCode}
-                      phoneInput={phoneInput}
-                      onPhoneInputChange={setPhoneInput}
-                      busy={busy}
-                      compact
-                      onError={(msg) => toastError(msg)}
-                      onSendCode={sendPhoneCode}
-                      onVerify={() => runVerify('phone', () => api.verifyPhone(phoneCode))}
-                      resendGate={phoneGate}
-                      role={role}
-                    />
-                  )}
-                </div>
-              )}
-
-                </div>
-
-                <div className="ob-profile-col ob-address">
-                  <AddressFields
-                    value={address}
-                    onChange={setAddress}
-                    variant="onboarding"
-                    line1Label={isCompany ? 'Company address' : 'Base address'}
-                    idPrefix="ob"
-                  />
-                </div>
+                ) : null}
               </div>
 
               <div className="ob-form-footer">
