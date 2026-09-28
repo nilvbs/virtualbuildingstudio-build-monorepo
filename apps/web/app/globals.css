@@ -4775,11 +4775,29 @@ lord-icon {
   gap: 12px;
 }
 
-.ob-profile-stack {
+.ob-content:has(.ob-profile-form) {
+  max-width: 860px;
+}
+
+.ob-profile-grid {
   display: grid;
-  gap: 14px;
-  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px 20px;
+  align-items: start;
   width: 100%;
+  min-width: 0;
+}
+
+.ob-profile-col {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+}
+
+.ob-profile-span {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .ob-work-email-block {
@@ -4796,26 +4814,17 @@ lord-icon {
 
 .ob-profile-form .otp-input,
 .ob-profile-form .otp-input-row,
-.ob-profile-form .onboarding-otp-stack {
+.ob-profile-form .onboarding-otp-stack,
+.ob-profile-form .otp-status {
   max-width: 100%;
   min-width: 0;
-}
-
-.ob-profile-form .otp-input-row {
   width: 100%;
+  box-sizing: border-box;
 }
 
-.ob-profile-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.ob-profile-col {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
+.ob-profile-form .otp-cell {
+  max-width: none;
+  min-height: 44px;
 }
 
 .ob-topbar {
@@ -5707,6 +5716,10 @@ lord-icon {
   .ob-profile-grid,
   .ob-profile-stack {
     grid-template-columns: 1fr;
+  }
+
+  .ob-content:has(.ob-profile-form) {
+    max-width: 640px;
   }
 }
 

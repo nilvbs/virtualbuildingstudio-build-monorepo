@@ -874,7 +874,8 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              <div className={`ob-profile-stack${isCompany ? ' is-company' : ''}`}>
+              <div className={`ob-profile-grid${isCompany ? ' is-company' : ''}`}>
+                <div className="ob-profile-col">
                 {isCompany ? (
                   <>
                     <div className="field">
@@ -1061,8 +1062,9 @@ export default function OnboardingPage() {
                     )}
                   </div>
                 )}
+                </div>
 
-                <div className="ob-address">
+                <div className="ob-profile-col ob-address">
                   <AddressFields
                     value={address}
                     onChange={setAddress}
@@ -1073,7 +1075,7 @@ export default function OnboardingPage() {
                 </div>
 
                 {isCompany ? (
-                  <div className="ob-two-col">
+                  <div className="ob-two-col ob-profile-span">
                     <div className="field">
                       <label htmlFor="registrationNumber">Registration number</label>
                       <input
