@@ -92,9 +92,39 @@ flowchart TD
   Open --> Peek["Show masked email for that user"]
   Peek --> Save["Set new password for token userId only"]
   Save --> Consume["Consume token + invalidate other reset tokens"]
+  Consume --> SignOut["Revoke every refresh token for that identity"]
 ```
 
-**Key code:** `auth.service.ts`, `email-otp.service.ts`, `welcome-email.ts`, `verify-email.ts`, `reset-password-email.ts`, `twilio.email-sender.ts`
+### Sessions (API-owned, rotating)
+
+Every sign-in (password, signup, Google, staff portal) is converted by the API into a **15-minute access token** + a **30-day rotating refresh token** (only its SHA-256 is stored in `auth_refresh_tokens`).
+
+- **Web:** tokens are **httpOnly** cookies (`bld_at` SameSite=Lax, `bld_rt` SameSite=Strict, `Secure` in production). Nothing secret is in `localStorage` (only a signed-in flag + active workspace). Requests carry `X-BLD-Session: cookie`; the API **ignores the cookies without that header** (CSRF defense, forces a CORS preflight). Old localStorage tokens are wiped → one-time re-login.
+- **Mobile:** tokens returned in the body and stored in **SecureStore** (Keychain / Keystore); legacy AsyncStorage sessions migrate once.
+- Both clients silently call `POST /auth/refresh` on a 401, retry once, else sign out.
+- **Rotation / theft detection:** each refresh issues a new token and revokes the old one. Replaying a rotated token (after a 30s multi-tab grace) **revokes the whole family**.
+- **Suspended users:** blocked at login, on every authenticated request (`ActiveUserGuard`), and at refresh. Suspending a user (or staff), an admin-set staff password, or a password reset **revokes all refresh tokens**; access tokens expire within 15 minutes.
+- **Logout** revokes the refresh family and clears cookies (works even with an expired access token).
+- **Google OAuth state** is HMAC-signed, expires in 10 minutes, and is bound to a nonce held by the browser (httpOnly `bld_oauth` cookie) or by the mobile app (returned by start, echoed on exchange). A state/code pair cannot be completed in another browser (login CSRF).
+- **Rate limits:** global 120/min per IP plus tighter auth limits (login 10/min, signup 5/min, forgot-password 5/min, refresh 30/min, Google exchange 20/min). Shared across API instances when `REDIS_URL` is set (ElastiCache); falls back to per-process memory if Redis is down.
+
+```mermaid
+sequenceDiagram
+  participant C as Web / mobile
+  participant A as API
+  participant D as auth_refresh_tokens
+  C->>A: Sign in (password / Google)
+  A->>D: Store hash(refresh), new family
+  A-->>C: access 15m + refresh (cookies or body)
+  C->>A: API call → 401 (access expired)
+  C->>A: POST /auth/refresh
+  A->>D: Old token valid & unrevoked? user active?
+  A->>D: Revoke old, store new (same family)
+  A-->>C: New access + refresh
+  Note over A,D: Old token replayed later → revoke family
+```
+
+**Key code:** `auth.service.ts`, `session/session.service.ts`, `session/oauth-state.ts`, `guards/jwt-auth.guard.ts`, `email-otp.service.ts`, `welcome-email.ts`, `verify-email.ts`, `reset-password-email.ts`, `twilio.email-sender.ts`
 
 ---
 
@@ -265,6 +295,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-29 | Security: httpOnly cookie sessions (web) / SecureStore (mobile), 15m access + rotating refresh with reuse detection; sign-out everywhere on suspend / password reset; Google OAuth state bound to browser nonce; tighter auth rate limits (Redis-shareable) |
 | 2026-09-24 | OTP lockout: admin in-app + email alert; staff can clear OTP lockout immediately on user detail |
 | 2026-09-24 | OTP resend: 30s cooldown, 3 resends then 1h lockout (send+verify), last-attempt warning, support ticket link |
 | 2026-09-24 | Onboarding UI: personalized **Hi, {name}** welcome through the flow; step rail with animated icons + clearer active/done states |

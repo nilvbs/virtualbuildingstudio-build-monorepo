@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
-import type { AuthPrincipal, AuthSession } from '@surveylink/types';
+import { APP_ROLES, type AppRole, type AuthPrincipal, type AuthSession } from '@surveylink/types';
 
 /** Issuer claim for API-minted sessions (when Auth0 ROPG is unavailable). */
 export const FIRST_PARTY_ISS = 'bld-api';
@@ -8,18 +8,25 @@ export const FIRST_PARTY_ISS = 'bld-api';
 export const FIRST_PARTY_AUD = 'bld-session';
 
 const DEFAULT_TTL_SEC = 60 * 60 * 24 * 7; // 7 days
+const DEV_FALLBACK_SECRET = 'bld-local-dev-session-secret-not-for-production';
 
 function b64url(input: Buffer | string): string {
   const buf = typeof input === 'string' ? Buffer.from(input, 'utf8') : input;
   return buf.toString('base64url');
 }
 
-function signingSecret(config: ConfigService): string | null {
+/**
+ * HMAC secret for API-minted sessions and signed OAuth state.
+ * Production requires SESSION_SIGNING_SECRET or AUTH0_CLIENT_SECRET.
+ */
+export function sessionSigningSecret(config: ConfigService): string | null {
   const dedicated = config.get<string>('SESSION_SIGNING_SECRET')?.trim();
   if (dedicated) return dedicated;
   // Staging always has the Auth0 app secret; reuse it so no new env is required.
   const fallback = config.get<string>('AUTH0_CLIENT_SECRET')?.trim();
-  return fallback || null;
+  if (fallback) return fallback;
+  const nodeEnv = String(config.get('NODE_ENV') ?? process.env.NODE_ENV ?? '').trim();
+  return nodeEnv === 'production' ? null : DEV_FALLBACK_SECRET;
 }
 
 function signHs256(unsigned: string, secret: string): string {
@@ -28,7 +35,7 @@ function signHs256(unsigned: string, secret: string): string {
 
 /**
  * Mint a bearer session the API accepts without Auth0 Resource Owner Password Grant.
- * Used right after we successfully set/create the Auth0 password (signup / link).
+ * Also used for the short-lived access token of every cookie / refresh session.
  */
 export function issueFirstPartySession(
   config: ConfigService,
@@ -36,10 +43,11 @@ export function issueFirstPartySession(
     subject: string;
     email: string;
     emailVerified?: boolean;
+    roles?: AppRole[];
     expiresInSec?: number;
   },
 ): AuthSession {
-  const secret = signingSecret(config);
+  const secret = sessionSigningSecret(config);
   if (!secret) {
     throw new Error('SESSION_SIGNING_SECRET or AUTH0_CLIENT_SECRET is required for first-party sessions');
   }
@@ -51,6 +59,7 @@ export function issueFirstPartySession(
       sub: input.subject,
       email: input.email.trim().toLowerCase(),
       email_verified: Boolean(input.emailVerified),
+      ...(input.roles?.length ? { roles: input.roles } : {}),
       iss: FIRST_PARTY_ISS,
       aud: FIRST_PARTY_AUD,
       iat: now,
@@ -71,7 +80,7 @@ export function principalFromFirstPartyToken(
   token: string,
   config: ConfigService,
 ): AuthPrincipal | null {
-  const secret = signingSecret(config);
+  const secret = sessionSigningSecret(config);
   if (!secret) return null;
 
   const parts = token.split('.');
@@ -93,6 +102,7 @@ export function principalFromFirstPartyToken(
       sub?: string;
       email?: string;
       email_verified?: boolean;
+      roles?: unknown;
       iss?: string;
       aud?: string;
       exp?: number;
@@ -102,11 +112,14 @@ export function principalFromFirstPartyToken(
     if (typeof payload.exp === 'number' && payload.exp < Math.floor(Date.now() / 1000)) {
       return null;
     }
+    const roles = Array.isArray(payload.roles)
+      ? payload.roles.filter((r): r is AppRole => APP_ROLES.includes(r as AppRole))
+      : [];
     return {
       sub: payload.sub,
       email: payload.email,
       emailVerified: Boolean(payload.email_verified),
-      roles: [],
+      roles,
     };
   } catch {
     return null;

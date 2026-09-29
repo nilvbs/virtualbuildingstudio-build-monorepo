@@ -20,6 +20,7 @@ import { TwilioEmailSender } from '../notifications/delivery/twilio.email-sender
 import { SMS_SENDER } from '../notifications/delivery/sms-sender';
 import { TwilioSmsSender } from '../notifications/delivery/twilio.sms-sender';
 import { AvatarStorageService } from './avatar-storage.service';
+import { SessionService } from './session/session.service';
 import { MediaModule } from '../media/media.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
@@ -38,6 +39,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     SuperAdminBootstrapService,
     EmailOtpService,
     AvatarStorageService,
+    SessionService,
     { provide: IDENTITY_PROVIDER, useClass: Auth0IdentityProvider },
     { provide: EMAIL_SENDER, useClass: TwilioEmailSender },
     { provide: SMS_SENDER, useClass: TwilioSmsSender },
@@ -47,6 +49,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
-  exports: [AuthService, StaffContextService, IDENTITY_PROVIDER],
+  exports: [AuthService, StaffContextService, SessionService, IDENTITY_PROVIDER],
 })
 export class AuthModule {}

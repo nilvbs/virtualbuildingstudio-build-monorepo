@@ -53,6 +53,23 @@ curl http://127.0.0.1:4000/health
 
 Deploy (`deploy-api.yml`) refuses `DATABASE_URL` pointing at `db` / `localhost` and deletes any leftover `bld_pgdata` volume.
 
+On boot (production) the API checks `pg_stat_ssl` and **refuses to start** if the live DB connection is not TLS. Look for `[db-tls] Database connection encrypted` in `docker logs bld-api`.
+
+Confirm Aurora storage encryption (KMS) with an AWS profile that can read RDS:
+
+```bash
+aws rds describe-db-clusters --region us-east-2 \
+  --query 'DBClusters[].{id:DBClusterIdentifier,encrypted:StorageEncrypted,kms:KmsKeyId}'
+```
+
+`encrypted` must be `true`. Storage encryption cannot be turned on in place: snapshot → restore an encrypted copy with a KMS key → repoint the secrets. For certificate pinning, move from `sslmode=require` to `sslmode=verify-full&sslrootcert=/path/global-bundle.pem` (RDS CA bundle mounted into the container).
+
+### Security layers outside the app
+
+- **Rate limiting:** set `REDIS_URL` (ElastiCache Redis, `rediss://` for in-transit TLS, same VPC / security group as EC2) so limits are shared across API instances. Without it limits are per-process.
+- **WAF / edge:** put Cloudflare (proxied DNS + WAF managed rules + rate-limit rule on `/api/auth/*`) or AWS WAF (on an ALB / CloudFront in front of EC2) ahead of Nginx. Nginx already forwards `X-Forwarded-For`; the API trusts one proxy hop.
+- **Sessions:** set a dedicated `SESSION_SIGNING_SECRET` (rotating it signs everyone out).
+
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
 curl -sS https://staging.bld.online/api/health

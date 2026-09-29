@@ -4,7 +4,28 @@ import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
-import { assertProductionDatabaseSsl } from './prisma/assert-db-ssl';
+import {
+  assertDatabaseConnectionEncrypted,
+  assertProductionDatabaseSsl,
+} from './prisma/assert-db-ssl';
+import { PrismaService } from './prisma/prisma.service';
+
+/** http(s) origins on localhost or private LAN ranges (Expo / Next dev servers). */
+function isLocalDevOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (protocol !== 'http:' && protocol !== 'https:') return false;
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 async function bootstrap(): Promise<void> {
   // Fail fast if production DB URLs are missing TLS (Phase 1 security).
@@ -25,35 +46,52 @@ async function bootstrap(): Promise<void> {
   // Structured logging (pino) as the app logger.
   app.useLogger(app.get(Logger));
 
-  // Browser hardening headers (XSS / clickjacking / MIME sniffing).
+  // Browser hardening headers (XSS / clickjacking / MIME sniffing / HSTS).
   app.use(
     helmet({
       // API is consumed cross-origin by the web app; disable CORP defaults that
       // break credentialed fetches from the allowed CORS origins.
       crossOriginResourcePolicy: { policy: 'cross-origin' },
-      contentSecurityPolicy: false,
+      // JSON-only API: nothing should ever render or frame a response.
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          baseUri: ["'none'"],
+          formAction: ["'none'"],
+        },
+      },
+      referrerPolicy: { policy: 'no-referrer' },
     }),
   );
 
   // Request bodies are validated at the boundary with the shared zod schemas
   // (@surveylink/validation) via a zod pipe, added alongside feature DTOs.
 
-  // Lock CORS to explicit web origins in deployed environments. Set
-  // CORS_ORIGINS (comma-separated) or fall back to WEB_APP_URL.
-  // In local development, reflect any origin so Expo (8081) and web (3000) both work.
-  // Production fail-closed: never allow all origins when the allowlist is empty.
-  const isDev = (process.env.NODE_ENV ?? 'development') !== 'production';
+  // CORS never reflects arbitrary origins (sessions ride credentialed cookies).
+  // Production: only CORS_ORIGINS / WEB_APP_URL, fail-closed when empty.
+  // Non-production: the allowlist plus localhost / private-LAN dev servers.
+  const isProduction = (process.env.NODE_ENV ?? 'development') === 'production';
   const allowedOrigins = (process.env.CORS_ORIGINS ?? process.env.WEB_APP_URL ?? '')
     .split(',')
-    .map((o) => o.trim())
+    .map((o) => o.trim().replace(/\/$/, ''))
     .filter(Boolean);
-  if (!isDev && allowedOrigins.length === 0) {
+  if (isProduction && allowedOrigins.length === 0) {
     throw new Error(
       'CORS_ORIGINS or WEB_APP_URL must be set in production (CORS fail-closed)',
     );
   }
   app.enableCors({
-    origin: isDev ? true : allowedOrigins,
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (!isProduction && isLocalDevOrigin(origin)) return callback(null, true);
+      return callback(null, false);
+    },
     credentials: true,
   });
 
@@ -62,6 +100,8 @@ async function bootstrap(): Promise<void> {
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   // Media is stored in S3 only — no local /uploads disk serving.
+
+  await assertDatabaseConnectionEncrypted(app.get(PrismaService));
 
   app.enableShutdownHooks();
 

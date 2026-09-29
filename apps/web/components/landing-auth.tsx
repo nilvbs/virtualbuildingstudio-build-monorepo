@@ -169,9 +169,6 @@ export function LandingAuthOverlay({
       role: workspace,
     });
     setSession({
-      accessToken: session.accessToken,
-      refreshToken: session.refreshToken,
-      expiresAt: Date.now() + session.expiresIn * 1000,
       activeRole: session.activeRole ?? workspace,
     });
     const onboarding = await api.getOnboarding().catch(() => null);
@@ -222,9 +219,6 @@ export function LandingAuthOverlay({
         roleHint: role,
       });
       setSession({
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-        expiresAt: Date.now() + session.expiresIn * 1000,
         activeRole: session.activeRole ?? role,
       });
       if (accountNotice) {
@@ -682,9 +676,6 @@ export function useLandingAuth() {
         });
         if (cancelled) return;
         setSession({
-          accessToken: session.accessToken,
-          refreshToken: session.refreshToken,
-          expiresAt: Date.now() + session.expiresIn * 1000,
           activeRole: 'surveyor',
         });
         router.replace('/surveyor');

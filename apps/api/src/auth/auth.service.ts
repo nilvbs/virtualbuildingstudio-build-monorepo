@@ -55,7 +55,9 @@ import { S3MediaStorageService } from '../media/s3-media.storage';
 import {
   isAuth0GrantMisconfigured,
   issueFirstPartySession,
+  sessionSigningSecret,
 } from './first-party-session';
+import { createOAuthState, verifyOAuthState } from './session/oauth-state';
 import { hashPassword, verifyPassword } from './password-verifier';
 import { buildPersonNameFields, composeFullName, splitFullName } from './username';
 import { AvatarStorageService } from './avatar-storage.service';
@@ -90,26 +92,8 @@ function maskEmail(email: string): string {
   return `${visible}${'*'.repeat(Math.max(3, local.length - visible.length))}@${domain}`;
 }
 
-interface OAuthState {
-  role: RoleHint;
-  nonce: string;
-}
-
 function normalizeRole(raw: string | undefined): RoleHint {
   return ROLE_HINTS.includes(raw as RoleHint) ? (raw as RoleHint) : 'client';
-}
-
-function encodeState(state: OAuthState): string {
-  return Buffer.from(JSON.stringify(state), 'utf8').toString('base64url');
-}
-
-function decodeState(raw: string): OAuthState {
-  try {
-    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Partial<OAuthState>;
-    return { role: normalizeRole(parsed.role), nonce: parsed.nonce ?? '' };
-  } catch {
-    return { role: 'client', nonce: '' };
-  }
 }
 
 @Injectable()
@@ -660,6 +644,11 @@ export class AuthService {
       },
       data: { consumedAt: new Date() },
     });
+    // Password changed: sign out every existing session for this identity.
+    await this.prisma.authRefreshToken.updateMany({
+      where: { authSubject: user.authSubject, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
 
     return { ok: true };
   }
@@ -934,14 +923,22 @@ export class AuthService {
   }
 
   /** Build the URL the browser should navigate to for "Continue with Google". */
-  startGoogleLogin(roleRaw: string | undefined, redirectUri?: string): { url: string } {
-    const state = encodeState({ role: normalizeRole(roleRaw), nonce: randomBytes(12).toString('hex') });
+  /**
+   * Returns the authorize URL plus the raw state nonce. The caller binds the
+   * nonce to the browser (httpOnly cookie) or hands it to the mobile app;
+   * exchange rejects a state that is not presented with its nonce.
+   */
+  startGoogleLogin(
+    roleRaw: string | undefined,
+    redirectUri?: string,
+  ): { url: string; nonce: string } {
+    const { state, nonce } = createOAuthState(normalizeRole(roleRaw), this.oauthStateSecret());
     const resolvedRedirect = this.resolveOAuthRedirectUri(redirectUri);
 
     // Dev bypass: skip Auth0 entirely and bounce straight to the callback.
     if (devAuthEnabled(this.config)) {
       const params = new URLSearchParams({ code: DEV_GOOGLE_CODE, state });
-      return { url: `${resolvedRedirect}?${params.toString()}` };
+      return { url: `${resolvedRedirect}?${params.toString()}`, nonce };
     }
 
     const connection = this.config.get<string>('AUTH0_GOOGLE_CONNECTION') ?? GOOGLE_CONNECTION;
@@ -950,7 +947,15 @@ export class AuthService {
       state,
       connection,
     });
-    return { url };
+    return { url, nonce };
+  }
+
+  private oauthStateSecret(): string {
+    const secret = sessionSigningSecret(this.config);
+    if (!secret) {
+      throw new ServiceUnavailableException('Google sign-in is not configured on the server.');
+    }
+    return secret;
   }
 
   /**
@@ -962,9 +967,10 @@ export class AuthService {
     code: string,
     state: string,
     redirectUri?: string,
+    nonce?: string,
   ): Promise<GoogleAuthResult> {
     try {
-      return await this.exchangeGoogleInner(code, state, redirectUri);
+      return await this.exchangeGoogleInner(code, state, redirectUri, nonce);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       const prismaCode = (err as { code?: string }).code;
@@ -988,8 +994,15 @@ export class AuthService {
     code: string,
     state: string,
     redirectUri?: string,
+    nonce?: string,
   ): Promise<GoogleAuthResult> {
-    const { role } = decodeState(state);
+    const verified = verifyOAuthState(state, nonce, this.oauthStateSecret());
+    if (!verified) {
+      throw new BadRequestException(
+        'Google sign-in expired or was started in a different browser. Please try again.',
+      );
+    }
+    const role = normalizeRole(verified.role);
     const workspaceRole: WorkspaceRole | undefined =
       role === 'client' || role === 'surveyor' ? role : undefined;
     const resolvedRedirect = this.resolveOAuthRedirectUri(redirectUri);

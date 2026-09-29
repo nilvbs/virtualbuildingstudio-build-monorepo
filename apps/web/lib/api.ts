@@ -1,7 +1,7 @@
 'use client';
 
 import { createClient, ApiError } from '@surveylink/api-client';
-import { clearSession, getToken } from './session';
+import { clearSession, isAuthenticated } from './session';
 
 const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -21,10 +21,11 @@ export function redirectToLogin(): void {
   window.location.assign(target);
 }
 
-/** Browser API client that attaches the current access token per-request. */
+/** Browser API client: httpOnly cookie session, silent refresh on 401. */
 export const api = createClient({
   baseUrl,
-  getAuthToken: () => getToken(),
+  sessionTransport: 'cookie',
+  hasSession: () => isAuthenticated(),
   onUnauthorized: () => {
     redirectToLogin();
   },

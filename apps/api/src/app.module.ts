@@ -15,6 +15,7 @@ import { MediaModule } from './media/media.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { HelpdeskModule } from './helpdesk/helpdesk.module';
 import { ActivityModule } from './activity/activity.module';
+import { createThrottlerStorage } from './common/redis-throttler.storage';
 
 @Module({
   imports: [
@@ -33,16 +34,20 @@ import { ActivityModule } from './activity/activity.module';
         redact: ['req.headers.authorization', 'req.headers.cookie'],
       },
     }),
-    // Baseline abuse protection. This default store is per-instance; for
-    // distributed limiting across ECS tasks, back it with Redis (ElastiCache)
-    // via a ThrottlerStorage adapter. Real DDoS protection lives at the edge
-    // (CloudFront + AWS WAF).
-    ThrottlerModule.forRoot([
-      {
-        ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
-        limit: Number(process.env.THROTTLE_LIMIT ?? 120),
-      },
-    ]),
+    // Baseline abuse protection, shared across instances when REDIS_URL is set
+    // (ElastiCache). Auth routes add tighter per-route limits. Volumetric DDoS
+    // protection lives at the edge (Cloudflare / AWS WAF).
+    ThrottlerModule.forRootAsync({
+      useFactory: () => ({
+        throttlers: [
+          {
+            ttl: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
+            limit: Number(process.env.THROTTLE_LIMIT ?? 120),
+          },
+        ],
+        storage: createThrottlerStorage(),
+      }),
+    }),
     PrismaModule,
     HealthModule,
     MediaModule,

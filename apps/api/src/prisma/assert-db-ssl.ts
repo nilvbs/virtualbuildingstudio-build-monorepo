@@ -22,6 +22,32 @@ export function assertProductionDatabaseSsl(): void {
   }
 }
 
+/**
+ * Production: prove the live Prisma connection is TLS (not just configured).
+ * Fails boot when Postgres reports the backend connection as unencrypted.
+ */
+export async function assertDatabaseConnectionEncrypted(prisma: {
+  $queryRawUnsafe<T = unknown>(query: string): Promise<T>;
+}): Promise<void> {
+  const nodeEnv = String(process.env.NODE_ENV ?? 'development').trim();
+  if (nodeEnv !== 'production') return;
+
+  let rows: Array<{ ssl: boolean; version: string | null }>;
+  try {
+    rows = await prisma.$queryRawUnsafe<Array<{ ssl: boolean; version: string | null }>>(
+      'SELECT ssl, version FROM pg_stat_ssl WHERE pid = pg_backend_pid()',
+    );
+  } catch (err) {
+    console.warn(`[db-tls] Could not read pg_stat_ssl: ${(err as Error).message}`);
+    return;
+  }
+  const row = rows[0];
+  if (!row?.ssl) {
+    throw new Error('Database connection is not encrypted (pg_stat_ssl.ssl = false)');
+  }
+  console.log(`[db-tls] Database connection encrypted (${row.version ?? 'TLS'})`);
+}
+
 export function connectionUsesSsl(url: string): boolean {
   const lower = url.toLowerCase();
   return (

@@ -12,7 +12,7 @@ import {
 import type { AccountType, OnboardingStatus, OnboardingStep, WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
 import { toastError } from '../../lib/action-toast';
-import { clearSession, getActiveRole, getSession, isAuthenticated } from '../../lib/session';
+import { clearSession, getActiveRole, isAuthenticated } from '../../lib/session';
 import { homePathForWorkspace } from '../../lib/home';
 import { e164ToPhoneInput } from '../../lib/country-codes';
 import { parseOtpBlocked, useOtpResendGate } from '../../lib/otp-resend-gate';
@@ -272,8 +272,7 @@ export default function OnboardingPage() {
   async function signOut() {
     setBusy('sign-out');
     try {
-      const session = getSession();
-      await api.logout(session?.refreshToken);
+      await api.logout();
     } catch {
       /* best-effort revoke */
     }

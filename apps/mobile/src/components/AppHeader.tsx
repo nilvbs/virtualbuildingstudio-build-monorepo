@@ -5,7 +5,7 @@ import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthenticatedUser } from '@surveylink/types';
 import { api } from '../lib/api';
-import { clearSession, getActiveRole } from '../lib/session';
+import { clearSession, getActiveRole, getRefreshToken } from '../lib/session';
 import { colors, radius, shadows, spacing } from '../lib/theme';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -50,6 +50,8 @@ export function AppHeader({ showLogout = false, showAccountMenu = false }: Props
 
   async function signOut() {
     setMenuOpen(false);
+    const refreshToken = await getRefreshToken();
+    await api.logout(refreshToken).catch(() => undefined);
     await clearSession();
     navigation.dispatch(
       CommonActions.reset({

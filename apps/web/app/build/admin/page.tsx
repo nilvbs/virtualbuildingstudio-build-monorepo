@@ -60,12 +60,8 @@ function AdminLoginInner() {
     setError(null);
     setBusy(true);
     try {
-      const session = await api.login({ email, password });
-      setSession({
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-        expiresAt: Date.now() + session.expiresIn * 1000,
-      });
+      await api.login({ email, password });
+      setSession({});
       const me = await api.me();
       if (!me.roles.includes('admin') && !(me.memberships ?? []).includes('admin')) {
         setError('This portal is for SurveyLink staff only.');

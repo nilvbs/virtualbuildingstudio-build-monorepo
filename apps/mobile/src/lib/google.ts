@@ -39,7 +39,7 @@ export async function signInWithGoogle(role: WorkspaceRole): Promise<GoogleOutco
     console.log('[auth] Google redirectUri →', redirectUri);
   }
 
-  const { url } = await api.googleStartUrl(role, redirectUri);
+  const { url, nonce } = await api.googleStartUrl(role, redirectUri);
 
   let code: string | undefined;
   let state: string | undefined;
@@ -58,7 +58,7 @@ export async function signInWithGoogle(role: WorkspaceRole): Promise<GoogleOutco
 
   if (!code || !state) return { kind: 'cancelled' };
 
-  const res = await api.exchangeGoogle({ code, state, redirectUri });
+  const res = await api.exchangeGoogle({ code, state, redirectUri, nonce });
   await setSession({
     accessToken: res.session.accessToken,
     refreshToken: res.session.refreshToken,

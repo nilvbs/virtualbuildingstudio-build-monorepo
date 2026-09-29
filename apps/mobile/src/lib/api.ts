@@ -1,10 +1,13 @@
 import { createClient, ApiError } from '@surveylink/api-client';
 import { API_URL } from './config';
-import { getToken } from './session';
+import { getRefreshToken, getToken, storeRefreshedSession } from './session';
 
 export const api = createClient({
   baseUrl: API_URL,
+  sessionTransport: 'bearer',
   getAuthToken: () => getToken(),
+  getRefreshToken: () => getRefreshToken(),
+  onSessionRefreshed: (session) => storeRefreshedSession(session),
 });
 
 export { ApiError };

@@ -45,9 +45,6 @@ function CallbackInner() {
               ? res.roleHint
               : undefined;
         setSession({
-          accessToken: res.session.accessToken,
-          refreshToken: res.session.refreshToken,
-          expiresAt: Date.now() + res.session.expiresIn * 1000,
           activeRole,
         });
 

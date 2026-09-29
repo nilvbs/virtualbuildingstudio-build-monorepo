@@ -248,8 +248,18 @@ export const googleExchangeSchema = z.object({
   state: z.string().min(1),
   /** Mobile deep-link / Expo redirect; must match the start authorize call. */
   redirectUri: z.string().min(1).max(500).optional(),
+  /** Mobile only: nonce returned by start (web binds via httpOnly cookie instead). */
+  nonce: z.string().min(16).max(128).optional(),
 });
 export type GoogleExchangeInput = z.infer<typeof googleExchangeSchema>;
+
+/** Mobile sends the refresh token in the body; web relies on the httpOnly cookie. */
+export const refreshSessionSchema = z
+  .object({
+    refreshToken: z.string().min(20).max(256).optional(),
+  })
+  .strict();
+export type RefreshSessionInput = z.infer<typeof refreshSessionSchema>;
 
 /**
  * Completes a social sign-up: the account already exists at the identity

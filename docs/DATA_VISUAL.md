@@ -5,7 +5,7 @@
 > Narrative companion: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Product flows: [`docs/BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md).
 
-Last synced from schema: **2026-09-24**
+Last synced from schema: **2026-09-29**
 
 ---
 
@@ -27,6 +27,7 @@ erDiagram
   users ||--o{ help_tickets : "assignee"
   users ||--o{ help_ticket_messages : "author"
   users ||--o{ activity_logs : "actor"
+  users ||..o{ auth_refresh_tokens : "auth_subject (no FK)"
 
   surveyor_profiles ||--o{ matches : "offers"
   projects ||--o{ matches : "paired"
@@ -203,6 +204,19 @@ erDiagram
     timestamp consumed_at
   }
 
+  auth_refresh_tokens {
+    uuid id PK
+    uuid family_id
+    string auth_subject
+    string email
+    string token_hash UK
+    timestamp expires_at
+    timestamp revoked_at
+    uuid replaced_by_id
+    string user_agent
+    string ip
+  }
+
   notifications {
     uuid id PK
     uuid user_id FK
@@ -230,6 +244,7 @@ flowchart TB
   U --> ADP[admin_profiles]
   U --> OTP[contact_otps]
   U --> N[notifications]
+  U -.->|auth_subject| RT["auth_refresh_tokens<br/>rotating sessions"]
 ```
 
 ### Marketplace jobs
@@ -269,6 +284,7 @@ flowchart TB
 | `surveyor_profiles.user_id` → `users` | **No cascade** — admin delete must remove profile first |
 | `projects.client_id` / `matches.*` → users/profiles | App-managed (no Prisma cascade on all) |
 | `notifications.user_id` | No cascade in Prisma — delete notifications before user |
+| `auth_refresh_tokens.auth_subject` | **No FK** — keyed by auth subject so mid-Google-registration sessions refresh; revoked on suspend / password reset / logout |
 | Help ticket assignee | **SetNull** |
 | Activity log FKs | **SetNull** where optional |
 
@@ -308,6 +324,7 @@ See `@surveylink/types` for transition maps.
 | `help_ticket_messages` | Support |
 | `activity_logs` | Ops |
 | `contact_otps` | Plumbing |
+| `auth_refresh_tokens` | Plumbing / security |
 | `notifications` | Plumbing |
 
 ---
@@ -316,6 +333,7 @@ See `@surveylink/types` for transition maps.
 
 | Date | Change |
 |------|--------|
+| 2026-09-29 | `auth_refresh_tokens` — hashed rotating refresh tokens (family reuse detection) for cookie / secure-store sessions |
 | 2026-09-24 | `users.otp_unlocked_at` — admin clears OTP abuse lockout without deleting codes |
 | 2026-09-21 | `admin_profiles`: staff invite token / expires / accepted / encrypted temp password |
 | 2026-09-19 | `contact_otps.channel` check allows `password_reset` (forgot-password tokens) |

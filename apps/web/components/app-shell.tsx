@@ -290,8 +290,9 @@ export function AppShell({ section, children }: { section: Section; children: Re
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [menuOpen]);
 
-  function signOut() {
+  async function signOut() {
     setMenuOpen(false);
+    await api.logout().catch(() => undefined);
     clearSession();
     if (typeof window !== 'undefined') sessionStorage.removeItem(SURVEYOR_SNOOZE_KEY);
     window.location.assign(section === 'admin' ? '/build/admin' : '/?auth=login');

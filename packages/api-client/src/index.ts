@@ -3,7 +3,9 @@ import type {
   AuthSession,
   AuthenticatedUser,
   GoogleAuthResult,
+  GoogleStartResult,
   OnboardingStatus,
+  SessionTransport,
   RoleHint,
   SignupResult,
   SurveyorProfile,
@@ -127,6 +129,8 @@ export interface GoogleExchangeBody {
   state: string;
   /** Must match the redirect used in googleStartUrl (mobile deep link). */
   redirectUri?: string;
+  /** Bearer (mobile) mode: the nonce returned by googleStartUrl. */
+  nonce?: string;
 }
 
 export interface CompleteRegistrationBody {
@@ -209,16 +213,40 @@ export type StaffInvitePeekResult =
 
 export interface ApiClientOptions {
   baseUrl: string;
-  /** Optional bearer token / session accessor, resolved per-request. */
-  getAuthToken?: () => string | undefined | Promise<string | undefined>;
   /**
-   * Called when an authenticated request returns 401 (token was sent).
+   * `cookie` (web): tokens live in httpOnly cookies; requests are credentialed
+   * and carry `X-BLD-Session: cookie`. `bearer` (mobile, default): Authorization header.
+   */
+  sessionTransport?: SessionTransport;
+  /** Bearer mode: access token accessor, resolved per-request. */
+  getAuthToken?: () => string | undefined | Promise<string | undefined>;
+  /** Bearer mode: stored refresh token used to renew an expired access token. */
+  getRefreshToken?: () => string | undefined | Promise<string | undefined>;
+  /** Called after a successful refresh (bearer mode: persist the new tokens). */
+  onSessionRefreshed?: (session: AuthSession) => void | Promise<void>;
+  /** Cookie mode: whether the app believes it is signed in (enables refresh on 401). */
+  hasSession?: () => boolean;
+  /**
+   * Called when an authenticated request returns 401 and refresh failed.
    * Use to clear session and send the user to sign-in. Not invoked for
    * unauthenticated calls (e.g. wrong password on login).
    */
   onUnauthorized?: () => void | Promise<void>;
   fetch?: typeof fetch;
 }
+
+/** Endpoints where a 401 means bad credentials, never an expired session. */
+const NO_REFRESH_PATHS = [
+  '/auth/login',
+  '/auth/signup',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/oauth/',
+];
+
+export const SESSION_TRANSPORT_HEADER = 'X-BLD-Session';
 
 export class ApiError extends Error {
   constructor(
@@ -283,13 +311,25 @@ export class SurveyLinkClient {
     return this.request<{ ok: true }>('POST', '/auth/reset-password', body);
   }
 
-  /** Resolve the "Continue with Google" URL to navigate the browser to. */
-  async googleStartUrl(role?: RoleHint, redirectUri?: string): Promise<{ url: string }> {
+  /**
+   * Resolve the "Continue with Google" URL. Cookie mode binds the OAuth state
+   * via an httpOnly cookie; bearer mode returns a `nonce` to pass to exchange.
+   */
+  async googleStartUrl(role?: RoleHint, redirectUri?: string): Promise<GoogleStartResult> {
     const params = new URLSearchParams();
     if (role) params.set('role', role);
     if (redirectUri) params.set('redirectUri', redirectUri);
     const suffix = params.toString() ? `?${params.toString()}` : '';
-    return this.request<{ url: string }>('GET', `/auth/oauth/google/start${suffix}`);
+    return this.request<GoogleStartResult>('GET', `/auth/oauth/google/start${suffix}`);
+  }
+
+  /** Rotate the refresh token. Cookie mode sends no body (httpOnly cookie). */
+  async refreshSession(refreshToken?: string): Promise<AuthSession> {
+    return this.request<AuthSession>(
+      'POST',
+      '/auth/refresh',
+      refreshToken ? { refreshToken } : {},
+    );
   }
 
   /** Exchange the Google authorization code (from the callback) for a session. */
@@ -308,7 +348,7 @@ export class SurveyLinkClient {
   }
 
   async logout(refreshToken?: string): Promise<void> {
-    await this.request<void>('POST', '/auth/logout', { refreshToken });
+    await this.request<void>('POST', '/auth/logout', refreshToken ? { refreshToken } : {});
   }
 
   async me(): Promise<AuthenticatedUser> {
@@ -840,20 +880,56 @@ export class SurveyLinkClient {
     );
   }
 
+  private refreshInFlight: Promise<boolean> | null = null;
+
+  private get cookieMode(): boolean {
+    return this.options.sessionTransport === 'cookie';
+  }
+
+  /** Single-flight refresh shared by concurrent 401s. Resolves true when renewed. */
+  private renewSession(): Promise<boolean> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = (async () => {
+        try {
+          const refreshToken = this.cookieMode
+            ? undefined
+            : await this.options.getRefreshToken?.();
+          if (!this.cookieMode && !refreshToken) return false;
+          const session = await this.request<AuthSession>(
+            'POST',
+            '/auth/refresh',
+            refreshToken ? { refreshToken } : {},
+            { internal: true },
+          );
+          await this.options.onSessionRefreshed?.(session);
+          return true;
+        } catch {
+          return false;
+        } finally {
+          this.refreshInFlight = null;
+        }
+      })();
+    }
+    return this.refreshInFlight;
+  }
+
   private async request<T>(
     method: string,
     path: string,
     body?: unknown,
+    opts: { retried?: boolean; internal?: boolean } = {},
   ): Promise<T> {
-    const token = await this.options.getAuthToken?.();
+    const token = this.cookieMode ? undefined : await this.options.getAuthToken?.();
     const headers: Record<string, string> = { Accept: 'application/json' };
     const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
     if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (this.cookieMode) headers[SESSION_TRANSPORT_HEADER] = 'cookie';
 
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers,
+      credentials: this.cookieMode ? 'include' : undefined,
       body: body === undefined
         ? undefined
         : isFormData
@@ -863,7 +939,16 @@ export class SurveyLinkClient {
 
     const payload = await res.json().catch(() => undefined);
     if (!res.ok) {
-      if (res.status === 401 && token) {
+      const authed = Boolean(token) || (this.cookieMode && (this.options.hasSession?.() ?? false));
+      const expired =
+        res.status === 401 &&
+        authed &&
+        !opts.internal &&
+        !NO_REFRESH_PATHS.some((p) => path.startsWith(p));
+      if (expired && !opts.retried && (await this.renewSession())) {
+        return this.request<T>(method, path, body, { retried: true });
+      }
+      if (expired) {
         try {
           await this.options.onUnauthorized?.();
         } catch {

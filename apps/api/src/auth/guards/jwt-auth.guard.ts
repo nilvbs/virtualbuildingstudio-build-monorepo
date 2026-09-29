@@ -14,6 +14,7 @@ import {
   principalFromUnsignedJwt,
 } from '../dev-auth';
 import { principalFromFirstPartyToken } from '../first-party-session';
+import { ACCESS_COOKIE, isCookieTransport, readCookie } from '../session/session-cookies';
 
 /**
  * Global guard: every route requires a valid access token unless explicitly
@@ -36,6 +37,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<Request>();
+    if (!request.headers.authorization && isCookieTransport(request)) {
+      const cookieToken = readCookie(request, ACCESS_COOKIE);
+      if (cookieToken) request.headers.authorization = `Bearer ${cookieToken}`;
+    }
     const auth = request.headers.authorization;
 
     // Local AUTH_DEV_MODE only (force-disabled when NODE_ENV=production).

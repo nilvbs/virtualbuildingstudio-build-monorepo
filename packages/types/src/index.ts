@@ -298,6 +298,7 @@ export type StaffInvitePeek =
 
 /** Token bundle returned by `POST /auth/login`. */
 export interface AuthSession {
+  /** Empty when `transport` is `cookie` (tokens live in httpOnly cookies). */
   accessToken: string;
   idToken?: string;
   refreshToken?: string;
@@ -305,6 +306,17 @@ export interface AuthSession {
   expiresIn: number;
   /** Workspace chosen at login (client or surveyor). */
   activeRole?: WorkspaceRole;
+  /** `cookie` for web (httpOnly cookies); `bearer` for mobile (tokens in body). */
+  transport?: SessionTransport;
+}
+
+export type SessionTransport = 'cookie' | 'bearer';
+
+/** Response of `GET /auth/oauth/google/start`. */
+export interface GoogleStartResult {
+  url: string;
+  /** Bearer (mobile) clients only: echo back on exchange to bind the OAuth state. */
+  nonce?: string;
 }
 
 /**

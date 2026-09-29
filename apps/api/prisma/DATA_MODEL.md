@@ -17,8 +17,9 @@ Jobs
   matches    — an admin pairs that job with a surveyor
 
 Plumbing
-  contact_otps     — short-lived SMS/email codes
-  notifications    — in-app messages
+  contact_otps         — short-lived SMS/email codes
+  auth_refresh_tokens  — hashed rotating session refresh tokens
+  notifications        — in-app messages
 ```
 
 ## Group 1 — The person
@@ -62,6 +63,7 @@ Client (user)
 | Table | One sentence |
 |---|---|
 | `contact_otps` | Hashed OTP, expiry, consumed flag. |
+| `auth_refresh_tokens` | SHA-256 of each refresh token, grouped by `family_id`. Rotated on every refresh; replaying an old token revokes the family. Keyed by `auth_subject` (no FK). |
 | `notifications` | Inbox rows (`kind`, `title`, `link_url`, `read_at`). |
 
 ## JSON (not more tables)
@@ -73,7 +75,7 @@ Client (user)
 
 ## How to proceed in code
 
-1. Auth / onboarding → `users`, `user_roles`, `account_profiles`, `contact_otps`
+1. Auth / onboarding → `users`, `user_roles`, `account_profiles`, `contact_otps`, `auth_refresh_tokens`
 2. Client posts a job → `projects`
 3. Surveyor listing → `surveyor_profiles`
 4. Admin pairs them → `matches`

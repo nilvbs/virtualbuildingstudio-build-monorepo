@@ -7,15 +7,20 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
+import type { Request, Response } from 'express';
 import type {
   AuthenticatedUser,
   AuthPrincipal,
   AuthSession,
   GoogleAuthResult,
+  GoogleStartResult,
   OnboardingStatus,
   SignupResult,
 } from '@surveylink/types';
@@ -27,6 +32,7 @@ import {
   googleExchangeSchema,
   loginSchema,
   logoutSchema,
+  refreshSessionSchema,
   addMembershipSchema,
   resetPasswordSchema,
   selectAccountTypeSchema,
@@ -44,6 +50,7 @@ import {
   type GoogleExchangeInput,
   type LoginInput,
   type LogoutInput,
+  type RefreshSessionInput,
   type ResetPasswordInput,
   type SelectAccountTypeInput,
   type SignupInput,
@@ -58,26 +65,59 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { SessionService } from './session/session.service';
+import { OAUTH_NONCE_COOKIE, isCookieTransport, readCookie } from './session/session-cookies';
+
+const PER_MINUTE = 60_000;
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly sessions: SessionService,
+  ) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: PER_MINUTE } })
   @Post('signup')
-  signup(@Body(new ZodValidationPipe(signupSchema)) body: SignupInput): Promise<SignupResult> {
-    return this.auth.signup(body);
+  async signup(
+    @Body(new ZodValidationPipe(signupSchema)) body: SignupInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<SignupResult> {
+    const result = await this.auth.signup(body);
+    return { ...result, session: await this.sessions.issue(result.session, req, res) };
   }
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: PER_MINUTE } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body(new ZodValidationPipe(loginSchema)) body: LoginInput): Promise<AuthSession> {
-    return this.auth.login(body.email, body.password, body.role);
+  async login(
+    @Body(new ZodValidationPipe(loginSchema)) body: LoginInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthSession> {
+    const session = await this.auth.login(body.email, body.password, body.role);
+    return this.sessions.issue(session, req, res);
+  }
+
+  /** Rotate the refresh token (httpOnly cookie on web, body on mobile). */
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: PER_MINUTE } })
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  refresh(
+    @Body(new ZodValidationPipe(refreshSessionSchema)) body: RefreshSessionInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthSession> {
+    return this.sessions.refresh(req, res, body?.refreshToken);
   }
 
   /** Marketplace only — requires client|surveyor role; staff portal has no forgot-password. */
   @Public()
+  @Throttle({ default: { limit: 5, ttl: PER_MINUTE } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   forgotPassword(
@@ -95,6 +135,7 @@ export class AuthController {
 
   /** Consume the one-time reset token and set a new password for that user only. */
   @Public()
+  @Throttle({ default: { limit: 10, ttl: PER_MINUTE } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   resetPassword(
@@ -104,21 +145,39 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: PER_MINUTE } })
   @Get('oauth/google/start')
   googleStart(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
     @Query('role') role?: string,
     @Query('redirectUri') redirectUri?: string,
-  ): { url: string } {
-    return this.auth.startGoogleLogin(role, redirectUri);
+  ): GoogleStartResult {
+    const { url, nonce } = this.auth.startGoogleLogin(role, redirectUri);
+    if (isCookieTransport(req)) {
+      this.sessions.setOAuthNonceCookie(res, nonce);
+      return { url };
+    }
+    return { url, nonce };
   }
 
   @Public()
+  @Throttle({ default: { limit: 20, ttl: PER_MINUTE } })
   @Post('oauth/google/exchange')
   @HttpCode(HttpStatus.OK)
-  googleExchange(
+  async googleExchange(
     @Body(new ZodValidationPipe(googleExchangeSchema)) body: GoogleExchangeInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<GoogleAuthResult> {
-    return this.auth.exchangeGoogle(body.code, body.state, body.redirectUri);
+    const cookieMode = isCookieTransport(req);
+    const nonce = cookieMode ? readCookie(req, OAUTH_NONCE_COOKIE) : body.nonce;
+    if (cookieMode) this.sessions.clearOAuthNonceCookie(res);
+    const result = await this.auth.exchangeGoogle(body.code, body.state, body.redirectUri, nonce);
+    return {
+      ...result,
+      session: await this.sessions.issue(result.session, req, res, { email: result.profile.email }),
+    };
   }
 
   @Post('complete-registration')
@@ -139,12 +198,16 @@ export class AuthController {
     return this.auth.addMembership(principal, body);
   }
 
+  /** Public so an expired access token can still revoke the refresh family and clear cookies. */
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(
     @Body(new ZodValidationPipe(logoutSchema)) body: LogoutInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.auth.logout(body.refreshToken);
+    await this.sessions.logout(req, res, body?.refreshToken);
   }
 
   @Get('me')

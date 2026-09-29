@@ -1033,6 +1033,9 @@ export class AdminService {
     if (input.password) {
       await this.setStaffPassword(profile.user, input.password);
     }
+    if (input.password || (input.status && input.status !== 'active' && !isSuper)) {
+      await this.revokeAllSessions(profile.user.authSubject);
+    }
 
     const updated = await this.prisma.adminProfile.update({
       where: { userId: staffUserId },
@@ -1238,6 +1241,15 @@ export class AdminService {
     return this.toAdminUserDetailDto(u, otpLockouts);
   }
 
+  /** Sign the subject out of every device (refresh tokens); access tokens expire within minutes. */
+  private async revokeAllSessions(authSubject: string | null | undefined): Promise<void> {
+    if (!authSubject) return;
+    await this.prisma.authRefreshToken.updateMany({
+      where: { authSubject, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   async updateUser(userId: string, input: UpdateAdminUserInput): Promise<AdminUserDetail> {
     const existing = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -1315,6 +1327,10 @@ export class AdminService {
         });
       }
     });
+
+    if (input.status && input.status !== 'active') {
+      await this.revokeAllSessions(existing.authSubject);
+    }
 
     return this.getUser(userId);
   }

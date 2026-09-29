@@ -108,6 +108,30 @@ model ContactOtp {
   @@map("contact_otps")
 }
 
+/**
+ * Rotating refresh tokens for API sessions (web httpOnly cookie or mobile secure store).
+ * Keyed by auth subject (not user FK) so mid-Google-registration sessions can refresh.
+ * Only the SHA-256 of the token is stored. Reusing a rotated token revokes the family.
+ */
+model AuthRefreshToken {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  familyId     String    @map("family_id") @db.Uuid
+  authSubject  String    @map("auth_subject")
+  email        String
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  userAgent    String?   @map("user_agent")
+  ip           String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([authSubject], map: "idx_auth_refresh_tokens_subject")
+  @@index([familyId], map: "idx_auth_refresh_tokens_family")
+  @@index([expiresAt], map: "idx_auth_refresh_tokens_expires")
+  @@map("auth_refresh_tokens")
+}
+
 /** One row per hat: client | surveyor | admin. */
 model UserRole {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
