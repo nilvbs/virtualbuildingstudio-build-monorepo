@@ -1,0 +1,108 @@
+name: Probe AWS access (read-only)
+
+# Finds out what the credentials that ALREADY exist are allowed to do, without changing them:
+#   - staging-keys: the API's S3 keys in the EC2 .env (used in place on the box; never copied out)
+#   - deploy-role:  GitHub OIDC role AWS_DEPLOY_ROLE_ARN (production environment), if configured
+# Read-only calls + IAM policy simulation only. Public logs: RESULT_* yes/no lines only.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-aws-access.yml'
+      - 'scripts/aws-probe.sh'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  staging-keys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy probe to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: scripts/aws-probe.sh
+          target: /tmp/bld-probe
+          strip_components: 1
+          overwrite: true
+
+      - name: Probe with existing EC2 keys
+        id: remote
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          capture_stdout: true
+          script: |
+            set -u
+            cd "${{ vars.EC2_APP_DIR || '/home/ubuntu/BLD/stage' }}"
+            getenv() { grep "^$1=" .env | tail -n 1 | cut -d= -f2- | tr -d '\r'; }
+            AWS_ACCESS_KEY_ID=$(getenv S3_ACCESS_KEY_ID); [ -n "$AWS_ACCESS_KEY_ID" ] || AWS_ACCESS_KEY_ID=$(getenv AWS_ACCESS_KEY_ID)
+            AWS_SECRET_ACCESS_KEY=$(getenv S3_SECRET_ACCESS_KEY); [ -n "$AWS_SECRET_ACCESS_KEY" ] || AWS_SECRET_ACCESS_KEY=$(getenv AWS_SECRET_ACCESS_KEY)
+            AWS_SESSION_TOKEN=$(getenv AWS_SESSION_TOKEN)
+            export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+              echo "RESULT_AUTH=no_keys_in_env"; rm -rf /tmp/bld-probe; exit 0
+            fi
+            SRC=$(getenv DIRECT_DATABASE_URL); [ -n "$SRC" ] || SRC=$(getenv DATABASE_URL)
+            DB_HOST=$(printf '%s' "$SRC" | sed -E 's|^[^@]*@([^:/?]+).*|\1|')
+            AWS_DEFAULT_REGION=$(printf '%s' "$DB_HOST" | awk -F. '{ if (NF >= 6) print $(NF-3) }')
+            [ -n "$AWS_DEFAULT_REGION" ] || AWS_DEFAULT_REGION=$(getenv AWS_REGION)
+            TOKEN=$(curl -sf -m 3 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' || true)
+            EC2_INSTANCE_ID=$(curl -sf -m 3 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id || true)
+            export DB_HOST AWS_DEFAULT_REGION EC2_INSTANCE_ID
+            [ -n "$AWS_SESSION_TOKEN" ] || unset AWS_SESSION_TOKEN
+            docker run --rm -i \
+              -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY ${AWS_SESSION_TOKEN:+-e AWS_SESSION_TOKEN} \
+              -e AWS_DEFAULT_REGION -e DB_HOST -e EC2_INSTANCE_ID \
+              --entrypoint bash amazon/aws-cli -s < /tmp/bld-probe/aws-probe.sh
+            rm -rf /tmp/bld-probe
+            docker rmi amazon/aws-cli >/dev/null 2>&1 || true
+
+      - name: Summarize
+        if: always()
+        env:
+          REMOTE: ${{ steps.remote.outputs.stdout }}
+        run: |
+          R=$(printf '%s\n' "$REMOTE" | grep -E '^RESULT_' | tr -d '\r' || true)
+          { echo '### Existing EC2 keys'; echo '```'; printf '%s\n' "$R"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=EC2 keys::$(printf '%s ' $R)"
+
+  deploy-role:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Role configured?
+        id: has
+        run: echo "has=${{ secrets.AWS_DEPLOY_ROLE_ARN != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Assume OIDC role
+        id: creds
+        if: steps.has.outputs.has == 'true'
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-2' }}
+          mask-aws-account-id: true
+      - name: Probe with deploy role
+        id: probe
+        run: |
+          if [ "${{ steps.has.outputs.has }}" != "true" ]; then echo "RESULT_AUTH=no_role_configured" > /tmp/r.txt
+          elif [ "${{ steps.creds.outcome }}" != "success" ]; then echo "RESULT_AUTH=assume_failed" > /tmp/r.txt
+          else AWS_DEFAULT_REGION="${{ vars.AWS_REGION || 'us-east-2' }}" bash scripts/aws-probe.sh > /tmp/r.txt; fi
+          R=$(grep -E '^RESULT_' /tmp/r.txt || true)
+          { echo '### Deploy role'; echo '```'; printf '%s\n' "$R"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Deploy role::$(printf '%s ' $R)"
