@@ -426,9 +426,8 @@ export const PROJECT_COMM_CHANNEL_LABELS: Record<ProjectCommChannel, string> = {
 };
 
 export const PROJECT_POST_STEPS = [
-  { id: 'location', label: 'Location & overview', blurb: 'Site address, project title & description' },
+  { id: 'location', label: 'Site & property', blurb: 'Address, project title, description & building details' },
   { id: 'services', label: 'Services', blurb: 'What you need and the deliverables you expect' },
-  { id: 'property', label: 'Property', blurb: 'Building type, status & size' },
   { id: 'budget', label: 'Timeline & estimate', blurb: 'When you need it and a recommended price' },
   { id: 'review', label: 'Review', blurb: 'Check & publish' },
 ] as const;
@@ -781,9 +780,14 @@ export function projectPostProgress(brief: BriefSource): ProjectPostProgress {
   const addressOk =
     locKnown === 'not_yet' ||
     (locKnown === 'yes' && Boolean(d.country.trim() && d.state.trim() && d.city.trim()));
+  const propertyOk = Boolean(brief.buildingType?.trim()) && (brief.areaSqft ?? 0) > 0;
   const location = statusFrom(
-    addressOk && titleOk && descLen >= PROJECT_DESCRIPTION_MIN,
-    titleOk || descLen > 0 || Boolean(brief.locationText?.trim()) || Boolean(brief.location),
+    addressOk && titleOk && descLen >= PROJECT_DESCRIPTION_MIN && propertyOk,
+    titleOk ||
+      descLen > 0 ||
+      Boolean(brief.locationText?.trim()) ||
+      Boolean(brief.location) ||
+      Boolean(brief.buildingType || d.buildingStatus || brief.floors != null || brief.areaSqft != null),
   );
 
   const serviceCount = brief.services?.length ?? 0;
@@ -792,29 +796,22 @@ export function projectPostProgress(brief: BriefSource): ProjectPostProgress {
     serviceCount > 0 || d.scopeDeliverables.length > 0,
   );
 
-  const property = statusFrom(
-    Boolean(brief.buildingType?.trim()) && (brief.areaSqft ?? 0) > 0,
-    Boolean(brief.buildingType || d.buildingStatus || brief.floors != null || brief.areaSqft != null),
-  );
-
   const budget = statusFrom(
     Boolean(d.timeline) && (d.timeline !== 'specific_date' || Boolean(d.completionDate)),
     Boolean(d.timeline || brief.neededWithin),
   );
 
-  const coreComplete =
-    location === 'complete' && services !== 'pending' && property === 'complete';
+  const coreComplete = location === 'complete' && services !== 'pending';
   const review = statusFrom(coreComplete && budget === 'complete', coreComplete);
 
   const steps: Record<ProjectPostStepId, ProjectStepStatus> = {
     location,
     services,
-    property,
     budget,
     review,
   };
 
-  const weight: ProjectPostStepId[] = ['location', 'services', 'property', 'budget'];
+  const weight: ProjectPostStepId[] = ['location', 'services', 'budget'];
   const score = weight.reduce((sum, id) => {
     if (steps[id] === 'complete') return sum + 1;
     if (steps[id] === 'partial') return sum + 0.45;

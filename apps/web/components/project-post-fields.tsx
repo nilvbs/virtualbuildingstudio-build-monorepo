@@ -2,7 +2,14 @@
 
 import type { ReactNode } from 'react';
 import Checkbox from '@mui/material/Checkbox';
+import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import FormHelperText from '@mui/material/FormHelperText';
+import InputLabel from '@mui/material/InputLabel';
+import ListItemText from '@mui/material/ListItemText';
+import ListSubheader from '@mui/material/ListSubheader';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import Stack from '@mui/material/Stack';
@@ -123,6 +130,111 @@ export function MultiPills<T extends string>({
         );
       })}
     </Stack>
+  );
+}
+
+const MENU_PROPS = { slotProps: { paper: { sx: { maxHeight: 380 } } } };
+
+/** Checkbox dropdown; pass `groups` to show section headers inside the menu. */
+export function MultiSelectField<T extends string>({
+  id,
+  label,
+  options,
+  labels,
+  value,
+  onChange,
+  groups,
+  helperText,
+  required,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  options: readonly T[];
+  labels: Record<T, string>;
+  value: readonly T[];
+  onChange: (next: T[]) => void;
+  groups?: readonly { id: string; label: string; items: readonly T[] }[];
+  helperText?: ReactNode;
+  required?: boolean;
+  disabled?: boolean;
+}) {
+  const item = (opt: T) => (
+    <MenuItem key={opt} value={opt} dense>
+      <Checkbox size="small" checked={value.includes(opt)} sx={{ p: 0.5, mr: 1 }} />
+      <ListItemText primary={labels[opt]} />
+    </MenuItem>
+  );
+  const menuItems = groups
+    ? groups.flatMap((g) => [
+        <ListSubheader key={`h-${g.id}`} sx={{ lineHeight: '32px', fontWeight: 700 }}>
+          {g.label}
+        </ListSubheader>,
+        ...g.items.map(item),
+      ])
+    : options.map(item);
+
+  return (
+    <FormControl fullWidth required={required} disabled={disabled}>
+      <InputLabel id={`${id}-label`}>{label}</InputLabel>
+      <Select<T[]>
+        multiple
+        labelId={`${id}-label`}
+        label={label}
+        value={[...value]}
+        onChange={(e) => {
+          const next = e.target.value;
+          onChange((typeof next === 'string' ? next.split(',') : next) as T[]);
+        }}
+        renderValue={(selected) => selected.map((s) => labels[s]).join(', ')}
+        MenuProps={MENU_PROPS}
+      >
+        {menuItems}
+      </Select>
+      {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
+    </FormControl>
+  );
+}
+
+export function SelectField<T extends string>({
+  id,
+  label,
+  options,
+  labels,
+  value,
+  onChange,
+  emptyLabel = 'No preference',
+  required,
+}: {
+  id: string;
+  label: string;
+  options: readonly T[];
+  labels: Record<T, string>;
+  value: T | null | undefined;
+  onChange: (next: T | null) => void;
+  emptyLabel?: string;
+  required?: boolean;
+}) {
+  return (
+    <FormControl fullWidth required={required}>
+      <InputLabel id={`${id}-label`}>{label}</InputLabel>
+      <Select
+        labelId={`${id}-label`}
+        label={label}
+        value={value ?? ''}
+        onChange={(e) => onChange((e.target.value as T) || null)}
+        MenuProps={MENU_PROPS}
+      >
+        <MenuItem value="">
+          <em>{emptyLabel}</em>
+        </MenuItem>
+        {options.map((opt) => (
+          <MenuItem key={opt} value={opt}>
+            {labels[opt]}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
   );
 }
 

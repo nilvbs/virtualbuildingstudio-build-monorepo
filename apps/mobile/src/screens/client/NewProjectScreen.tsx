@@ -40,8 +40,6 @@ import {
   PROJECT_SCAN_TYPE_LABELS,
   PROJECT_SCAN_TYPES,
   PROJECT_SCOPE_DELIVERABLE_LABELS,
-  PROJECT_SITE_ACCESS_WINDOW_LABELS,
-  PROJECT_SITE_ACCESS_WINDOWS,
   PROJECT_TIMELINE_LABELS,
   SURVEY_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
@@ -64,7 +62,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'NewProject'>;
 
 const DRAFT_KEY = 'bld.mobile.projectPostDraft.v1';
 /** Bump when PROJECT_POST_STEPS changes so saved step indexes are not misapplied. */
-const DRAFT_LAYOUT = 2;
+const DRAFT_LAYOUT = 3;
 const STEPS = PROJECT_POST_STEPS;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -175,10 +173,82 @@ function SelectField({
   );
 }
 
+type SelectSection = { id: string; title?: string; items: Array<{ value: string; label: string }> };
+
+function MultiSelectField({
+  value,
+  placeholder,
+  sections,
+  onChange,
+}: {
+  value: readonly string[];
+  placeholder: string;
+  sections: SelectSection[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const labelOf = new Map(sections.flatMap((s) => s.items.map((i) => [i.value, i.label] as const)));
+  const summary = value.map((v) => labelOf.get(v) ?? v).join(', ');
+  return (
+    <>
+      <Pressable style={[styles.input, styles.selectBox]} onPress={() => setOpen(true)}>
+        <Text style={[styles.selectText, !summary && { color: colors.faint }]} numberOfLines={2}>
+          {summary || placeholder}
+        </Text>
+        <Feather name="chevron-down" size={16} color={colors.muted} />
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.modalSheet} onPress={() => undefined}>
+            <ScrollView>
+              {sections.map((section) => (
+                <View key={section.id}>
+                  {section.title ? <Text style={styles.modalSection}>{section.title}</Text> : null}
+                  {section.items.map((o) => {
+                    const on = value.includes(o.value);
+                    return (
+                      <Pressable
+                        key={o.value}
+                        style={styles.modalOption}
+                        onPress={() => onChange(toggleIn([...value], o.value))}
+                      >
+                        <Text style={[styles.modalOptionText, on && styles.choiceTextOn]}>{o.label}</Text>
+                        <Feather
+                          name={on ? 'check-square' : 'square'}
+                          size={18}
+                          color={on ? colors.accent : colors.faint}
+                        />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
+            <Pressable style={styles.modalDone} onPress={() => setOpen(false)}>
+              <Text style={styles.link}>Done</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 function statusTone(s: ProjectStepStatus): 'success' | 'warn' | 'neutral' {
   if (s === 'complete') return 'success';
   if (s === 'partial') return 'warn';
   return 'neutral';
+}
+
+type ServiceGroupId = (typeof SURVEY_SERVICE_GROUPS)[number]['id'];
+const SERVICE_GROUPS = SURVEY_SERVICE_GROUPS.map((g) => ({
+  id: g.id as ServiceGroupId,
+  label: g.label as string,
+  services: g.services as readonly SurveyService[],
+}));
+
+function groupsWithServices(services: readonly SurveyService[]): ServiceGroupId[] {
+  return SERVICE_GROUPS.filter((g) => g.services.some((s) => services.includes(s))).map((g) => g.id);
 }
 
 const FLOOR_SELECT_OPTIONS = [
@@ -195,6 +265,7 @@ export function NewProjectScreen({ navigation }: Props) {
 
   const [title, setTitle] = useState('');
   const [services, setServices] = useState<SurveyService[]>([]);
+  const [serviceGroups, setServiceGroups] = useState<ServiceGroupId[]>([]);
   const [buildingType, setBuildingType] = useState('');
   const [floors, setFloors] = useState('');
   const [areaSqft, setAreaSqft] = useState('');
@@ -254,14 +325,17 @@ export function NewProjectScreen({ navigation }: Props) {
           const parsed = JSON.parse(raw) as Record<string, unknown>;
           if (typeof parsed.title === 'string') setTitle(parsed.title);
           if (typeof parsed.autoTitle === 'string') autoTitleRef.current = parsed.autoTitle;
-          if (Array.isArray(parsed.services)) setServices(parsed.services as SurveyService[]);
+          if (Array.isArray(parsed.services)) {
+            setServices(parsed.services as SurveyService[]);
+            setServiceGroups(groupsWithServices(parsed.services as SurveyService[]));
+          }
           if (typeof parsed.buildingType === 'string') setBuildingType(parsed.buildingType);
           if (typeof parsed.floors === 'string') setFloors(parsed.floors);
           if (typeof parsed.areaSqft === 'string') setAreaSqft(parsed.areaSqft);
           if (typeof parsed.neededWithin === 'string') setNeededWithin(parsed.neededWithin);
           if (parsed.details && typeof parsed.details === 'object') {
             const saved = parsed.details as ProjectDetails;
-            setDetails({ ...freshDetails(), ...saved, locationKnown: saved.locationKnown ?? 'yes' });
+            setDetails({ ...freshDetails(), ...saved, locationKnown: 'yes' });
           }
           if (parsed.layout === DRAFT_LAYOUT && typeof parsed.step === 'number') {
             setStep(Math.min(Math.max(parsed.step, 0), STEPS.length - 1));
@@ -314,8 +388,7 @@ export function NewProjectScreen({ navigation }: Props) {
     setTitle(next);
   }
 
-  function toggleService(s: SurveyService) {
-    const next = toggleIn(services, s);
+  function applyServices(next: SurveyService[]) {
     setServices(next);
     const allowed = new Set(deliverablesForServices(next));
     setDetails((prev) => ({
@@ -324,16 +397,33 @@ export function NewProjectScreen({ navigation }: Props) {
     }));
   }
 
+  function toggleServiceGroup(id: ServiceGroupId) {
+    if (serviceGroups.includes(id)) {
+      setServiceGroups(serviceGroups.filter((g) => g !== id));
+      const group = SERVICE_GROUPS.find((g) => g.id === id);
+      if (group) applyServices(services.filter((s) => !group.services.includes(s)));
+    } else {
+      setServiceGroups([...serviceGroups, id]);
+    }
+  }
+
+  function setGroupServices(groupServices: readonly SurveyService[], picked: SurveyService[]) {
+    applyServices([...services.filter((s) => !groupServices.includes(s)), ...picked]);
+  }
+
   const stepValid = useMemo(() => {
     const id = current.id;
     if (id === 'location') {
-      const addressOk =
-        details.locationKnown === 'not_yet' ||
-        Boolean(details.country.trim() && details.state.trim() && details.city.trim());
-      return addressOk && title.trim().length > 0 && descLen >= PROJECT_DESCRIPTION_MIN;
+      const addressOk = Boolean(details.country.trim() && details.state.trim() && details.city.trim());
+      return (
+        addressOk &&
+        title.trim().length > 0 &&
+        descLen >= PROJECT_DESCRIPTION_MIN &&
+        Boolean(buildingType) &&
+        Number(areaSqft) > 0
+      );
     }
     if (id === 'services') return services.length > 0 && details.scopeDeliverables.length > 0;
-    if (id === 'property') return Boolean(buildingType) && Number(areaSqft) > 0;
     if (id === 'budget') {
       if (!details.timeline) return false;
       return details.timeline !== 'specific_date' || completionDateOk(details.completionDate);
@@ -342,9 +432,8 @@ export function NewProjectScreen({ navigation }: Props) {
   }, [current.id, title, services, details, descLen, buildingType, areaSqft]);
 
   const stepHint: Record<string, string> = {
-    location: `Add city & state, a title, and at least ${PROJECT_DESCRIPTION_MIN} characters of description.`,
+    location: `Add city & state, a title, a ${PROJECT_DESCRIPTION_MIN}+ character description, property type and size.`,
     services: 'Pick at least one service and one deliverable.',
-    property: 'Pick a property type and enter the approximate building size.',
     budget: 'Choose when you need the work completed (dates as YYYY-MM-DD, today or later).',
   };
 
@@ -416,7 +505,7 @@ export function NewProjectScreen({ navigation }: Props) {
       services,
       details: finalDetails as unknown as Record<string, unknown>,
     };
-    if (details.locationKnown !== 'not_yet' && locationText) body.locationText = locationText;
+    if (locationText) body.locationText = locationText;
     if (buildingType) body.buildingType = buildingType;
     if (floors.trim()) body.floors = Number(floors);
     if (areaSqft.trim()) body.areaSqft = Math.round(Number(areaSqft));
@@ -442,6 +531,7 @@ export function NewProjectScreen({ navigation }: Props) {
     setTitle('');
     autoTitleRef.current = '';
     setServices([]);
+    setServiceGroups([]);
     setBuildingType('');
     setFloors('');
     setAreaSqft('');
@@ -521,10 +611,8 @@ export function NewProjectScreen({ navigation }: Props) {
 
           {current.id === 'location' && (
             <View style={styles.panel}>
-              <Text style={styles.sectionTitle}>Where is the site?</Text>
-              {details.locationKnown !== 'not_yet' ? (
                 <>
-                  <Text style={[styles.label, { marginTop: spacing.sm }]}>Street address</Text>
+                  <Text style={styles.label}>Street address</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="1200 Main St"
@@ -570,52 +658,9 @@ export function NewProjectScreen({ navigation }: Props) {
                     onChangeText={(t) => patchAddress({ country: t })}
                     placeholderTextColor={colors.faint}
                   />
-
-                  <Text style={[styles.label, { marginTop: spacing.lg }]}>Site access required?</Text>
-                  <ChoiceRow
-                    value={details.siteAccessRequired}
-                    onChange={(v) =>
-                      patchDetails({ siteAccessRequired: v as ProjectDetails['siteAccessRequired'] })
-                    }
-                    options={[
-                      { value: 'yes', label: 'Yes' },
-                      { value: 'no', label: 'No' },
-                      { value: 'not_sure', label: 'Not sure' },
-                    ]}
-                  />
-                  {details.siteAccessRequired === 'yes' && (
-                    <View style={[styles.chipGrid, { marginTop: spacing.md }]}>
-                      {PROJECT_SITE_ACCESS_WINDOWS.map((w) => (
-                        <Chip
-                          key={w}
-                          label={PROJECT_SITE_ACCESS_WINDOW_LABELS[w]}
-                          selected={details.siteAccessWindows.includes(w)}
-                          onPress={() =>
-                            patchDetails({ siteAccessWindows: toggleIn(details.siteAccessWindows, w) })
-                          }
-                        />
-                      ))}
-                    </View>
-                  )}
                 </>
-              ) : (
-                <Text style={styles.hint}>
-                  You can add the exact address later — we&apos;ll still start matching on services and timing.
-                </Text>
-              )}
-              <View style={{ marginTop: spacing.md }}>
-                <Chip
-                  label="The site address isn't confirmed yet"
-                  selected={details.locationKnown === 'not_yet'}
-                  onPress={() =>
-                    patchDetails({ locationKnown: details.locationKnown === 'not_yet' ? 'yes' : 'not_yet' })
-                  }
-                />
-              </View>
 
-              <View style={styles.divider} />
-              <Text style={styles.sectionTitle}>Project overview</Text>
-              <Text style={[styles.label, { marginTop: spacing.sm }]}>Project title *</Text>
+              <Text style={[styles.label, { marginTop: spacing.lg }]}>Project title *</Text>
               <TextInput
                 style={styles.input}
                 placeholder="1200 Main St, Houston, TX"
@@ -627,139 +672,29 @@ export function NewProjectScreen({ navigation }: Props) {
                 <Text style={styles.hint}>Named after the site address — rename it anytime.</Text>
               ) : null}
 
-              <Text style={[styles.label, { marginTop: spacing.lg }]}>Description *</Text>
+              <Text style={[styles.label, { marginTop: spacing.lg }]}>Short description *</Text>
               <TextInput
-                style={[styles.input, styles.textarea]}
+                style={[styles.input, styles.textareaSm]}
                 multiline
-                placeholder="Describe the site, what you need, and any constraints…"
+                placeholder="e.g. Existing-condition survey and laser scan of a 3-storey office"
                 placeholderTextColor={colors.faint}
                 value={details.description}
                 onChangeText={(t) => patchDetails({ description: t })}
               />
               <Text style={[styles.hint, descLen >= PROJECT_DESCRIPTION_MIN && { color: colors.ok }]}>
-                {descLen}/{PROJECT_DESCRIPTION_MIN} minimum
+                {descLen}/{PROJECT_DESCRIPTION_MIN} characters minimum
               </Text>
-            </View>
-          )}
-
-          {current.id === 'services' && (
-            <View style={styles.panel}>
-              <Text style={styles.sectionTitle}>What do you need? *</Text>
-              <Text style={styles.hint}>Deliverables below update to match what you pick.</Text>
-              {SURVEY_SERVICE_GROUPS.map((group) => (
-                <View key={group.id} style={styles.groupBox}>
-                  <Text style={styles.groupTitle}>{group.label}</Text>
-                  <View style={styles.chipGrid}>
-                    {group.services.map((s) => (
-                      <Chip
-                        key={s}
-                        label={SURVEY_SERVICE_LABELS[s]}
-                        selected={services.includes(s)}
-                        onPress={() => toggleService(s)}
-                      />
-                    ))}
-                  </View>
-                </View>
-              ))}
 
               <View style={styles.divider} />
-              <View style={styles.rowBetween}>
-                <Text style={styles.sectionTitle}>Deliverables *</Text>
-                {services.length > 0 ? (
-                  <Pressable
-                    onPress={() => patchDetails({ scopeDeliverables: deliverablesForServices(services) })}
-                  >
-                    <Text style={styles.link}>Select all</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-              {deliverableGroups.length === 0 ? (
-                <Text style={styles.hint}>Pick a service above to see its deliverables.</Text>
-              ) : (
-                deliverableGroups.map((group) => (
-                  <View key={group.id} style={{ marginTop: spacing.md }}>
-                    <Text style={styles.label}>{group.label}</Text>
-                    <View style={styles.chipGrid}>
-                      {group.items.map((item) => (
-                        <Chip
-                          key={item}
-                          label={PROJECT_SCOPE_DELIVERABLE_LABELS[item]}
-                          selected={details.scopeDeliverables.includes(item)}
-                          onPress={() =>
-                            patchDetails({ scopeDeliverables: toggleIn(details.scopeDeliverables, item) })
-                          }
-                        />
-                      ))}
-                    </View>
-                  </View>
-                ))
-              )}
-
-              {needsLaser ? (
-                <>
-                  <View style={styles.divider} />
-                  <Text style={styles.sectionTitle}>Scanning preferences</Text>
-                  <Text style={styles.hint}>Optional — helps us recommend a price.</Text>
-                  <Text style={[styles.label, { marginTop: spacing.md }]}>Survey / scan type</Text>
-                  <View style={styles.chipGrid}>
-                    {PROJECT_SCAN_TYPES.map((t) => (
-                      <Chip
-                        key={t}
-                        label={PROJECT_SCAN_TYPE_LABELS[t]}
-                        selected={details.scanTypes.includes(t)}
-                        onPress={() => patchDetails({ scanTypes: toggleIn(details.scanTypes, t) })}
-                      />
-                    ))}
-                  </View>
-                  <Text style={[styles.label, { marginTop: spacing.md }]}>Accuracy</Text>
-                  <ChoiceRow
-                    value={details.accuracy}
-                    onChange={(v) => patchDetails({ accuracy: v as ProjectDetails['accuracy'] })}
-                    options={PROJECT_ACCURACY.map((a) => ({ value: a, label: PROJECT_ACCURACY_LABELS[a] }))}
-                  />
-                </>
-              ) : null}
-
-              {needsBim ? (
-                <>
-                  <View style={styles.divider} />
-                  <Text style={styles.sectionTitle}>Model preferences</Text>
-                  <Text style={styles.hint}>Optional — helps us recommend a price.</Text>
-                  <Text style={[styles.label, { marginTop: spacing.md }]}>Level of detail (LOD)</Text>
-                  <ChoiceRow
-                    value={details.lod}
-                    onChange={(v) => patchDetails({ lod: v as ProjectDetails['lod'] })}
-                    options={PROJECT_LOD.map((l) => ({ value: l, label: PROJECT_LOD_LABELS[l] }))}
-                  />
-                  <Text style={[styles.label, { marginTop: spacing.md }]}>Software</Text>
-                  <ChoiceRow
-                    value={details.bimSoftware}
-                    onChange={(v) => patchDetails({ bimSoftware: v as ProjectDetails['bimSoftware'] })}
-                    options={PROJECT_BIM_SOFTWARE.map((s) => ({
-                      value: s,
-                      label: PROJECT_BIM_SOFTWARE_LABELS[s],
-                    }))}
-                  />
-                </>
-              ) : null}
-            </View>
-          )}
-
-          {current.id === 'property' && (
-            <View style={styles.panel}>
               <Text style={styles.label}>Property type *</Text>
-              <View style={styles.chipGrid}>
-                {PROJECT_PROPERTY_TYPES.map((t) => (
-                  <Chip
-                    key={t}
-                    label={PROJECT_PROPERTY_TYPE_LABELS[t]}
-                    selected={buildingType === t}
-                    onPress={() => setBuildingType(t)}
-                  />
-                ))}
-              </View>
+              <SelectField
+                value={buildingType}
+                placeholder="Select type"
+                options={PROJECT_PROPERTY_TYPES.map((t) => ({ value: t, label: PROJECT_PROPERTY_TYPE_LABELS[t] }))}
+                onChange={setBuildingType}
+              />
 
-              <Text style={[styles.label, { marginTop: spacing.lg }]}>Building status</Text>
+              <Text style={[styles.label, { marginTop: spacing.md }]}>Building status</Text>
               <ChoiceRow
                 value={details.buildingStatus}
                 onChange={(v) => patchDetails({ buildingStatus: v as ProjectDetails['buildingStatus'] })}
@@ -769,24 +704,145 @@ export function NewProjectScreen({ navigation }: Props) {
                 }))}
               />
 
-              <Text style={[styles.label, { marginTop: spacing.lg }]}>Approx. building size (sq ft) *</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="number-pad"
-                placeholder="25000"
-                placeholderTextColor={colors.faint}
-                value={areaSqft}
-                onChangeText={(t) => setAreaSqft(t.replace(/[^0-9]/g, ''))}
-              />
-              <Text style={styles.hint}>A rough figure is fine.</Text>
+              <View style={styles.row2}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>Size (sq ft) *</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    placeholder="25000"
+                    placeholderTextColor={colors.faint}
+                    value={areaSqft}
+                    onChangeText={(t) => setAreaSqft(t.replace(/[^0-9]/g, ''))}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>Floors</Text>
+                  <SelectField
+                    value={floors}
+                    placeholder="Select"
+                    options={FLOOR_SELECT_OPTIONS}
+                    onChange={setFloors}
+                  />
+                </View>
+              </View>
+            </View>
+          )}
 
-              <Text style={[styles.label, { marginTop: spacing.md }]}>Number of floors</Text>
-              <SelectField
-                value={floors}
-                placeholder="Select floors"
-                options={FLOOR_SELECT_OPTIONS}
-                onChange={setFloors}
-              />
+          {current.id === 'services' && (
+            <View style={styles.panel}>
+              <Text style={styles.sectionTitle}>What do you need? *</Text>
+              <Text style={styles.hint}>Pick one or more categories, then choose the service types.</Text>
+              <View style={[styles.chipGrid, { marginTop: spacing.md }]}>
+                {SERVICE_GROUPS.map((g) => (
+                  <Chip
+                    key={g.id}
+                    label={g.label}
+                    selected={serviceGroups.includes(g.id)}
+                    onPress={() => toggleServiceGroup(g.id)}
+                  />
+                ))}
+              </View>
+              {SERVICE_GROUPS.filter((g) => serviceGroups.includes(g.id)).map((g) => (
+                <View key={g.id} style={{ marginTop: spacing.md }}>
+                  <Text style={styles.label}>{g.label} — service types *</Text>
+                  <MultiSelectField
+                    placeholder="Select service types"
+                    sections={[
+                      { id: g.id, items: g.services.map((s) => ({ value: s, label: SURVEY_SERVICE_LABELS[s] })) },
+                    ]}
+                    value={services.filter((s) => g.services.includes(s))}
+                    onChange={(next) => setGroupServices(g.services, next as SurveyService[])}
+                  />
+                </View>
+              ))}
+
+              {services.length > 0 ? (
+                <>
+                  <View style={styles.divider} />
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.sectionTitle}>Deliverables *</Text>
+                    <Pressable
+                      onPress={() => patchDetails({ scopeDeliverables: deliverablesForServices(services) })}
+                    >
+                      <Text style={styles.link}>Select all</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={styles.hint}>Only deliverables that fit your selected service types.</Text>
+                  <View style={{ marginTop: spacing.sm }}>
+                    <MultiSelectField
+                      placeholder="Select deliverables"
+                      sections={deliverableGroups.map((group) => ({
+                        id: group.id,
+                        title: group.label,
+                        items: group.items.map((d) => ({ value: d, label: PROJECT_SCOPE_DELIVERABLE_LABELS[d] })),
+                      }))}
+                      value={details.scopeDeliverables}
+                      onChange={(next) =>
+                        patchDetails({ scopeDeliverables: next as ProjectDetails['scopeDeliverables'] })
+                      }
+                    />
+                  </View>
+                </>
+              ) : null}
+
+              {needsLaser || needsBim ? (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.sectionTitle}>Preferences</Text>
+                  <Text style={styles.hint}>Optional — helps us recommend a price.</Text>
+                </>
+              ) : null}
+              {needsLaser ? (
+                <>
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>Survey / scan type</Text>
+                  <MultiSelectField
+                    placeholder="No preference"
+                    sections={[
+                      {
+                        id: 'scan',
+                        items: PROJECT_SCAN_TYPES.map((t) => ({ value: t, label: PROJECT_SCAN_TYPE_LABELS[t] })),
+                      },
+                    ]}
+                    value={details.scanTypes}
+                    onChange={(next) => patchDetails({ scanTypes: next as ProjectDetails['scanTypes'] })}
+                  />
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>Accuracy</Text>
+                  <SelectField
+                    value={details.accuracy ?? ''}
+                    placeholder="No preference"
+                    options={[
+                      { value: '', label: 'No preference' },
+                      ...PROJECT_ACCURACY.map((a) => ({ value: a, label: PROJECT_ACCURACY_LABELS[a] })),
+                    ]}
+                    onChange={(v) => patchDetails({ accuracy: (v || null) as ProjectDetails['accuracy'] })}
+                  />
+                </>
+              ) : null}
+              {needsBim ? (
+                <>
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>Level of detail (LOD)</Text>
+                  <SelectField
+                    value={details.lod ?? ''}
+                    placeholder="No preference"
+                    options={[
+                      { value: '', label: 'No preference' },
+                      ...PROJECT_LOD.map((l) => ({ value: l, label: PROJECT_LOD_LABELS[l] })),
+                    ]}
+                    onChange={(v) => patchDetails({ lod: (v || null) as ProjectDetails['lod'] })}
+                  />
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>Software</Text>
+                  <SelectField
+                    value={details.bimSoftware ?? ''}
+                    placeholder="No preference"
+                    options={[
+                      { value: '', label: 'No preference' },
+                      ...PROJECT_BIM_SOFTWARE.map((s) => ({ value: s, label: PROJECT_BIM_SOFTWARE_LABELS[s] })),
+                    ]}
+                    onChange={(v) => patchDetails({ bimSoftware: (v || null) as ProjectDetails['bimSoftware'] })}
+                  />
+                </>
+              ) : null}
             </View>
           )}
 
@@ -853,7 +909,7 @@ export function NewProjectScreen({ navigation }: Props) {
               <Text style={styles.reviewTitle}>{title.trim() || 'Untitled project'}</Text>
               <Text style={styles.hint}>
                 {[details.city, details.state].filter(Boolean).join(', ') ||
-                  (details.locationKnown === 'not_yet' ? 'Address not confirmed yet' : 'Location TBD')}
+                  'Location TBD'}
               </Text>
 
               <View style={styles.reviewGrid}>
@@ -1098,8 +1154,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
   },
-  modalOptionText: { fontSize: 15, color: colors.text },
+  modalOptionText: { fontSize: 15, color: colors.text, flex: 1, paddingRight: 8 },
+  modalSection: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: 4,
+  },
+  modalDone: {
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   textarea: { minHeight: 110, textAlignVertical: 'top' },
+  textareaSm: { minHeight: 64, textAlignVertical: 'top' },
   hint: { color: colors.muted, fontSize: 12.5, marginTop: 6 },
   groupBox: {
     marginTop: spacing.md,

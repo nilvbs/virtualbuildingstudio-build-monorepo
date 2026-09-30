@@ -31,8 +31,6 @@ import {
   PROJECT_SCAN_TYPE_LABELS,
   PROJECT_SCAN_TYPES,
   PROJECT_SCOPE_DELIVERABLE_LABELS,
-  PROJECT_SITE_ACCESS_WINDOW_LABELS,
-  PROJECT_SITE_ACCESS_WINDOWS,
   PROJECT_TIMELINE_LABELS,
   SURVEY_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
@@ -42,6 +40,7 @@ import {
   suggestProjectTitle,
   type ProjectDetails,
   type ProjectFileRef,
+  type ProjectPropertyType,
   type ProjectStepStatus,
   type ProjectTimeline,
   type SurveyService,
@@ -60,7 +59,9 @@ import {
   ChoicePills,
   FieldLabel,
   MultiPills,
+  MultiSelectField,
   OptionCards,
+  SelectField,
 } from '../../../../components/project-post-fields';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
@@ -105,6 +106,22 @@ const LocationPlaceSearch = dynamic(
 );
 
 const STEPS = PROJECT_POST_STEPS;
+
+type ServiceGroupId = (typeof SURVEY_SERVICE_GROUPS)[number]['id'];
+const SERVICE_GROUPS = SURVEY_SERVICE_GROUPS.map((g) => ({
+  id: g.id as ServiceGroupId,
+  label: g.label as string,
+  services: g.services as readonly SurveyService[],
+}));
+const SERVICE_GROUP_IDS = SERVICE_GROUPS.map((g) => g.id);
+const SERVICE_GROUP_LABELS = Object.fromEntries(SERVICE_GROUPS.map((g) => [g.id, g.label])) as Record<
+  ServiceGroupId,
+  string
+>;
+
+function groupsWithServices(services: readonly SurveyService[]): ServiceGroupId[] {
+  return SERVICE_GROUPS.filter((g) => g.services.some((s) => services.includes(s))).map((g) => g.id);
+}
 
 function toggleIn<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
@@ -192,6 +209,7 @@ export default function NewProjectPage() {
 
   const [title, setTitle] = useState('');
   const [services, setServices] = useState<SurveyService[]>([]);
+  const [serviceGroups, setServiceGroups] = useState<ServiceGroupId[]>([]);
   const [locationText, setLocationText] = useState('');
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
@@ -259,6 +277,7 @@ export default function NewProjectPage() {
     }
     setTitle(parsed.title);
     setServices(parsed.services);
+    setServiceGroups(groupsWithServices(parsed.services));
     setLocationText(parsed.locationText);
     setLat(parsed.lat);
     setLng(parsed.lng);
@@ -270,7 +289,7 @@ export default function NewProjectPage() {
     setDetails({
       ...freshDetails(),
       ...parsed.details,
-      locationKnown: parsed.details?.locationKnown ?? 'yes',
+      locationKnown: 'yes',
     });
     setStep(Math.min(Math.max(parsed.step, 0), STEPS.length - 1));
     setResuming(true);
@@ -285,6 +304,7 @@ export default function NewProjectPage() {
     setTitle('');
     autoTitleRef.current = '';
     setServices([]);
+    setServiceGroups([]);
     setLocationText('');
     setLat('');
     setLng('');
@@ -340,13 +360,16 @@ export default function NewProjectPage() {
   const stepValid = useMemo(() => {
     const id = current.id;
     if (id === 'location') {
-      const addressOk =
-        details.locationKnown === 'not_yet' ||
-        Boolean(details.country.trim() && details.state.trim() && details.city.trim());
-      return addressOk && title.trim().length > 0 && descLen >= PROJECT_DESCRIPTION_MIN;
+      const addressOk = Boolean(details.country.trim() && details.state.trim() && details.city.trim());
+      return (
+        addressOk &&
+        title.trim().length > 0 &&
+        descLen >= PROJECT_DESCRIPTION_MIN &&
+        Boolean(buildingType) &&
+        Number(areaSqft) > 0
+      );
     }
     if (id === 'services') return services.length > 0 && details.scopeDeliverables.length > 0;
-    if (id === 'property') return Boolean(buildingType) && Number(areaSqft) > 0;
     if (id === 'budget') {
       if (!details.timeline) return false;
       return details.timeline !== 'specific_date' || Boolean(details.completionDate);
@@ -355,9 +378,8 @@ export default function NewProjectPage() {
   }, [current.id, title, services, details, descLen, buildingType, areaSqft]);
 
   const stepHint: Record<string, string> = {
-    location: `Add the city & state (or tick "not confirmed"), a title, and at least ${PROJECT_DESCRIPTION_MIN} characters of description`,
+    location: `Add city & state, a title, a ${PROJECT_DESCRIPTION_MIN}+ character description, property type and building size`,
     services: 'Pick at least one service and one deliverable',
-    property: 'Pick a property type and enter the approximate building size',
     budget: 'Choose when you need the work completed',
   };
 
@@ -439,14 +461,27 @@ export default function NewProjectPage() {
     );
   }
 
-  function toggleService(s: SurveyService) {
-    const next = toggleIn(services, s);
+  function applyServices(next: SurveyService[]) {
     setServices(next);
     const allowed = new Set(deliverablesForServices(next));
     setDetails((prev) => ({
       ...prev,
       scopeDeliverables: prev.scopeDeliverables.filter((d) => allowed.has(d)),
     }));
+  }
+
+  function toggleServiceGroup(id: ServiceGroupId) {
+    if (serviceGroups.includes(id)) {
+      setServiceGroups(serviceGroups.filter((g) => g !== id));
+      const group = SERVICE_GROUPS.find((g) => g.id === id);
+      if (group) applyServices(services.filter((s) => !group.services.includes(s)));
+    } else {
+      setServiceGroups([...serviceGroups, id]);
+    }
+  }
+
+  function setGroupServices(groupServices: readonly SurveyService[], picked: SurveyService[]) {
+    applyServices([...services.filter((s) => !groupServices.includes(s)), ...picked]);
   }
 
   function selectAllDeliverables() {
@@ -547,11 +582,50 @@ export default function NewProjectPage() {
     );
   }
 
+  const titleField = (
+    <TextField
+      fullWidth
+      required
+      label="Project title"
+      placeholder="1200 Main St, Houston, TX"
+      value={title}
+      onChange={(e) => editTitle(e.target.value)}
+      helperText={
+        autoTitleRef.current && title === autoTitleRef.current
+          ? 'Named after the site address — rename it anytime'
+          : undefined
+      }
+    />
+  );
+
+  const descriptionField = (
+    <TextField
+      fullWidth
+      required
+      multiline
+      minRows={2}
+      maxRows={5}
+      label="Short description"
+      placeholder="e.g. Existing-condition survey and laser scan of a 3-storey office"
+      value={details.description}
+      onChange={(e) => patchDetails({ description: e.target.value })}
+      helperText={
+        descLen >= PROJECT_DESCRIPTION_MIN
+          ? `${descLen} characters`
+          : `${descLen}/${PROJECT_DESCRIPTION_MIN} characters minimum`
+      }
+      color={descLen >= PROJECT_DESCRIPTION_MIN ? 'success' : 'primary'}
+      slotProps={{
+        formHelperText: {
+          sx: { color: descLen >= PROJECT_DESCRIPTION_MIN ? 'success.main' : 'text.secondary' },
+        },
+      }}
+    />
+  );
+
   const stepPercent = Math.round(((step + 1) / STEPS.length) * 100);
   const locationSummary =
-    [details.city, details.state].filter(Boolean).join(', ') ||
-    locationText.trim() ||
-    (details.locationKnown === 'not_yet' ? 'Address not confirmed yet' : 'Location TBD');
+    [details.city, details.state].filter(Boolean).join(', ') || locationText.trim() || 'Location TBD';
 
   return (
     <BldMuiProvider>
@@ -615,18 +689,11 @@ export default function NewProjectPage() {
         )}
 
         {current.id === 'location' && (
-          <Stack className="wizard-panel wizard-panel--location" key="location" spacing={3}>
-            <Stack spacing={2}>
-              <SectionTitle hint="Search the site address — we fill in the city, state, ZIP and a project title for you.">
-                Where is the site?
-              </SectionTitle>
-
-              {details.locationKnown !== 'not_yet' ? (
+          <div className="wizard-panel wizard-panel--location" key="location">
                 <div className="location-split">
                   <Stack className="location-split-fields" spacing={2.25}>
                     <LocationPlaceSearch
-                      label="Site address"
-                      hint="Pick a suggestion, drop a pin on the map, or use your current location."
+                      placeholder="Search site address…"
                       autoFocus
                       onSelect={(place) => {
                         setLat(place.lat.toFixed(6));
@@ -690,31 +757,78 @@ export default function NewProjectPage() {
                       </Grid>
                     </Grid>
 
-                    <div>
-                      <FieldLabel>Is physical site access required?</FieldLabel>
-                      <ChoicePills
-                        options={['yes', 'no', 'not_sure'] as const}
-                        labels={{ yes: 'Yes', no: 'No', not_sure: 'Not sure' }}
-                        value={details.siteAccessRequired}
-                        onChange={(value) => patchDetails({ siteAccessRequired: value })}
-                      />
-                    </div>
+                    {descriptionField}
 
-                    {details.siteAccessRequired === 'yes' && (
-                      <div>
-                        <FieldLabel>Site access availability</FieldLabel>
-                        <MultiPills
-                          options={PROJECT_SITE_ACCESS_WINDOWS}
-                          labels={PROJECT_SITE_ACCESS_WINDOW_LABELS}
-                          value={details.siteAccessWindows}
-                          onToggle={(w) =>
-                            patchDetails({ siteAccessWindows: toggleIn(details.siteAccessWindows, w) })
-                          }
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <SelectField
+                          id="property-type"
+                          required
+                          label="Property type"
+                          emptyLabel="Select type"
+                          options={PROJECT_PROPERTY_TYPES}
+                          labels={PROJECT_PROPERTY_TYPE_LABELS}
+                          value={(buildingType || null) as ProjectPropertyType | null}
+                          onChange={(v) => setBuildingType(v ?? '')}
                         />
-                      </div>
-                    )}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <SelectField
+                          id="building-status"
+                          label="Building status"
+                          emptyLabel="Not sure"
+                          options={PROJECT_POST_BUILDING_STATUSES}
+                          labels={PROJECT_BUILDING_STATUS_LABELS}
+                          value={
+                            (PROJECT_POST_BUILDING_STATUSES as readonly string[]).includes(
+                              details.buildingStatus ?? '',
+                            )
+                              ? (details.buildingStatus as (typeof PROJECT_POST_BUILDING_STATUSES)[number])
+                              : null
+                          }
+                          onChange={(s) => patchDetails({ buildingStatus: s })}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <TextField
+                          fullWidth
+                          required
+                          type="number"
+                          label="Approx. building size (sq ft)"
+                          placeholder="25000"
+                          value={areaSqft}
+                          onChange={(e) => setAreaSqft(e.target.value)}
+                          error={areaSqft !== '' && !(Number(areaSqft) > 0)}
+                          helperText={
+                            areaSqft !== '' && !(Number(areaSqft) > 0) ? 'Enter a size greater than 0' : undefined
+                          }
+                          slotProps={{ htmlInput: { min: 1, inputMode: 'numeric' } }}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <FormControl fullWidth>
+                          <InputLabel id="floors-label">Number of floors</InputLabel>
+                          <Select
+                            labelId="floors-label"
+                            label="Number of floors"
+                            value={floors}
+                            onChange={(e) => setFloors(String(e.target.value))}
+                          >
+                            <MenuItem value="">
+                              <em>Not sure</em>
+                            </MenuItem>
+                            {PROJECT_FLOOR_OPTIONS.map((n) => (
+                              <MenuItem key={n} value={String(n)}>
+                                {floorOptionLabel(n)}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                    </Grid>
                   </Stack>
                   <div className="location-split-map">
+                    {titleField}
                     <LocationMapPicker
                       lat={lat}
                       lng={lng}
@@ -723,235 +837,116 @@ export default function NewProjectPage() {
                     />
                   </div>
                 </div>
-              ) : (
-                <Typography variant="body2">
-                  You can add the exact address later — we&apos;ll still start matching on services and timing.
-                </Typography>
-              )}
-
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={details.locationKnown === 'not_yet'}
-                    onChange={(e) => patchDetails({ locationKnown: e.target.checked ? 'not_yet' : 'yes' })}
-                  />
-                }
-                label="The site address isn't confirmed yet"
-              />
-            </Stack>
-
-            <Stack spacing={2.25} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
-              <SectionTitle hint="Named after the address by default — rename it anytime.">
-                Project overview
-              </SectionTitle>
-              <TextField
-                fullWidth
-                required
-                label="Project title"
-                placeholder="1200 Main St, Houston, TX"
-                value={title}
-                onChange={(e) => editTitle(e.target.value)}
-                helperText={
-                  autoTitleRef.current && title === autoTitleRef.current
-                    ? 'Filled from the site address'
-                    : undefined
-                }
-              />
-              <TextField
-                fullWidth
-                required
-                multiline
-                minRows={4}
-                label="Short project description"
-                placeholder="We need an existing-condition survey and laser scan of a three-story commercial building…"
-                value={details.description}
-                onChange={(e) => patchDetails({ description: e.target.value })}
-                helperText={
-                  descLen >= PROJECT_DESCRIPTION_MIN
-                    ? `${descLen} characters · looking good`
-                    : `${descLen}/${PROJECT_DESCRIPTION_MIN} minimum to continue · recommended 100–500`
-                }
-                color={descLen >= PROJECT_DESCRIPTION_MIN ? 'success' : 'primary'}
-                slotProps={{
-                  formHelperText: {
-                    sx: { color: descLen >= PROJECT_DESCRIPTION_MIN ? 'success.main' : 'text.secondary' },
-                  },
-                }}
-              />
-            </Stack>
-          </Stack>
+          </div>
         )}
 
         {current.id === 'services' && (
           <Stack className="wizard-panel" key="services" spacing={3}>
-            <Stack spacing={1.5}>
-              <SectionTitle hint="Pick everything you need — deliverables below update to match.">
+            <Stack spacing={2}>
+              <SectionTitle hint="Pick one or more categories, then choose the service types.">
                 What do you need? *
               </SectionTitle>
-              <div className="project-post-groups">
-                {SURVEY_SERVICE_GROUPS.map((group) => (
-                  <section key={group.id} className="project-post-group">
-                    <h3>{group.label}</h3>
-                    <OptionCards
-                      options={group.services}
-                      labels={SURVEY_SERVICE_LABELS}
-                      value={services}
-                      onToggle={toggleService}
-                    />
-                  </section>
-                ))}
-              </div>
+              <OptionCards
+                options={SERVICE_GROUP_IDS}
+                labels={SERVICE_GROUP_LABELS}
+                value={serviceGroups}
+                onToggle={toggleServiceGroup}
+              />
+              {SERVICE_GROUPS.filter((g) => serviceGroups.includes(g.id)).map((group) => (
+                <MultiSelectField
+                  key={group.id}
+                  id={`svc-${group.id}`}
+                  required
+                  label={`${group.label} — service types`}
+                  options={group.services}
+                  labels={SURVEY_SERVICE_LABELS}
+                  value={services.filter((s) => group.services.includes(s))}
+                  onChange={(next) => setGroupServices(group.services, next)}
+                />
+              ))}
             </Stack>
 
-            <Stack spacing={1.5} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
-              <Stack
-                direction="row"
-                sx={{ alignItems: 'flex-end', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}
-              >
-                <SectionTitle hint="Only deliverables that fit your selected services are shown.">
-                  Deliverables *
-                </SectionTitle>
-                {services.length > 0 && (
+            {services.length > 0 && (
+              <Stack spacing={1.5} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
+                <Stack
+                  direction="row"
+                  sx={{ alignItems: 'flex-end', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}
+                >
+                  <SectionTitle hint="Only deliverables that fit your selected service types are listed.">
+                    Deliverables *
+                  </SectionTitle>
                   <Button type="button" size="small" onClick={selectAllDeliverables}>
                     Select all
                   </Button>
-                )}
-              </Stack>
-              {deliverableGroups.length === 0 ? (
-                <Alert severity="info">Pick a service above to see its deliverables.</Alert>
-              ) : (
-                deliverableGroups.map((group) => (
-                  <div key={group.id}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      {group.label}
-                    </Typography>
-                    <OptionCards
-                      options={group.items}
-                      labels={PROJECT_SCOPE_DELIVERABLE_LABELS}
-                      value={details.scopeDeliverables}
-                      onToggle={(item) =>
-                        patchDetails({ scopeDeliverables: toggleIn(details.scopeDeliverables, item) })
-                      }
-                    />
-                  </div>
-                ))
-              )}
-            </Stack>
-
-            {needsLaser && (
-              <Stack spacing={2} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
-                <SectionTitle hint="Optional — helps us recommend a price.">Scanning preferences</SectionTitle>
-                <div>
-                  <FieldLabel>Survey / scan type</FieldLabel>
-                  <OptionCards
-                    options={PROJECT_SCAN_TYPES}
-                    labels={PROJECT_SCAN_TYPE_LABELS}
-                    value={details.scanTypes}
-                    onToggle={(t) => patchDetails({ scanTypes: toggleIn(details.scanTypes, t) })}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Accuracy</FieldLabel>
-                  <ChoicePills
-                    options={PROJECT_ACCURACY}
-                    labels={PROJECT_ACCURACY_LABELS}
-                    value={details.accuracy}
-                    onChange={(a) => patchDetails({ accuracy: a })}
-                  />
-                </div>
-              </Stack>
-            )}
-
-            {needsBim && (
-              <Stack spacing={2} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
-                <SectionTitle hint="Optional — helps us recommend a price.">Model preferences</SectionTitle>
-                <div>
-                  <FieldLabel>Level of detail (LOD)</FieldLabel>
-                  <ChoicePills
-                    options={PROJECT_LOD}
-                    labels={PROJECT_LOD_LABELS}
-                    value={details.lod}
-                    onChange={(l) => patchDetails({ lod: l })}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Software</FieldLabel>
-                  <ChoicePills
-                    options={PROJECT_BIM_SOFTWARE}
-                    labels={PROJECT_BIM_SOFTWARE_LABELS}
-                    value={details.bimSoftware}
-                    onChange={(s) => patchDetails({ bimSoftware: s })}
-                  />
-                </div>
-              </Stack>
-            )}
-          </Stack>
-        )}
-
-        {current.id === 'property' && (
-          <Stack className="wizard-panel" key="property" spacing={2.5}>
-            <div>
-              <FieldLabel required>Property type</FieldLabel>
-              <OptionCards
-                exclusive
-                options={PROJECT_PROPERTY_TYPES}
-                labels={PROJECT_PROPERTY_TYPE_LABELS}
-                value={buildingType}
-                onToggle={setBuildingType}
-              />
-            </div>
-
-            <div>
-              <FieldLabel>Building status</FieldLabel>
-              <ChoicePills
-                options={PROJECT_POST_BUILDING_STATUSES}
-                labels={PROJECT_BUILDING_STATUS_LABELS}
-                value={details.buildingStatus}
-                onChange={(s) => patchDetails({ buildingStatus: s })}
-              />
-            </div>
-
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  fullWidth
+                </Stack>
+                <MultiSelectField
+                  id="deliverables"
                   required
-                  type="number"
-                  label="Approx. building size (sq ft)"
-                  placeholder="25000"
-                  value={areaSqft}
-                  onChange={(e) => setAreaSqft(e.target.value)}
-                  error={areaSqft !== '' && !(Number(areaSqft) > 0)}
-                  helperText={
-                    areaSqft !== '' && !(Number(areaSqft) > 0)
-                      ? 'Enter a size greater than 0'
-                      : 'A rough figure is fine'
-                  }
-                  slotProps={{ htmlInput: { min: 1, inputMode: 'numeric' } }}
+                  label="Deliverables"
+                  options={deliverablesForServices(services)}
+                  groups={deliverableGroups}
+                  labels={PROJECT_SCOPE_DELIVERABLE_LABELS}
+                  value={details.scopeDeliverables}
+                  onChange={(next) => patchDetails({ scopeDeliverables: next })}
                 />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl fullWidth>
-                  <InputLabel id="floors-label">Number of floors</InputLabel>
-                  <Select
-                    labelId="floors-label"
-                    label="Number of floors"
-                    value={floors}
-                    onChange={(e) => setFloors(String(e.target.value))}
-                  >
-                    <MenuItem value="">
-                      <em>Not sure</em>
-                    </MenuItem>
-                    {PROJECT_FLOOR_OPTIONS.map((n) => (
-                      <MenuItem key={n} value={String(n)}>
-                        {floorOptionLabel(n)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  <FormHelperText>Including ground floor</FormHelperText>
-                </FormControl>
-              </Grid>
-            </Grid>
+              </Stack>
+            )}
+
+            {(needsLaser || needsBim) && (
+              <Stack spacing={2} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
+                <SectionTitle hint="Optional — helps us recommend a price.">Preferences</SectionTitle>
+                <Grid container spacing={2}>
+                  {needsLaser && (
+                    <>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <MultiSelectField
+                          id="scan-types"
+                          label="Survey / scan type"
+                          options={PROJECT_SCAN_TYPES}
+                          labels={PROJECT_SCAN_TYPE_LABELS}
+                          value={details.scanTypes}
+                          onChange={(next) => patchDetails({ scanTypes: next })}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <SelectField
+                          id="accuracy"
+                          label="Accuracy"
+                          options={PROJECT_ACCURACY}
+                          labels={PROJECT_ACCURACY_LABELS}
+                          value={details.accuracy}
+                          onChange={(a) => patchDetails({ accuracy: a })}
+                        />
+                      </Grid>
+                    </>
+                  )}
+                  {needsBim && (
+                    <>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <SelectField
+                          id="lod"
+                          label="Level of detail (LOD)"
+                          options={PROJECT_LOD}
+                          labels={PROJECT_LOD_LABELS}
+                          value={details.lod}
+                          onChange={(l) => patchDetails({ lod: l })}
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <SelectField
+                          id="bim-software"
+                          label="Software"
+                          options={PROJECT_BIM_SOFTWARE}
+                          labels={PROJECT_BIM_SOFTWARE_LABELS}
+                          value={details.bimSoftware}
+                          onChange={(s) => patchDetails({ bimSoftware: s })}
+                        />
+                      </Grid>
+                    </>
+                  )}
+                </Grid>
+              </Stack>
+            )}
           </Stack>
         )}
 

@@ -3,7 +3,7 @@ import { PROJECT_POST_STEPS } from '@surveylink/types';
 
 export const PROJECT_POST_DRAFT_KEY = 'bld.projectPostDraft.v1';
 /** Bump when PROJECT_POST_STEPS changes so saved step indexes are not misapplied. */
-const DRAFT_LAYOUT = 2;
+const DRAFT_LAYOUT = 3;
 
 export type ProjectPostDraft = {
   layout?: number;

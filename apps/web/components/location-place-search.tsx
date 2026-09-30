@@ -16,6 +16,7 @@ type Props = {
   onSelect: (place: AddressSuggestion & { lat: number; lng: number }) => void;
   label?: string;
   hint?: string;
+  placeholder?: string;
   autoFocus?: boolean;
 };
 
@@ -30,8 +31,9 @@ function shortLabel(name: string) {
 
 export function LocationPlaceSearch({
   onSelect,
-  label = 'Search place',
-  hint = 'Find an address or landmark, then pin it on the map.',
+  label,
+  hint,
+  placeholder = 'Search address, city, or landmark…',
   autoFocus,
 }: Props) {
   const [query, setQuery] = useState('');
@@ -80,8 +82,8 @@ export function LocationPlaceSearch({
 
   return (
     <Stack spacing={0.75}>
-      <Typography variant="subtitle2">{label}</Typography>
-      <Typography variant="body2">{hint}</Typography>
+      {label ? <Typography variant="subtitle2">{label}</Typography> : null}
+      {hint ? <Typography variant="body2">{hint}</Typography> : null}
       <Autocomplete
         freeSolo
         options={hits}
@@ -121,7 +123,7 @@ export function LocationPlaceSearch({
           return (
             <TextField
               {...params}
-              placeholder="Search address, city, or landmark…"
+              placeholder={placeholder}
               autoFocus={autoFocus}
               slotProps={{
                 ...params.slotProps,

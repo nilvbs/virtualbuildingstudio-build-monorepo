@@ -9806,7 +9806,7 @@ lord-icon {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
   position: relative;
 }
@@ -9814,8 +9814,8 @@ lord-icon {
 .project-post-steps ol::before {
   content: '';
   position: absolute;
-  left: calc(100% / 10);
-  right: calc(100% / 10);
+  left: calc(100% / 8);
+  right: calc(100% / 8);
   top: 14px;
   height: 2px;
   background: rgba(113, 104, 246, 0.14);
@@ -10211,6 +10211,7 @@ lord-icon {
 .location-split-map {
   display: flex;
   flex-direction: column;
+  gap: 16px;
   min-width: 0;
   min-height: 520px;
   height: 100%;
@@ -10226,6 +10227,10 @@ lord-icon {
 
 .svy-map-field .location-map {
   margin-top: 2px;
+}
+
+.location-split-map > .location-map {
+  height: auto;
 }
 
 .location-map {
