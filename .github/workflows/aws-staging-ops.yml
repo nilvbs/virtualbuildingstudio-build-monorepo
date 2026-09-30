@@ -268,10 +268,13 @@ jobs:
           else
             echo "RESULT_PARAM_GROUP=exists"
           fi
-          SPL=$(awsx rds describe-db-cluster-parameters --db-cluster-parameter-group-name "$TARGET" \
-            --query "Parameters[?ParameterName=='shared_preload_libraries'].ParameterValue | [0]" --output text)
+          # Full JSON + jq: with --query/--output text the CLI applies the query per page,
+          # which yields one line per page ("value\nNone\nNone") and an invalid parameter value.
+          PJSON=$(awsx rds describe-db-cluster-parameters --db-cluster-parameter-group-name "$TARGET" --output json)
+          SPL=$(printf '%s' "$PJSON" | jq -r '[.Parameters[] | select(.ParameterName=="shared_preload_libraries") | .ParameterValue // empty] | first // ""' | tr -d '[:space:]')
           case "$SPL" in None|"") SPL="pg_stat_statements" ;; esac
           case ",$SPL," in *,pgaudit,*) NEW="$SPL" ;; *) NEW="$SPL,pgaudit" ;; esac
+          echo "RESULT_PRELOAD_NEW=$NEW"
           PARAMS=$(jq -nc --arg spl "$NEW" '[
             {ParameterName:"shared_preload_libraries",ParameterValue:$spl,ApplyMethod:"pending-reboot"},
             {ParameterName:"pgaudit.log",ParameterValue:"ddl,role",ApplyMethod:"pending-reboot"},
