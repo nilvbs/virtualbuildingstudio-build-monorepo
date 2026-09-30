@@ -157,8 +157,15 @@ jobs:
             upsert_env TWILIO_EMAIL_FROM "${TWILIO_EMAIL_FROM:-}"
             upsert_env TWILIO_EMAIL_FROM_NAME "${TWILIO_EMAIL_FROM_NAME:-}"
             # Optional: refresh Aurora URLs from GitHub Environment secrets when set.
-            upsert_env DATABASE_URL "${DATABASE_URL:-}"
-            upsert_env DIRECT_DATABASE_URL "${DIRECT_DATABASE_URL:-}"
+            # Least-privilege mode (setup-staging-db-app-role.yml): the API runs as bld_app
+            # (DATABASE_URL, generated on the box); the owner secrets only feed migrations.
+            if grep -q '^DB_APP_ROLE=bld_app' "$APP_DIR/.env"; then
+              echo "DB least-privilege mode: API uses bld_app; owner URL only for migrations"
+              upsert_env DIRECT_DATABASE_URL "${DIRECT_DATABASE_URL:-${DATABASE_URL:-}}"
+            else
+              upsert_env DATABASE_URL "${DATABASE_URL:-}"
+              upsert_env DIRECT_DATABASE_URL "${DIRECT_DATABASE_URL:-}"
+            fi
             upsert_env WEB_APP_URL "${WEB_APP_URL:-}"
             upsert_env CORS_ORIGINS "${CORS_ORIGINS:-}"
             # Shared rate-limit store: password generated on the box, never printed.

@@ -12,7 +12,7 @@ name: Verify staging security
 
 on:
   workflow_run:
-    workflows: ['Deploy API']
+    workflows: ['Deploy API', 'Staging DB app role (create / rotate)']
     types: [completed]
   workflow_dispatch:
 
@@ -139,6 +139,13 @@ jobs:
               echo "RESULT_DB_TLS=no"
             fi
 
+            # --- API runs as the least-privilege DB role ---
+            if grep -qE '^DATABASE_URL=postgres(ql)?://bld_app:' .env && grep -q '^DB_APP_ROLE=bld_app' .env; then
+              echo "RESULT_DB_APP_ROLE=yes"
+            else
+              echo "RESULT_DB_APP_ROLE=no"
+            fi
+
             # --- Nginx rate-limit zones loaded ---
             if sudo nginx -T 2>/dev/null | grep -q 'zone=bld_auth'; then
               echo "RESULT_NGINX_ZONES=yes"
@@ -164,6 +171,7 @@ jobs:
             echo "redis_keys=$(get REDIS_KEYS)"
             echo "redis_private=$(get REDIS_PRIVATE)"
             echo "db_tls=$(get DB_TLS)"
+            echo "db_app_role=$(get DB_APP_ROLE)"
             echo "nginx_zones=$(get NGINX_ZONES)"
           } | tee -a "$GITHUB_OUTPUT" > /tmp/results.txt
           echo "nginx_429=${NGINX_429:-0}" >> /tmp/results.txt
@@ -192,6 +200,10 @@ jobs:
       - name: Check - API to Aurora TLS
         if: always()
         run: '[ "${{ steps.parse.outputs.db_tls }}" = "yes" ]'
+
+      - name: Check - API uses least-privilege DB role
+        if: always()
+        run: '[ "${{ steps.parse.outputs.db_app_role }}" = "yes" ]'
 
       - name: Check - Nginx 429 on /api/auth burst
         if: always()
