@@ -163,7 +163,11 @@
         <br />Verified on staging (30 Sep): Redis limiter active and private · DB TLS on ·
         Nginx returned 429 to 22 of 45 burst requests on <code>/api/auth/refresh</code> while <code>/api/health</code> stayed 200 ·
         API runs as least-privilege <code>bld_app</code> · restore drill passed (16/16 tables).
-        Open: Aurora KMS confirmation · managed WAF · pgaudit · owner credential in Secrets Manager.
+        <br />AWS, verified 30 Sep through the keyless GitHub OIDC role (no access keys created or changed):
+        Aurora storage encrypted (AWS-managed RDS KMS key) · 7-day backups + deletion protection ·
+        no public DB instance, no world-open 5432 · EC2 read-only instance role attached ·
+        owner DB URL in Secrets Manager · pgaudit (<code>ddl,role</code>) on, PostgreSQL logs to CloudWatch (90 days).
+        Open: managed WAF · owner credential rotation · optional customer-managed KMS key.
       </div>
     </header>
 
@@ -318,9 +322,9 @@
       <table>
         <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td>Encryption at rest</td><td>Aurora storage encrypted with AWS KMS CMK</td><td><span class="badge gap">Verify in AWS</span> (auto-check ready; needs EC2 instance role)</td></tr>
+          <tr><td>Encryption at rest</td><td>Aurora storage encrypted with AWS KMS CMK</td><td><span class="badge now">Live</span> encrypted with the AWS-managed RDS key (confirmed 30 Sep, re-checked after every deploy); customer-managed key optional</td></tr>
           <tr><td>Encryption in transit</td><td><code>sslmode=require</code> (or verify-full) on <code>DATABASE_URL</code></td><td><span class="badge now">Live — boot check</span></td></tr>
-          <tr><td>Credentials</td><td>Secrets Manager only; rotate periodically; no secrets in git</td><td><span class="badge now">Designed</span></td></tr>
+          <tr><td>Credentials</td><td>Secrets Manager only; rotate periodically; no secrets in git</td><td><span class="badge gap">Partial</span> owner URL in Secrets Manager (read by deploy via instance role); <code>bld_app</code> rotated quarterly; owner rotation not yet enabled</td></tr>
           <tr><td>App-level field crypto</td><td>Optional KMS envelope for highest-sensitivity columns (phone, address)</td><td><span class="badge target">Phase 3+</span></td></tr>
           <tr><td>OTP / passwords</td><td>Never store plaintext; scrypt / SHA-256 hashes only</td><td><span class="badge now">Live</span></td></tr>
         </tbody>
@@ -341,9 +345,9 @@
       <table>
         <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td>Automated backups + PITR</td><td>Aurora continuous backup; tested restore drill</td><td><span class="badge gap">Partial</span> monthly logical drill live; retention / PITR restore need AWS</td></tr>
+          <tr><td>Automated backups + PITR</td><td>Aurora continuous backup; tested restore drill</td><td><span class="badge now">Live</span> 7-day retention; Aurora point-in-time restore drilled 30 Sep (11 min, 16/16 tables); monthly logical drill</td></tr>
           <tr><td>Read replica</td><td>Designed in AWS topology</td><td><span class="badge now">Designed</span></td></tr>
-          <tr><td>DB audit</td><td>pgaudit / CloudWatch for DDL + privileged reads</td><td><span class="badge target">Phase 2</span></td></tr>
+          <tr><td>DB audit</td><td>pgaudit / CloudWatch for DDL + privileged reads</td><td><span class="badge now">Live</span> pgaudit <code>ddl,role</code> on staging; PostgreSQL logs exported to CloudWatch, 90-day retention (30 Sep)</td></tr>
           <tr><td>Abuse / brute force</td><td>Redis-shared API throttler + Nginx per-IP limits on auth routes; managed WAF next</td><td><span class="badge now">Live</span></td></tr>
           <tr><td>App activity logs</td><td><code>activity_logs</code> for marketplace / ticket / staff actions</td><td><span class="badge now">Live</span></td></tr>
           <tr><td>Deletion safety</td><td>Documented cascades; surveyor profile delete ordered in admin</td><td><span class="badge now">Partial</span></td></tr>
@@ -411,7 +415,7 @@
             <td><span class="badge gap">High</span> Aurora KMS encryption not confirmed</td>
             <td>Unencrypted storage / snapshots</td>
             <td>Read-only <code>describe-db-clusters</code> from EC2 via instance role (<code>verify-staging-security.yml</code>)</td>
-            <td><span class="badge gap">Pending — ops</span><br /><small>30 Sep: EC2 has no IAM instance role, so the check could not run. Confirm in RDS console (cluster → Configuration → Encryption) or attach a read-only role (<code>rds:DescribeDBClusters</code>, <code>rds:DescribeDBInstances</code>) — no access keys needed.</small></td>
+            <td><span class="badge now">Closed</span><br /><small>30 Sep: read-only role <code>bld-staging-ec2</code> attached (CloudFormation + GitHub OIDC, no access keys). <code>StorageEncrypted=true</code> with the AWS-managed RDS key; re-checked after every deploy.</small></td>
           </tr>
           <tr>
             <td><span class="badge gap">High</span> OAuth state nonce not bound server-side</td>
@@ -452,14 +456,14 @@
           <tr>
             <td><span class="badge gap">Medium</span> No DB audit trail</td>
             <td>Privileged DB actions leave no trail</td>
-            <td>pgaudit via Aurora cluster parameter group → CloudWatch Logs (AWS console)</td>
-            <td><span class="badge gap">Open — needs AWS</span></td>
+            <td>pgaudit via Aurora cluster parameter group (<code>bld-aurora-pg16-audit</code>) → CloudWatch Logs, 90-day retention</td>
+            <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
             <td><span class="badge gap">Medium</span> Restore never tested</td>
             <td>Backups may not be recoverable when needed</td>
-            <td>Monthly logical restore drill (<code>staging-restore-drill.yml</code>). Aurora snapshot / PITR restore still needs AWS access</td>
-            <td><span class="badge gap">Partial</span></td>
+            <td>Monthly logical restore drill (<code>staging-restore-drill.yml</code>) + Aurora point-in-time restore drill via <code>AWS staging ops (OIDC)</code>: 30 Sep, restored in 11 min, 16/16 tables, throwaway cluster deleted</td>
+            <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
             <td><span class="badge target">Later</span> No column-level encryption</td>
@@ -487,7 +491,8 @@
           media DELETE ownership · CORS fail-closed · <code>devAuthEnabled</code> on JWT path ·
           Helmet on Nest · production DB SSL boot check · this ops checklist below.
           <br /><strong>Status:</strong> <span class="badge now" style="margin:0">Done — live on staging</span>
-          <br /><strong>Still ops:</strong> Aurora KMS confirmation (EC2 needs a read-only IAM instance role, or check the RDS console) · security groups in AWS.
+          <br /><strong>AWS verified (30 Sep):</strong> Aurora encrypted · no public DB instance · no world-open 5432.
+          <br /><strong>Still ops:</strong> confirm the Aurora SG allows 5432 only from the EC2 security group.
         </p>
       </div>
       <div class="phase">
@@ -503,8 +508,8 @@
           Nginx edge rate limits on <code>/api/auth/*</code> · web CSP + security headers · post-deploy security verification ·
           least-privilege DB role <code>bld_app</code> with quarterly password rotation · monthly logical restore drill.
           <br /><strong>Remaining:</strong> managed WAF (move <code>bld.online</code> DNS to Cloudflare, or ALB/CloudFront + AWS WAF) ·
-          ElastiCache when running more than one API host · pgaudit / CloudWatch DB audit ·
-          owner credential into Secrets Manager + rotation · Aurora snapshot restore drill.
+          ElastiCache when running more than one API host · owner credential rotation.
+          <br /><strong>Done 30 Sep (AWS, keyless):</strong> pgaudit + CloudWatch DB audit · owner credential in Secrets Manager · EC2 instance role · Aurora point-in-time restore drill.
         </p>
       </div>
       <div class="phase">
@@ -521,14 +526,14 @@
       <p class="sub">Print this for staging and production. All boxes should be true before calling the environment highly secured.</p>
       <ul>
         <li>☐ Aurora in private subnets; SG allows 5432 only from the app (staging: EC2 API host · production: ECS / RDS Proxy)</li>
-        <li>☐ Storage encryption enabled (KMS CMK) — not yet confirmed (no AWS read access from the box)</li>
+        <li>☑ Storage encryption enabled — confirmed 30 Sep (AWS-managed RDS KMS key; customer-managed key optional)</li>
         <li>☑ App <code>DATABASE_URL</code> uses SSL (<code>sslmode=require</code>, enforced by deploy + API boot check)</li>
         <li>☑ DB credentials not in git or CI logs (compose has no passwords; workflows print only yes/no)</li>
         <li>☑ App DB credential (<code>bld_app</code>) generated on the box and rotated quarterly (<code>setup-staging-db-app-role.yml</code>)</li>
-        <li>☐ Owner DB credential in Secrets Manager and rotated (today: GitHub Environment secret → EC2 <code>.env</code>)</li>
+        <li>☐ Owner DB credential in Secrets Manager and rotated — in Secrets Manager since 30 Sep (<code>bld/api/staging/DIRECT_DATABASE_URL</code>); rotation not yet enabled</li>
         <li>☑ Separate migrate vs app DB users — API runs as <code>bld_app</code> (DML only); owner used only by <code>prisma migrate deploy</code></li>
         <li>☑ Restore tested in last 90 days — logical drill passed 30 Sep 2026 (16/16 tables exact match), repeats monthly</li>
-        <li>☐ Aurora backup retention / PITR confirmed and snapshot restore drilled (needs AWS access)</li>
+        <li>☑ Aurora backup retention (7 days) + deletion protection confirmed; point-in-time restore drilled 30 Sep (11 min, 16/16 tables, copy deleted)</li>
         <li>☐ Staging and production fully isolated (no shared DB)</li>
         <li>☑ Suspended / deleted users cannot authenticate; refresh tokens revoked on suspend</li>
         <li>☑ Staff actions permission-gated; super admin protected</li>
@@ -537,17 +542,17 @@
         <li>☑ OAuth login state signed and nonce-bound</li>
         <li>☑ Rate limits shared via Redis; Nginx per-IP limit on <code>/api/auth/*</code> returns 429</li>
         <li>☐ Managed WAF in front of Nginx (needs Cloudflare DNS or ALB/CloudFront)</li>
-        <li>☐ Audit trail for privileged DB actions (staff actions: <code>activity_logs</code> ☑)</li>
+        <li>☑ Audit trail for privileged DB actions — pgaudit <code>ddl,role</code> → CloudWatch (90 days); staff actions in <code>activity_logs</code></li>
       </ul>
 
       <h3>Phase 1 — AWS KMS + security group verification</h3>
       <ul>
-        <li>☐ RDS / Aurora → Configuration → Encryption = enabled (KMS key noted)</li>
-        <li>☐ DB subnet group = private subnets only (no public IP)</li>
+        <li>☑ RDS / Aurora → Configuration → Encryption = enabled (AWS-managed <code>aws/rds</code> key) — 30 Sep</li>
+        <li>☑ No DB instance publicly accessible; no security group opens 5432 to <code>0.0.0.0/0</code> — 30 Sep probe</li>
         <li>☐ Staging: Aurora security group inbound TCP 5432 only from the EC2 API instance's security group (no <code>0.0.0.0/0</code>, no office/home IPs left open)</li>
         <li>☐ Staging: EC2 security group inbound only 80/443 (Nginx) + SSH restricted; API <code>:4000</code> and Redis not reachable from the internet</li>
         <li>☐ Production (ECS design, not deployed yet): DB / RDS Proxy SG inbound 5432 from ECS task SG only; ECS task SG outbound to Proxy/DB only</li>
-        <li>☐ Secrets Manager holds <code>DATABASE_URL</code> with <code>sslmode=require</code> (staging today: GitHub Environment secret → EC2 <code>.env</code>)</li>
+        <li>☑ Secrets Manager holds the owner DB URL (<code>bld/api/staging/DIRECT_DATABASE_URL</code>); deploy reads it via the EC2 instance role, <code>sslmode=require</code> enforced</li>
         <li>☑ <code>CORS_ORIGINS</code> / <code>WEB_APP_URL</code> set — staging API is running, and it refuses to boot in production without them</li>
         <li>☑ <code>NODE_ENV=production</code> and dev login off — staging logs the production-only <code>[db-tls]</code> check, and <code>AUTH_DEV_MODE</code> is force-disabled in production</li>
       </ul>
@@ -563,18 +568,18 @@
 
       <h3>Needs AWS console or DNS access (cannot be done from the repo)</h3>
       <p class="sub">
-        <strong>Keyless path ready:</strong> deploy <code>deploy/aws/github-oidc-staging-ops.yml</code> once in CloudFormation
-        and add its <code>OpsRoleArn</code> as the <code>staging</code> environment secret <code>AWS_OPS_ROLE_ARN</code>.
+        <strong>Keyless path live (30 Sep):</strong> stack <code>bld-staging-github-ops</code> deployed from
+        <code>deploy/aws/github-oidc-staging-ops.yml</code>; its <code>OpsRoleArn</code> is the <code>staging</code> environment secret <code>AWS_OPS_ROLE_ARN</code>.
         <code>AWS staging ops (OIDC)</code> then does the items below (except WAF) with temporary credentials:
         instance role, KMS check, Secrets Manager copy, pgaudit + CloudWatch export, and an Aurora point-in-time restore drill.
         No IAM users or access keys are created. <code>bld_app</code> rotations already send only a SCRAM hash, so audit logs never hold the password.
       </p>
       <ul>
-        <li>☐ <strong>DB audit (pgaudit):</strong> RDS → Parameter groups → cluster parameter group → add <code>pgaudit</code> to <code>shared_preload_libraries</code>, set <code>pgaudit.log = 'ddl,role'</code> → reboot writer → cluster → Modify → Log exports → PostgreSQL log → CloudWatch. Then <code>CREATE EXTENSION pgaudit;</code></li>
-        <li>☐ <strong>Owner credential in Secrets Manager + rotation:</strong> store the owner URL as <code>bld/api/DIRECT_DATABASE_URL</code>, enable rotation, and update the GitHub <code>staging</code> environment secret after each rotation (deploy copies it into <code>DIRECT_DATABASE_URL</code> for migrations only).</li>
-        <li>☐ <strong>Snapshot restore drill:</strong> RDS → cluster → Actions → Restore to point in time → temporary cluster → check row counts → delete it.</li>
+        <li>☑ <strong>DB audit (pgaudit):</strong> done 30 Sep by <code>AWS staging ops (OIDC)</code> — parameter group <code>bld-aurora-pg16-audit</code>, <code>pgaudit.log = 'ddl,role'</code>, extension created, PostgreSQL log export to CloudWatch with 90-day retention.</li>
+        <li>☐ <strong>Owner credential rotation:</strong> the owner URL is in Secrets Manager (<code>bld/api/staging/DIRECT_DATABASE_URL</code>, copied 30 Sep) and deploy reads it from there; enabling automatic rotation is still open.</li>
+        <li>☑ <strong>Point-in-time restore drill:</strong> done 30 Sep by <code>AWS staging ops (OIDC)</code> (task <code>restore-drill</code>; <code>drill-cleanup</code> removes any leftover copy).</li>
         <li>☐ <strong>Managed WAF:</strong> move <code>bld.online</code> nameservers from Hostinger to Cloudflare, proxy <code>staging</code>, enable managed rules + a rate-limit rule on <code>/api/auth/*</code>, and set Nginx <code>real_ip_header CF-Connecting-IP</code> for Cloudflare ranges. Or: ALB / CloudFront + AWS WAF in front of EC2.</li>
-        <li>☐ <strong>KMS auto-check:</strong> attach an IAM instance role to the EC2 box with <code>rds:DescribeDBClusters</code> + <code>rds:DescribeDBInstances</code> (no access keys).</li>
+        <li>☑ <strong>KMS auto-check:</strong> read-only instance role <code>bld-staging-ec2</code> attached 30 Sep; <code>Verify staging security</code> now confirms encryption after every deploy.</li>
       </ul>
     </section>
 
