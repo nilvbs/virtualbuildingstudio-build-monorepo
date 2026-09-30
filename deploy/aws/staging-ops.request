@@ -2,5 +2,5 @@
 # Tasks: probe,instance-profile,secrets-copy,audit-logs,restore-drill,drill-cleanup
 # audit-logs reboots the Aurora writer (~1 min of staging DB downtime).
 # Never combine drill-cleanup with restore-drill (cleanup would delete the running drill copy).
-TASKS=audit-logs
-REQUESTED=2026-09-30T17:15
+TASKS=restore-drill
+REQUESTED=2026-09-30T17:25
