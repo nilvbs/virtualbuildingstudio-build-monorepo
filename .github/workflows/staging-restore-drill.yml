@@ -1,0 +1,142 @@
+name: Staging restore drill
+
+# Logical backup/restore drill for staging Aurora (monthly, keeps "restore tested in the
+# last 90 days" true). On the EC2 box: pg_dump Aurora → restore into a throwaway PostGIS
+# container (no ports) → compare per-table row counts → delete container, dump and image.
+# This proves the data can be recovered from a logical backup. It does NOT exercise
+# Aurora snapshot / point-in-time restore (that needs AWS API access).
+# Public logs: only pass/fail, counts of tables and a match percentage.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 4 7 * *' # monthly
+  push:
+    branches: [main]
+    paths: ['.github/workflows/staging-restore-drill.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - name: Resolve EC2 settings
+        id: dirs
+        run: |
+          APP_DIR="${{ vars.EC2_APP_DIR }}"
+          USERNAME="${{ vars.EC2_USER }}"
+          echo "app_dir=${APP_DIR:-/home/ubuntu/BLD/stage}" >> "$GITHUB_OUTPUT"
+          echo "user=${USERNAME:-ubuntu}" >> "$GITHUB_OUTPUT"
+
+      - name: Dump, restore, compare on EC2
+        id: remote
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ steps.dirs.outputs.user }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          capture_stdout: true
+          command_timeout: 25m
+          script: |
+            set -eu
+            cd "${{ steps.dirs.outputs.app_dir }}"
+            getenv() { grep "^$1=" .env | tail -n 1 | cut -d= -f2- | tr -d '\r'; }
+            SRC=$(getenv DIRECT_DATABASE_URL)
+            [ -n "$SRC" ] || SRC=$(getenv DATABASE_URL)
+            SRC="${SRC%%\?*}?sslmode=require"
+            C=bld-restore-drill
+            IMG=""
+            cleanup() {
+              docker rm -f -v "$C" >/dev/null 2>&1 || true
+              [ -n "$IMG" ] && docker rmi "$IMG" >/dev/null 2>&1 || true
+            }
+            trap cleanup EXIT
+
+            FREE_KB=$(df --output=avail -k / | tail -n 1 | tr -d ' ')
+            echo "RESULT_FREE_GB=$((FREE_KB / 1024 / 1024))"
+            if [ "$FREE_KB" -lt 2500000 ]; then echo "RESULT_DRILL=skipped_low_disk"; exit 0; fi
+
+            # Match client major to the server (pg_dump must be >= server).
+            MAJOR=$(docker run --rm -e PGURL="$SRC" postgres:17-alpine \
+              sh -c 'psql "$PGURL" -X -A -t -c "SHOW server_version_num"' | cut -c1-2)
+            docker rmi postgres:17-alpine >/dev/null 2>&1 || true
+            echo "RESULT_SERVER_MAJOR=$MAJOR"
+            for tag in "${MAJOR}-3.5-alpine" "${MAJOR}-3.4-alpine" "${MAJOR}-3.5" "${MAJOR}-3.4"; do
+              if docker pull -q "postgis/postgis:$tag" >/dev/null 2>&1; then IMG="postgis/postgis:$tag"; break; fi
+            done
+            [ -n "$IMG" ] || { echo "RESULT_DRILL=no_matching_postgis_image"; exit 1; }
+
+            docker run -d --name "$C" --network bridge \
+              -e POSTGRES_PASSWORD="$(openssl rand -hex 16)" -e POSTGRES_DB=drill "$IMG" >/dev/null
+            # The image runs a temporary server for init scripts, then restarts: wait for the real one.
+            READY=no
+            for i in $(seq 1 90); do
+              if docker logs "$C" 2>&1 | grep -q 'PostgreSQL init process complete' \
+                && docker exec "$C" pg_isready -U postgres -d drill >/dev/null 2>&1; then
+                READY=yes; break
+              fi
+              sleep 2
+            done
+            [ "$READY" = yes ] || { echo "RESULT_DRILL=scratch_db_not_ready"; exit 1; }
+
+            START=$(date +%s)
+            docker exec -e PGURL="$SRC" "$C" sh -c \
+              'pg_dump "$PGURL" -Fc --no-owner --no-privileges -f /tmp/drill.dump' \
+              || { echo "RESULT_DRILL=dump_failed"; exit 1; }
+            DUMP_KB=$(docker exec "$C" sh -c 'du -k /tmp/drill.dump | cut -f1')
+            RESTORE_ERRORS=0
+            docker exec "$C" sh -c \
+              'pg_restore -U postgres -d drill --no-owner --no-privileges /tmp/drill.dump' \
+              >/tmp/drill-restore.log 2>&1 || RESTORE_ERRORS=$(grep -c 'error:' /tmp/drill-restore.log || true)
+            rm -f /tmp/drill-restore.log
+            END=$(date +%s)
+            docker exec "$C" rm -f /tmp/drill.dump
+
+            COUNT_SQL="SELECT c.relname || '=' || (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM public.%I', c.relname), false, true, '')))[1]::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> 'spatial_ref_sys' ORDER BY 1"
+            docker exec -e PGURL="$SRC" -e Q="$COUNT_SQL" "$C" sh -c 'psql "$PGURL" -X -A -t -c "$Q"' > /tmp/drill-src.txt
+            docker exec -e Q="$COUNT_SQL" "$C" sh -c 'psql -U postgres -d drill -X -A -t -c "$Q"' > /tmp/drill-dst.txt
+
+            TABLES_SRC=$(grep -c '=' /tmp/drill-src.txt || true)
+            TABLES_DST=$(grep -c '=' /tmp/drill-dst.txt || true)
+            TABLES_EXACT=$(grep -cxFf /tmp/drill-src.txt /tmp/drill-dst.txt || true)
+            ROWS_SRC=$(awk -F= '{ s += $2 } END { print s + 0 }' /tmp/drill-src.txt)
+            ROWS_DST=$(awk -F= '{ s += $2 } END { print s + 0 }' /tmp/drill-dst.txt)
+            rm -f /tmp/drill-src.txt /tmp/drill-dst.txt
+            if [ "$ROWS_SRC" -gt 0 ]; then PCT=$((ROWS_DST * 100 / ROWS_SRC)); else PCT=100; fi
+
+            echo "RESULT_TABLES_SOURCE=$TABLES_SRC"
+            echo "RESULT_TABLES_RESTORED=$TABLES_DST"
+            echo "RESULT_TABLES_EXACT_MATCH=$TABLES_EXACT"
+            echo "RESULT_ROWS_RESTORED_PCT=$PCT"
+            echo "RESULT_RESTORE_ERRORS=$RESTORE_ERRORS"
+            echo "RESULT_DUMP_MB=$((DUMP_KB / 1024))"
+            echo "RESULT_DURATION_SEC=$((END - START))"
+            # Live staging keeps writing between dump and count: allow a little churn.
+            if [ "$TABLES_SRC" -gt 0 ] && [ "$TABLES_DST" -eq "$TABLES_SRC" ] && [ "$PCT" -ge 99 ]; then
+              echo "RESULT_DRILL=pass"
+            else
+              echo "RESULT_DRILL=fail"
+            fi
+
+      - name: Summarize
+        if: always()
+        env:
+          REMOTE: ${{ steps.remote.outputs.stdout }}
+        run: |
+          RESULTS=$(printf '%s\n' "$REMOTE" | grep -E '^RESULT_' | tr -d '\r' || true)
+          {
+            echo "### Staging restore drill — $(date -u +%Y-%m-%d)"
+            echo '```'
+            printf '%s\n' "$RESULTS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Restore drill::$(printf '%s ' $RESULTS)"
+          printf '%s\n' "$RESULTS" | grep -qx 'RESULT_DRILL=pass'
