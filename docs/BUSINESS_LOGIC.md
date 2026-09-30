@@ -295,6 +295,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-30 | Notification emails (match found / matched / new request / accepted, feedback thanks, help desk, ops alerts) use the branded BLD template: greeting by first name, project details card, button CTA, support footer. Triggers and SMS unchanged |
 | 2026-09-30 | Addresses: picking a place (New brief search, map pin, current location, onboarding / profile address) autofills country, state, city and ZIP. All distances and search radii are shown in **miles** (client surveyor search, surveyor requests / matches, admin matcher, mobile); API still stores km |
 | 2026-09-29 | Abuse protection: staging rate limits now shared via Redis; Nginx per-IP edge limit on sign-in / sign-up / reset / refresh / OAuth (429 on bursts) |
 | 2026-09-29 | Security: httpOnly cookie sessions (web) / SecureStore (mobile), 15m access + rotating refresh with reuse detection; sign-out everywhere on suspend / password reset; Google OAuth state bound to browser nonce; tighter auth rate limits (Redis-shareable) |

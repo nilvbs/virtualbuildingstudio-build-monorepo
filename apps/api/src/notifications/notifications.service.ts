@@ -7,6 +7,12 @@ import { EMAIL_SENDER, type EmailSender } from './delivery/email-sender';
 import { SMS_SENDER, type SmsSender } from './delivery/sms-sender';
 import { TWILIO_TRIAL_NOTIFY_TEMPLATE } from './delivery/twilio.sms-sender';
 import { buildStaffInviteEmail } from './delivery/staff-invite-email';
+import {
+  buildNotificationEmail,
+  type NotificationEmailInput,
+} from './delivery/notification-email';
+
+const OPS_FOOTER = 'You’re receiving this because you’re on the BLD operations notification list.';
 
 interface MatchNotificationContext {
   clientUserId: string;
@@ -17,9 +23,8 @@ interface MatchNotificationContext {
 }
 
 interface ExternalMessage {
-  emailSubject: string;
-  emailBody: string;
-  emailHtml?: string;
+  /** Recipient name is filled in by `dispatchExternal`. */
+  email: Omit<NotificationEmailInput, 'fullName'>;
   smsBody: string;
 }
 
@@ -68,15 +73,35 @@ export class NotificationsService {
 
     await Promise.allSettled([
       this.dispatchExternal(ctx.clientUserId, {
-        emailSubject: "We've found a surveyor for your project",
-        emailBody: `${clientBody}\n\n${clientLink}`,
-        emailHtml: `<p>${clientBody}</p><p><a href="${clientLink}">View your project</a></p>`,
+        email: {
+          subject: "We've found a surveyor for your project",
+          icon: '&#129309;',
+          badge: 'Match found',
+          heading: "We've found your surveyor",
+          intro: 'A vetted surveyor has been matched to your project.',
+          paragraphs: [
+            `We matched a surveyor to "${ctx.projectTitle}". Open your project to review the match and next steps.`,
+          ],
+          details: [{ label: 'Project', value: ctx.projectTitle }],
+          cta: { label: 'View your project', url: clientLink },
+          note: "We'll keep you posted here and in your BLD dashboard as the surveyor responds.",
+        },
         smsBody: `BLD: We matched a surveyor to "${ctx.projectTitle}". View: ${clientLink}`,
       }),
       this.dispatchExternal(ctx.surveyorUserId, {
-        emailSubject: "You've been matched to a project on BLD",
-        emailBody: `${surveyorBody}\n\n${surveyorLink}`,
-        emailHtml: `<p>${surveyorBody}</p><p><a href="${surveyorLink}">Open request</a></p>`,
+        email: {
+          subject: "You've been matched to a project on BLD",
+          icon: '&#128205;',
+          badge: 'New match',
+          heading: "You've been matched to a project",
+          intro: 'A client project fits your services and coverage area.',
+          paragraphs: [
+            `You've been matched to "${ctx.projectTitle}". Open the request to review the brief, then accept or decline.`,
+          ],
+          details: [{ label: 'Project', value: ctx.projectTitle }],
+          cta: { label: 'Open request', url: surveyorLink },
+          note: 'Quick responses help you win more work on BLD.',
+        },
         smsBody: `BLD: You've been matched to "${ctx.projectTitle}". Open request: ${surveyorLink}`,
       }),
     ]);
@@ -147,11 +172,19 @@ export class NotificationsService {
       this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
     if (notifyEmail) {
       await Promise.allSettled([
-        this.email.send({
-          to: notifyEmail,
+        this.sendOps(notifyEmail, {
           subject: `BLD · New project: ${ctx.projectTitle}`,
-          text: `${body}\n\n${adminLink}`,
-          html: `<p>${body}</p><p><a href="${adminLink}">Open project</a></p>`,
+          icon: '&#128221;',
+          badge: 'Pipeline',
+          heading: 'New project posted',
+          intro: 'A client posted a project that needs matching.',
+          paragraphs: [body],
+          details: [
+            { label: 'Project', value: ctx.projectTitle },
+            { label: 'Client', value: ctx.clientName },
+            { label: 'Services', value: ctx.services.join(', ') },
+          ],
+          cta: { label: 'Open project', url: adminLink },
         }),
       ]);
     }
@@ -189,11 +222,18 @@ export class NotificationsService {
       this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
     if (notifyEmail) {
       await Promise.allSettled([
-        this.email.send({
-          to: notifyEmail,
+        this.sendOps(notifyEmail, {
           subject: `BLD · New surveyor: ${ctx.fullName}`,
-          text: `${body}\n\n${adminLink}`,
-          html: `<p>${body}</p><p><a href="${adminLink}">Open surveyor</a></p>`,
+          icon: '&#128100;',
+          badge: 'Surveyor network',
+          heading: 'New surveyor added',
+          intro: 'A surveyor joined and can be matched to open projects.',
+          paragraphs: [body],
+          details: [
+            { label: 'Surveyor', value: ctx.fullName },
+            { label: 'Base city', value: ctx.baseCity?.trim() ?? '' },
+          ],
+          cta: { label: 'Open surveyor', url: adminLink },
         }),
       ]);
     }
@@ -215,9 +255,22 @@ export class NotificationsService {
 
     await Promise.allSettled([
       this.dispatchExternal(ctx.surveyorUserId, {
-        emailSubject: `New survey request: ${ctx.projectTitle}`,
-        emailBody: `${surveyorBody}\n\n${surveyorLink}`,
-        emailHtml: `<p>${surveyorBody}</p><p><a href="${surveyorLink}">Open request</a></p>`,
+        email: {
+          subject: `New survey request: ${ctx.projectTitle}`,
+          icon: '&#128276;',
+          badge: 'New request',
+          heading: 'New survey request',
+          intro: 'A client project near you needs a surveyor.',
+          paragraphs: [
+            `You've got a new job request for "${ctx.projectTitle}". Open the request to review the brief and accept it before the timer runs out.`,
+          ],
+          details: [
+            { label: 'Project', value: ctx.projectTitle },
+            { label: 'Time to respond', value: `${hours} working hour${hours === 1 ? '' : 's'}` },
+          ],
+          cta: { label: 'Open request', url: surveyorLink },
+          note: 'The response timer pauses outside Mon–Fri business hours.',
+        },
         smsBody: `BLD: New request for "${ctx.projectTitle}". Respond within ${hours} working hours: ${surveyorLink}`,
       }),
     ]);
@@ -236,9 +289,18 @@ export class NotificationsService {
     );
     await Promise.allSettled([
       this.dispatchExternal(ctx.clientUserId, {
-        emailSubject: 'A surveyor accepted your project',
-        emailBody: `${body}\n\n${clientLink}`,
-        emailHtml: `<p>${body}</p><p><a href="${clientLink}">View project</a></p>`,
+        email: {
+          subject: 'A surveyor accepted your project',
+          icon: '&#9989;',
+          badge: 'Accepted',
+          heading: 'A surveyor accepted your project',
+          intro: 'Good news: your project is moving forward.',
+          paragraphs: [
+            `A surveyor accepted "${ctx.projectTitle}". Open the project to see who's on it and what happens next.`,
+          ],
+          details: [{ label: 'Project', value: ctx.projectTitle }],
+          cta: { label: 'View project', url: clientLink },
+        },
         smsBody: `BLD: A surveyor accepted "${ctx.projectTitle}". View: ${clientLink}`,
       }),
     ]);
@@ -278,14 +340,23 @@ export class NotificationsService {
 
     await Promise.allSettled([
       this.dispatchExternal(ctx.fromUserId, {
-        emailSubject: `Thanks for your BLD feedback on "${ctx.projectTitle}"`,
-        emailBody: `${confirmBody}\n\n${reviewerLink}`,
-        emailHtml: `<p>${confirmBody}</p><p><a href="${reviewerLink}">Open BLD</a></p>`,
+        email: {
+          subject: `Thanks for your BLD feedback on "${ctx.projectTitle}"`,
+          icon: '&#11088;',
+          badge: 'Thank you',
+          heading: 'Thanks for your feedback',
+          intro: 'Your rating helps us improve BLD for everyone.',
+          paragraphs: [confirmBody],
+          details: [
+            { label: 'Project', value: ctx.projectTitle },
+            { label: 'Your rating', value: stars },
+          ],
+          cta: { label: 'Open BLD', url: reviewerLink },
+        },
         smsBody: `BLD: Thanks for your ${stars} product feedback on "${ctx.projectTitle}".`,
       }),
     ]);
 
-    const adminBody = `New ${ctx.fromRole} product feedback on "${ctx.projectTitle}": ${stars}.\n\n${ctx.comment}`;
     const notifyEmail =
       this.config.get<string>('ADMIN_NOTIFY_EMAIL')?.trim() ||
       this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
@@ -310,11 +381,20 @@ export class NotificationsService {
 
     if (notifyEmail) {
       await Promise.allSettled([
-        this.email.send({
-          to: notifyEmail,
+        this.sendOps(notifyEmail, {
           subject: `BLD product feedback: ${stars} on "${ctx.projectTitle}"`,
-          text: `${adminBody}\n\nReview: ${adminLink}`,
-          html: `<p>A <strong>${ctx.fromRole}</strong> left <strong>${stars}</strong> product feedback on <em>${ctx.projectTitle}</em>.</p><blockquote>${ctx.comment.replace(/</g, '&lt;')}</blockquote><p><a href="${adminLink}">Open feedback in admin</a></p>`,
+          icon: '&#11088;',
+          badge: 'Feedback',
+          heading: 'New product feedback',
+          intro: `A ${ctx.fromRole} rated BLD ${stars}.`,
+          paragraphs: [`New ${ctx.fromRole} product feedback on "${ctx.projectTitle}".`],
+          details: [
+            { label: 'From', value: ctx.fromRole },
+            { label: 'Project', value: ctx.projectTitle },
+            { label: 'Rating', value: stars },
+          ],
+          quote: ctx.comment,
+          cta: { label: 'Open feedback in admin', url: adminLink },
         }),
       ]);
     }
@@ -333,8 +413,6 @@ export class NotificationsService {
     const adminLink = `${this.webAppUrl}/build/admin/feedback`;
     const who = ctx.name?.trim() || ctx.email?.trim() || 'Anonymous visitor';
     const contact = ctx.email?.trim() ? ` (${ctx.email.trim()})` : '';
-    const safeMessage = ctx.message.replace(/</g, '&lt;');
-
     const admins = await this.prisma.user.findMany({
       where: { roles: { some: { role: 'admin' } }, status: 'active' },
       select: { id: true },
@@ -359,22 +437,46 @@ export class NotificationsService {
 
     if (notifyEmail) {
       await Promise.allSettled([
-        this.email.send({
-          to: notifyEmail,
+        this.sendOps(notifyEmail, {
           subject: `BLD landing feedback: ${stars}`,
-          text: `${who}${contact} left ${stars} feedback (${ctx.source}):\n\n${ctx.message}\n\nReview: ${adminLink}`,
-          html: `<p><strong>${who}</strong>${contact} left <strong>${stars}</strong> feedback from <em>${ctx.source}</em>.</p><blockquote>${safeMessage}</blockquote><p><a href="${adminLink}">Open feedback in admin</a></p>`,
+          icon: '&#11088;',
+          badge: 'Feedback',
+          heading: 'New landing feedback',
+          intro: `${who} rated BLD ${stars}.`,
+          paragraphs: [`${who}${contact} left ${stars} feedback from the ${ctx.source} page.`],
+          details: [
+            { label: 'From', value: who },
+            { label: 'Email', value: ctx.email?.trim() ?? '' },
+            { label: 'Source', value: ctx.source },
+            { label: 'Rating', value: stars },
+          ],
+          quote: ctx.message,
+          cta: { label: 'Open feedback in admin', url: adminLink },
         }),
       ]);
     }
 
     if (ctx.email?.trim()) {
+      const content = buildNotificationEmail({
+        subject: 'Thanks for your BLD feedback',
+        icon: '&#11088;',
+        badge: 'Thank you',
+        heading: 'Thanks for your feedback',
+        intro: 'Your note helps us improve BLD for everyone.',
+        fullName: ctx.name,
+        paragraphs: [
+          `Thanks for rating BLD ${stars}. Your note helps us improve matching, tools, and support.`,
+        ],
+        details: [{ label: 'Your rating', value: stars }],
+        cta: { label: 'Visit BLD', url: this.webAppUrl },
+        footerReason: 'You’re receiving this because you left feedback on the BLD website.',
+      });
       await Promise.allSettled([
         this.email.send({
           to: ctx.email.trim(),
-          subject: 'Thanks for your BLD feedback',
-          text: `Thanks for rating BLD ${stars}. Your note helps us improve the product.\n\n${this.webAppUrl}`,
-          html: `<p>Thanks for rating BLD <strong>${stars}</strong>. Your note helps us improve matching, tools, and support.</p><p><a href="${this.webAppUrl}">Visit BLD</a></p>`,
+          subject: content.subject,
+          text: content.text,
+          html: content.html,
         }),
       ]);
     }
@@ -408,9 +510,19 @@ export class NotificationsService {
 
     await Promise.allSettled([
       this.dispatchExternal(ctx.fromUserId, {
-        emailSubject: `BLD Help Desk · ${ctx.ticketNumber}`,
-        emailBody: `${confirm}\n\n${userLink}`,
-        emailHtml: `<p>${confirm}</p><p><a href="${userLink}">View your tickets</a></p>`,
+        email: {
+          subject: `BLD Help Desk · ${ctx.ticketNumber}`,
+          icon: '&#127915;',
+          badge: 'Ticket received',
+          heading: `Ticket ${ctx.ticketNumber} received`,
+          intro: 'Our support team has your request.',
+          paragraphs: [confirm],
+          details: [
+            { label: 'Ticket', value: ctx.ticketNumber },
+            { label: 'Subject', value: ctx.subject },
+          ],
+          cta: { label: 'View your tickets', url: userLink },
+        },
         smsBody: `BLD: Ticket ${ctx.ticketNumber} received. We'll reply soon.`,
       }),
     ]);
@@ -437,11 +549,21 @@ export class NotificationsService {
       this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
     if (notifyEmail) {
       await Promise.allSettled([
-        this.email.send({
-          to: notifyEmail,
+        this.sendOps(notifyEmail, {
           subject: `BLD Help Desk ${ctx.ticketNumber}: ${ctx.subject}`,
-          text: `${ctx.workspace} / ${ctx.category} / ${ctx.priority}\n\n${ctx.preview}\n\n${adminLink}`,
-          html: `<p><strong>${ctx.ticketNumber}</strong> from <em>${ctx.workspace}</em> (${ctx.priority})</p><p>${ctx.subject}</p><blockquote>${ctx.preview.replace(/</g, '&lt;')}</blockquote><p><a href="${adminLink}">Open in help desk</a></p>`,
+          icon: '&#127915;',
+          badge: 'Help desk',
+          heading: `New ticket ${ctx.ticketNumber}`,
+          intro: `A ${ctx.workspace} opened a ${ctx.priority} priority ticket.`,
+          paragraphs: [`"${ctx.subject}"`],
+          details: [
+            { label: 'Ticket', value: ctx.ticketNumber },
+            { label: 'Workspace', value: ctx.workspace },
+            { label: 'Category', value: ctx.category },
+            { label: 'Priority', value: ctx.priority },
+          ],
+          quote: ctx.preview,
+          cta: { label: 'Open in help desk', url: adminLink },
         }),
       ]);
     }
@@ -486,11 +608,21 @@ export class NotificationsService {
       this.config.get<string>('SUPER_ADMIN_EMAIL')?.trim();
     if (notifyEmail) {
       await Promise.allSettled([
-        this.email.send({
-          to: notifyEmail,
+        this.sendOps(notifyEmail, {
           subject: `BLD OTP lockout: ${ctx.fullName} (${channelLabel})`,
-          text: `${body}\n\nClear the lockout: ${adminLink}`,
-          html: `<p>${body.replace(/</g, '&lt;')}</p><p><a href="${adminLink}">Open user · clear OTP lockout</a></p>`,
+          icon: '&#128274;',
+          badge: 'Security',
+          heading: 'OTP lockout',
+          intro: `${ctx.fullName} hit the ${channelLabel} verification limit.`,
+          paragraphs: [body],
+          details: [
+            { label: 'User', value: ctx.fullName },
+            { label: 'Email', value: ctx.email },
+            { label: 'Channel', value: channelLabel },
+            { label: 'Codes sent', value: String(ctx.sendsUsed) },
+            { label: 'Locked until', value: unlockLocal },
+          ],
+          cta: { label: 'Open user · clear OTP lockout', url: adminLink },
         }),
       ]);
     }
@@ -519,9 +651,20 @@ export class NotificationsService {
       );
       await Promise.allSettled([
         this.dispatchExternal(ctx.ownerUserId, {
-          emailSubject: `BLD Help Desk reply · ${ctx.ticketNumber}`,
-          emailBody: `${body}\n\n${ctx.preview}\n\n${this.webAppUrl}${path}`,
-          emailHtml: `<p>${body}</p><blockquote>${ctx.preview.replace(/</g, '&lt;')}</blockquote><p><a href="${this.webAppUrl}${path}">Open ticket</a></p>`,
+          email: {
+            subject: `BLD Help Desk reply · ${ctx.ticketNumber}`,
+            icon: '&#128172;',
+            badge: 'Support reply',
+            heading: 'Support replied to your ticket',
+            intro: `There's a new reply on ${ctx.ticketNumber}.`,
+            paragraphs: [body],
+            details: [
+              { label: 'Ticket', value: ctx.ticketNumber },
+              { label: 'Subject', value: ctx.subject },
+            ],
+            quote: ctx.preview,
+            cta: { label: 'Open ticket', url: `${this.webAppUrl}${path}` },
+          },
           smsBody: `BLD: Support replied on ${ctx.ticketNumber}.`,
         }),
       ]);
@@ -628,20 +771,27 @@ export class NotificationsService {
     });
   }
 
+  /** Branded ops alert to ADMIN_NOTIFY_EMAIL / SUPER_ADMIN_EMAIL. */
+  private sendOps(to: string, input: NotificationEmailInput): Promise<void> {
+    const content = buildNotificationEmail({ footerReason: OPS_FOOTER, ...input });
+    return this.email.send({ to, subject: content.subject, text: content.text, html: content.html });
+  }
+
   /** Deliver a message to a user over email + SMS (best-effort, per-channel). */
   private async dispatchExternal(userId: string, msg: ExternalMessage): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, phone: true },
+      select: { email: true, phone: true, fullName: true },
     });
     if (!user) return;
 
+    const content = buildNotificationEmail({ ...msg.email, fullName: user.fullName });
     const tasks: Promise<unknown>[] = [
       this.email.send({
         to: user.email,
-        subject: msg.emailSubject,
-        text: msg.emailBody,
-        html: msg.emailHtml,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
       }),
     ];
     if (user.phone?.trim()) {

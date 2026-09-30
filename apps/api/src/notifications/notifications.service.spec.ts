@@ -19,7 +19,11 @@ describe('NotificationsService', () => {
         update: jest.fn(),
       },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ email: 'u@example.com', phone: '+15550001111' }),
+        findUnique: jest.fn().mockResolvedValue({
+          email: 'u@example.com',
+          phone: '+15550001111',
+          fullName: 'Nil Kansara',
+        }),
       },
     };
     config = { get: jest.fn().mockReturnValue('http://localhost:3000') };
@@ -64,6 +68,29 @@ describe('NotificationsService', () => {
       );
     });
 
+    it('sends the branded template with greeting, project card and CTA', async () => {
+      await service.notifyMatchCreated({
+        clientUserId: 'client-1',
+        surveyorUserId: 'surveyor-1',
+        projectId: 'proj-1',
+        matchId: 'match-1',
+        projectTitle: 'Test <b>Building</b>',
+      });
+
+      const client = email.send.mock.calls[0][0];
+      expect(client.subject).toBe("We've found a surveyor for your project");
+      expect(client.html).toContain('<!DOCTYPE html>');
+      expect(client.html).toContain('Hi <strong style="color:#2A2558;">Nil</strong>');
+      expect(client.html).toContain('href="http://localhost:3000/client/projects/proj-1"');
+      expect(client.html).toContain('Test &lt;b&gt;Building&lt;/b&gt;');
+      expect(client.html).not.toContain('<b>Building</b>');
+      expect(client.text).toContain('View your project: http://localhost:3000/client/projects/proj-1');
+
+      const surveyor = email.send.mock.calls[1][0];
+      expect(surveyor.html).toContain('Open request');
+      expect(surveyor.html).toContain('href="http://localhost:3000/surveyor/requests?match=match-1"');
+    });
+
     it('does not throw if a delivery channel fails', async () => {
       email.send.mockRejectedValueOnce(new Error('ses down'));
 
@@ -79,7 +106,7 @@ describe('NotificationsService', () => {
     });
 
     it('skips SMS when the user has no phone', async () => {
-      prisma.user.findUnique.mockResolvedValue({ email: 'u@example.com', phone: null });
+      prisma.user.findUnique.mockResolvedValue({ email: 'u@example.com', phone: null, fullName: 'U' });
 
       await service.notifyMatchCreated({
         clientUserId: 'client-1',
