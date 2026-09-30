@@ -307,8 +307,8 @@
         <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
         <tbody>
           <tr><td>Private subnets only</td><td>DB never has a public IP / public SG rule</td><td><span class="badge now">Designed</span></td></tr>
-          <tr><td>Security groups</td><td>Ingress 5432 only from ECS tasks / RDS Proxy SG</td><td><span class="badge gap">Enforce in AWS</span></td></tr>
-          <tr><td>RDS Proxy</td><td>App uses proxy endpoint; migrations use writer</td><td><span class="badge now">Designed</span></td></tr>
+          <tr><td>Security groups</td><td>Staging: ingress 5432 only from the EC2 API host SG. Production: only from ECS tasks / RDS Proxy SG</td><td><span class="badge gap">Enforce in AWS</span></td></tr>
+          <tr><td>RDS Proxy</td><td>Production design: app uses proxy endpoint, migrations use writer. Staging: API on EC2 connects directly to the Aurora writer over TLS (no proxy)</td><td><span class="badge now">Designed</span> (prod)</td></tr>
           <tr><td>No staging ↔ prod</td><td>Separate accounts/clusters/secrets</td><td><span class="badge now">Policy</span></td></tr>
         </tbody>
       </table>
@@ -506,7 +506,7 @@
       <h2>Operator checklist — “DB highly secured”</h2>
       <p class="sub">Print this for staging and production. All boxes should be true before calling the environment highly secured.</p>
       <ul>
-        <li>☐ Aurora in private subnets; SG allows only Proxy / ECS</li>
+        <li>☐ Aurora in private subnets; SG allows 5432 only from the app (staging: EC2 API host · production: ECS / RDS Proxy)</li>
         <li>☐ Storage encryption enabled (KMS CMK) — not yet confirmed (no AWS read access from the box)</li>
         <li>☑ App <code>DATABASE_URL</code> uses SSL (<code>sslmode=require</code>, enforced by deploy + API boot check)</li>
         <li>☐ Credentials only in Secrets Manager; rotated; not in git or CI logs</li>
@@ -527,11 +527,12 @@
       <ul>
         <li>☐ RDS / Aurora → Configuration → Encryption = enabled (KMS key noted)</li>
         <li>☐ DB subnet group = private subnets only (no public IP)</li>
-        <li>☐ DB / Proxy security group inbound: TCP 5432 from ECS task SG (or Proxy SG) only</li>
-        <li>☐ ECS task SG outbound to Proxy/DB only as needed; no world-open 5432</li>
-        <li>☐ Secrets Manager holds <code>DATABASE_URL</code> with <code>sslmode=require</code></li>
-        <li>☐ <code>CORS_ORIGINS</code> / <code>WEB_APP_URL</code> set in the environment (API will not boot otherwise)</li>
-        <li>☐ <code>AUTH_DEV_MODE</code> unset or false; <code>NODE_ENV=production</code></li>
+        <li>☐ Staging: Aurora security group inbound TCP 5432 only from the EC2 API instance's security group (no <code>0.0.0.0/0</code>, no office/home IPs left open)</li>
+        <li>☐ Staging: EC2 security group inbound only 80/443 (Nginx) + SSH restricted; API <code>:4000</code> and Redis not reachable from the internet</li>
+        <li>☐ Production (ECS design, not deployed yet): DB / RDS Proxy SG inbound 5432 from ECS task SG only; ECS task SG outbound to Proxy/DB only</li>
+        <li>☐ Secrets Manager holds <code>DATABASE_URL</code> with <code>sslmode=require</code> (staging today: GitHub Environment secret → EC2 <code>.env</code>)</li>
+        <li>☑ <code>CORS_ORIGINS</code> / <code>WEB_APP_URL</code> set — staging API is running, and it refuses to boot in production without them</li>
+        <li>☑ <code>NODE_ENV=production</code> and dev login off — staging logs the production-only <code>[db-tls]</code> check, and <code>AUTH_DEV_MODE</code> is force-disabled in production</li>
       </ul>
       <p class="sub" style="margin-top:12px">
         Automated checks:
