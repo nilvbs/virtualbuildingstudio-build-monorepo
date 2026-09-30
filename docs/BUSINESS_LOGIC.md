@@ -177,7 +177,22 @@ stateDiagram-v2
 
 Allowed transitions: `PROJECT_STATUS_TRANSITIONS` in `@surveylink/types`.
 
-**Key code:** `apps/api/src/projects/projects.service.ts`, `apps/web/app/client/projects/**`
+### Posting a brief (web + mobile, "Step X of 5")
+
+```mermaid
+flowchart LR
+  L["1 Location & overview<br/>address → city/state/ZIP + title"] --> S["2 Services<br/>only matching deliverables"]
+  S --> P["3 Property<br/>type, status, size*, floors"]
+  P --> B["4 Timeline & estimate<br/>ASAP / Flexible / date + recommended price"]
+  B --> R["5 Review<br/>files, notes, publish"]
+```
+
+- **Location & overview:** picking an address fills city/state/ZIP and names the project after the address until the client edits the title. "Address not confirmed yet" is allowed. A description (≥ 50 chars) is required.
+- **Services:** deliverables are filtered by `SERVICE_DELIVERABLES`, and deselecting a service drops deliverables that no longer apply. At least one service and one deliverable are required. Scan type/accuracy (laser) and LOD/software (BIM) are optional.
+- **Property:** property type and approximate building size are required. Status is Existing or Under construction; floors come from a dropdown.
+- **Timeline & estimate:** ASAP, Flexible or Specific date. The **recommended price** (`estimateProjectPrice`) is read-only. It is calculated from services, size, floors, status, property type, scan type, accuracy, LOD, deliverable count and ASAP. It is saved as `details.estimateMinCents/MaxCents`, and `pricingMode` is `open` (surveyors quote). The client doesn't choose a pricing mode, priority, provider type, verified-only, experience, minimum rating or existing data.
+
+**Key code:** `apps/api/src/projects/projects.service.ts`, `apps/web/app/client/projects/**`, `packages/types/src/project-brief.ts`
 
 ---
 
@@ -295,6 +310,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-30 | New brief is 5 steps ("Step X of 5"). Location and overview are merged, and the title is auto-named from the address. Services now show only the deliverables relevant to them. Property is simplified (Existing / Under construction, size required, floors dropdown). Timeline is ASAP / Flexible / date. Pricing choice is replaced by a read-only recommended price. Priority, existing-data and provider preferences (verified / experience / rating) are removed |
 | 2026-09-30 | Notification emails (match found / matched / new request / accepted, feedback thanks, help desk, ops alerts) use the branded BLD template: greeting by first name, project details card, button CTA, support footer. Triggers and SMS unchanged |
 | 2026-09-30 | Addresses: picking a place (New brief search, map pin, current location, onboarding / profile address) autofills country, state, city and ZIP. All distances and search radii are shown in **miles** (client surveyor search, surveyor requests / matches, admin matcher, mobile); API still stores km |
 | 2026-09-29 | Abuse protection: staging rate limits now shared via Redis; Nginx per-IP edge limit on sign-in / sign-up / reset / refresh / OAuth (429 on bursts) |

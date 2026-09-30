@@ -9806,7 +9806,7 @@ lord-icon {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   position: relative;
 }
@@ -9814,8 +9814,8 @@ lord-icon {
 .project-post-steps ol::before {
   content: '';
   position: absolute;
-  left: calc(100% / 16);
-  right: calc(100% / 16);
+  left: calc(100% / 10);
+  right: calc(100% / 10);
   top: 14px;
   height: 2px;
   background: rgba(113, 104, 246, 0.14);
@@ -10062,15 +10062,6 @@ lord-icon {
 }
 
 @media (max-width: 1100px) {
-  .project-post-steps ol {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    row-gap: 14px;
-  }
-
-  .project-post-steps ol::before {
-    display: none;
-  }
-
   .project-post-options,
   .project-post-options.MuiFormGroup-root,
   .project-post-options.MuiRadioGroup-root {
@@ -10089,9 +10080,8 @@ lord-icon {
     white-space: normal;
   }
 
-  .project-post-steps ol {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 12px;
+  .project-post-steps li:not(.is-active) .project-post-steps-label {
+    visibility: hidden;
   }
 
   .project-post-steps {
@@ -10190,10 +10180,6 @@ lord-icon {
 }
 
 @media (max-width: 640px) {
-  .project-post-steps ol {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .project-post-meter-bar {
     width: 72px;
   }

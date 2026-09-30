@@ -2,8 +2,11 @@ import type { ProjectDetails, SurveyService } from '@surveylink/types';
 import { PROJECT_POST_STEPS } from '@surveylink/types';
 
 export const PROJECT_POST_DRAFT_KEY = 'bld.projectPostDraft.v1';
+/** Bump when PROJECT_POST_STEPS changes so saved step indexes are not misapplied. */
+const DRAFT_LAYOUT = 2;
 
 export type ProjectPostDraft = {
+  layout?: number;
   step: number;
   title: string;
   services: SurveyService[];
@@ -33,7 +36,8 @@ export function readProjectPostDraft(): ProjectPostDraft | null {
     const parsed = JSON.parse(raw) as Partial<ProjectPostDraft>;
     if (!parsed || typeof parsed !== 'object') return null;
     return {
-      step: typeof parsed.step === 'number' ? parsed.step : 0,
+      layout: DRAFT_LAYOUT,
+      step: parsed.layout === DRAFT_LAYOUT && typeof parsed.step === 'number' ? parsed.step : 0,
       title: parsed.title ?? '',
       services: Array.isArray(parsed.services) ? parsed.services : [],
       locationText: parsed.locationText ?? '',
@@ -56,6 +60,7 @@ export function readProjectPostDraft(): ProjectPostDraft | null {
 export function writeProjectPostDraft(draft: Omit<ProjectPostDraft, 'savedAt'>): ProjectPostDraft {
   const payload: ProjectPostDraft = {
     ...draft,
+    layout: DRAFT_LAYOUT,
     savedAt: new Date().toISOString(),
   };
   localStorage.setItem(PROJECT_POST_DRAFT_KEY, JSON.stringify(payload));

@@ -68,7 +68,7 @@ Client (user)
 
 ## JSON (not more tables)
 
-- `projects.details` — posting wizard
+- `projects.details` — posting wizard (incl. recommended price `estimateMinCents` / `estimateMaxCents`)
 - `projects.services` / `surveyor_profiles.services` — string arrays
 - `surveyor_profiles.details` / `portfolio` — portfolio wizard
 - `admin_profiles.permissions` — extra staff flags

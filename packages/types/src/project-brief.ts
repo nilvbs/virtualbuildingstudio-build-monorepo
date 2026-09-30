@@ -55,6 +55,9 @@ export const PROJECT_BUILDING_STATUS_LABELS: Record<ProjectBuildingStatus, strin
   unknown: 'Unknown',
 };
 
+/** Statuses offered in the posting wizard (older briefs may hold any PROJECT_BUILDING_STATUSES value). */
+export const PROJECT_POST_BUILDING_STATUSES = ['existing', 'under_construction'] as const;
+
 export const PROJECT_LOCATION_KNOWN = ['yes', 'not_yet'] as const;
 export type ProjectLocationKnown = (typeof PROJECT_LOCATION_KNOWN)[number];
 
@@ -195,6 +198,13 @@ export const PROJECT_SCOPE_DELIVERABLES = [
   'cad_drawings',
   'pdf_report',
   'as_built_drawings',
+  'topographic_plan',
+  'utility_map',
+  'boundary_plan',
+  'orthomosaic',
+  'mesh_model',
+  'thermal_report',
+  'quantity_report',
 ] as const;
 export type ProjectScopeDeliverable = (typeof PROJECT_SCOPE_DELIVERABLES)[number];
 
@@ -211,18 +221,33 @@ export const PROJECT_SCOPE_DELIVERABLE_LABELS: Record<ProjectScopeDeliverable, s
   cad_drawings: 'CAD Drawings',
   pdf_report: 'PDF Report',
   as_built_drawings: 'As-Built Drawings',
+  topographic_plan: 'Topographic Plan',
+  utility_map: 'Utility Map',
+  boundary_plan: 'Boundary Plan',
+  orthomosaic: 'Orthomosaic Map',
+  mesh_model: '3D Mesh Model',
+  thermal_report: 'Thermal Report',
+  quantity_report: 'Bill of Quantities',
 };
 
 export const PROJECT_SCOPE_GROUPS = [
   {
     id: 'survey',
     label: 'Survey',
-    items: ['floor_plans', 'elevations', 'sections', 'site_plan'] as const,
+    items: [
+      'floor_plans',
+      'elevations',
+      'sections',
+      'site_plan',
+      'topographic_plan',
+      'utility_map',
+      'boundary_plan',
+    ] as const,
   },
   {
     id: 'reality',
     label: 'Reality Capture',
-    items: ['point_cloud', 'photos_360', 'panoramic'] as const,
+    items: ['point_cloud', 'photos_360', 'panoramic', 'orthomosaic', 'mesh_model'] as const,
   },
   {
     id: 'bim',
@@ -232,9 +257,57 @@ export const PROJECT_SCOPE_GROUPS = [
   {
     id: 'docs',
     label: 'Documentation',
-    items: ['pdf_report', 'as_built_drawings'] as const,
+    items: ['pdf_report', 'as_built_drawings', 'thermal_report', 'quantity_report'] as const,
   },
 ] as const;
+
+/** Deliverables that make sense for each service — the wizard only offers these. */
+export const SERVICE_DELIVERABLES: Record<SurveyService, readonly ProjectScopeDeliverable[]> = {
+  measured_building: ['floor_plans', 'elevations', 'sections', 'cad_drawings', 'pdf_report'],
+  topographic: ['topographic_plan', 'site_plan', 'cad_drawings', 'pdf_report'],
+  land: ['site_plan', 'topographic_plan', 'boundary_plan', 'cad_drawings', 'pdf_report'],
+  utility_survey: ['utility_map', 'site_plan', 'cad_drawings', 'pdf_report'],
+  boundary_survey: ['boundary_plan', 'site_plan', 'pdf_report'],
+  construction_survey: ['site_plan', 'as_built_drawings', 'cad_drawings', 'pdf_report'],
+  as_built_survey: ['as_built_drawings', 'floor_plans', 'elevations', 'sections', 'cad_drawings'],
+  quantity_survey: ['quantity_report', 'pdf_report'],
+  laser_scanning: ['point_cloud', 'photos_360', 'panoramic', 'mesh_model'],
+  mobile_mapping: ['point_cloud', 'panoramic', 'photos_360'],
+  lidar_survey: ['point_cloud', 'topographic_plan', 'site_plan'],
+  point_cloud_registration: ['point_cloud'],
+  reality_capture: ['point_cloud', 'photos_360', 'panoramic', 'mesh_model'],
+  drone: ['panoramic', 'photos_360', 'orthomosaic'],
+  drone_survey: ['orthomosaic', 'topographic_plan', 'point_cloud', 'site_plan', 'pdf_report'],
+  aerial_photography: ['panoramic', 'photos_360'],
+  orthomosaic_mapping: ['orthomosaic', 'site_plan', 'pdf_report'],
+  photogrammetry: ['mesh_model', 'point_cloud', 'orthomosaic'],
+  thermal_inspection: ['thermal_report', 'pdf_report'],
+  scan_to_bim: ['revit_model', 'ifc', 'point_cloud'],
+  bim_modeling: ['revit_model', 'ifc'],
+  revit_modeling: ['revit_model', 'ifc'],
+  cad_drafting: ['cad_drawings', 'floor_plans', 'elevations', 'sections'],
+  point_cloud_to_cad: ['cad_drawings', 'floor_plans', 'elevations', 'sections'],
+  point_cloud_to_bim: ['revit_model', 'ifc'],
+};
+
+/** Deliverables relevant to the selected services, in catalog order. */
+export function deliverablesForServices(services: readonly SurveyService[]): ProjectScopeDeliverable[] {
+  const allowed = new Set<ProjectScopeDeliverable>();
+  for (const s of services) for (const d of SERVICE_DELIVERABLES[s] ?? []) allowed.add(d);
+  return PROJECT_SCOPE_DELIVERABLES.filter((d) => allowed.has(d));
+}
+
+/** Scope groups narrowed to the selected services; empty groups are dropped. */
+export function deliverableGroupsForServices(
+  services: readonly SurveyService[],
+): { id: string; label: string; items: ProjectScopeDeliverable[] }[] {
+  const allowed = new Set(deliverablesForServices(services));
+  return PROJECT_SCOPE_GROUPS.map((g) => ({
+    id: g.id,
+    label: g.label,
+    items: (g.items as readonly ProjectScopeDeliverable[]).filter((d) => allowed.has(d)),
+  })).filter((g) => g.items.length > 0);
+}
 
 export const PROJECT_EXISTING_DATA = ['yes', 'no', 'not_sure'] as const;
 export type ProjectExistingData = (typeof PROJECT_EXISTING_DATA)[number];
@@ -282,6 +355,20 @@ export const PROJECT_TIMELINE_LABELS: Record<ProjectTimeline, string> = {
   flexible: 'Flexible',
   specific_date: 'Specific date',
 };
+
+/** Timeline choices offered in the posting wizard. */
+export const PROJECT_POST_TIMELINES = ['asap', 'flexible', 'specific_date'] as const;
+
+/** Floor counts for the wizard dropdown; the last value means "that many or more". */
+export const PROJECT_FLOOR_OPTIONS = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30, 40, 50,
+] as const;
+
+export function floorOptionLabel(n: number): string {
+  const max = PROJECT_FLOOR_OPTIONS[PROJECT_FLOOR_OPTIONS.length - 1] ?? 50;
+  if (n >= max) return `${max}+ floors`;
+  return `${n} floor${n === 1 ? '' : 's'}`;
+}
 
 export const PROJECT_PRIORITIES = ['standard', 'high', 'urgent'] as const;
 export type ProjectPriority = (typeof PROJECT_PRIORITIES)[number];
@@ -339,13 +426,10 @@ export const PROJECT_COMM_CHANNEL_LABELS: Record<ProjectCommChannel, string> = {
 };
 
 export const PROJECT_POST_STEPS = [
-  { id: 'overview', label: 'Overview', blurb: 'Title, need & description' },
-  { id: 'location', label: 'Location', blurb: 'Where is the site?' },
-  { id: 'property', label: 'Property', blurb: 'Building & site details' },
-  { id: 'services', label: 'Services', blurb: 'Requirements by trade' },
-  { id: 'scope', label: 'Scope', blurb: 'Deliverables checklist' },
-  { id: 'budget', label: 'Budget', blurb: 'Timeline & pricing' },
-  { id: 'files', label: 'Files', blurb: 'Data, uploads & notes' },
+  { id: 'location', label: 'Location & overview', blurb: 'Site address, project title & description' },
+  { id: 'services', label: 'Services', blurb: 'What you need and the deliverables you expect' },
+  { id: 'property', label: 'Property', blurb: 'Building type, status & size' },
+  { id: 'budget', label: 'Timeline & estimate', blurb: 'When you need it and a recommended price' },
   { id: 'review', label: 'Review', blurb: 'Check & publish' },
 ] as const;
 
@@ -391,6 +475,9 @@ export interface ProjectDetails {
   budgetFixedCents: number | null;
   budgetMinCents: number | null;
   budgetMaxCents: number | null;
+  /** Recommended price shown to the client at posting time (estimate, not a quote). */
+  estimateMinCents: number | null;
+  estimateMaxCents: number | null;
   providerTypes: ProjectProviderType[];
   verifiedOnly: boolean;
   experience: ProjectExperience | null;
@@ -432,6 +519,8 @@ export function emptyProjectDetails(): ProjectDetails {
     budgetFixedCents: null,
     budgetMinCents: null,
     budgetMaxCents: null,
+    estimateMinCents: null,
+    estimateMaxCents: null,
     providerTypes: ['either'],
     verifiedOnly: false,
     experience: 'any',
@@ -478,12 +567,182 @@ const BIM_SERVICES: SurveyService[] = [
   'point_cloud_to_bim',
 ];
 
-export function projectNeedsLaserDetails(services: SurveyService[]): boolean {
+export function projectNeedsLaserDetails(services: readonly SurveyService[]): boolean {
   return services.some((s) => LASER_SERVICES.includes(s));
 }
 
-export function projectNeedsBimDetails(services: SurveyService[]): boolean {
+export function projectNeedsBimDetails(services: readonly SurveyService[]): boolean {
   return services.some((s) => BIM_SERVICES.includes(s));
+}
+
+export const PROJECT_DESCRIPTION_MIN = 50;
+
+/** Default project title from a picked address, e.g. "12 Main St, Houston, TX". */
+export function suggestProjectTitle(place: {
+  line1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  label?: string | null;
+}): string {
+  const line1 = place.line1?.trim() || place.label?.split(',')[0]?.trim() || '';
+  const parts = [line1, place.city?.trim(), place.state?.trim()].filter(
+    (p, i, all): p is string => Boolean(p) && all.indexOf(p) === i,
+  );
+  return parts.join(', ').slice(0, 140);
+}
+
+/** Base fee + per-sq-ft rate in USD, tuned to typical US marketplace pricing. */
+const SERVICE_PRICING: Record<SurveyService, { base: number; perSqft: number }> = {
+  measured_building: { base: 600, perSqft: 0.1 },
+  topographic: { base: 1200, perSqft: 0.03 },
+  land: { base: 1000, perSqft: 0.02 },
+  utility_survey: { base: 1500, perSqft: 0.04 },
+  boundary_survey: { base: 900, perSqft: 0.01 },
+  construction_survey: { base: 1200, perSqft: 0.05 },
+  as_built_survey: { base: 800, perSqft: 0.12 },
+  quantity_survey: { base: 700, perSqft: 0.05 },
+  laser_scanning: { base: 900, perSqft: 0.08 },
+  mobile_mapping: { base: 1500, perSqft: 0.05 },
+  lidar_survey: { base: 1400, perSqft: 0.05 },
+  point_cloud_registration: { base: 400, perSqft: 0.03 },
+  reality_capture: { base: 800, perSqft: 0.07 },
+  drone: { base: 450, perSqft: 0.01 },
+  drone_survey: { base: 800, perSqft: 0.02 },
+  aerial_photography: { base: 400, perSqft: 0.01 },
+  orthomosaic_mapping: { base: 700, perSqft: 0.02 },
+  photogrammetry: { base: 800, perSqft: 0.03 },
+  thermal_inspection: { base: 600, perSqft: 0.03 },
+  scan_to_bim: { base: 1200, perSqft: 0.15 },
+  bim_modeling: { base: 1000, perSqft: 0.14 },
+  revit_modeling: { base: 1000, perSqft: 0.14 },
+  cad_drafting: { base: 500, perSqft: 0.08 },
+  point_cloud_to_cad: { base: 600, perSqft: 0.09 },
+  point_cloud_to_bim: { base: 1000, perSqft: 0.14 },
+};
+
+const SCAN_TYPE_FACTOR: Record<ProjectScanType, number> = {
+  terrestrial: 1,
+  mobile_lidar: 0.9,
+  handheld: 0.85,
+  not_sure: 1,
+};
+
+const LOD_FACTOR: Record<ProjectLod, number> = {
+  lod_100: 0.7,
+  lod_200: 0.85,
+  lod_300: 1,
+  lod_350: 1.15,
+  lod_400: 1.3,
+  not_sure: 1,
+};
+
+const COMPLEX_PROPERTY_TYPES: readonly string[] = ['industrial', 'healthcare', 'infrastructure'];
+
+export interface ProjectPriceInput {
+  services: readonly SurveyService[];
+  areaSqft: number | null;
+  floors: number | null;
+  buildingType?: string | null;
+  buildingStatus?: ProjectBuildingStatus | null;
+  scanTypes?: readonly ProjectScanType[];
+  accuracy?: ProjectAccuracy | null;
+  lod?: ProjectLod | null;
+  deliverables?: readonly ProjectScopeDeliverable[];
+  timeline?: ProjectTimeline | null;
+}
+
+export interface ProjectPriceEstimate {
+  minCents: number;
+  maxCents: number;
+  /** Human-readable inputs that moved the price, for the "based on" line. */
+  factors: string[];
+}
+
+function roundPrice(dollars: number): number {
+  const step = dollars < 5000 ? 50 : dollars < 25000 ? 100 : 500;
+  return Math.max(step, Math.round(dollars / step) * step);
+}
+
+/**
+ * Recommended price range for a brief. Indicative only — providers still quote.
+ * Returns null until there is at least one service and a building size.
+ */
+export function estimateProjectPrice(input: ProjectPriceInput): ProjectPriceEstimate | null {
+  const area = input.areaSqft ?? 0;
+  if (!input.services.length || area <= 0) return null;
+
+  const scanFactor = input.scanTypes?.length
+    ? Math.max(...input.scanTypes.map((t) => SCAN_TYPE_FACTOR[t] ?? 1))
+    : 1;
+  const lodFactor = input.lod ? (LOD_FACTOR[input.lod] ?? 1) : 1;
+  const accuracyFactor = input.accuracy === 'high' ? 1.15 : 1;
+
+  const perService = input.services.map((s) => {
+    const p = SERVICE_PRICING[s];
+    let cost = p.base + p.perSqft * area;
+    if (LASER_SERVICES.includes(s)) cost *= scanFactor * accuracyFactor;
+    else if (BIM_SERVICES.includes(s)) cost *= lodFactor;
+    else cost *= accuracyFactor;
+    return cost;
+  });
+  let total = perService.reduce((a, b) => a + b, 0);
+
+  const factors: string[] = [
+    `${input.services.length} service${input.services.length === 1 ? '' : 's'}`,
+    `${Math.round(area).toLocaleString('en-US')} sq ft`,
+  ];
+
+  if (input.services.length > 1) {
+    total *= 1 - Math.min(0.15, 0.05 * (input.services.length - 1));
+  }
+
+  const floors = input.floors ?? 0;
+  if (floors > 1) {
+    total *= Math.min(2, 1 + 0.04 * (floors - 1));
+  }
+  if (floors > 0) factors.push(floorOptionLabel(floors));
+
+  if (input.buildingStatus === 'under_construction') {
+    total *= 1.1;
+    factors.push('under construction');
+  }
+  if (input.buildingType && COMPLEX_PROPERTY_TYPES.includes(input.buildingType)) {
+    total *= 1.1;
+    factors.push(`${input.buildingType} site`);
+  } else if (input.buildingType === 'residential') {
+    total *= 0.95;
+  }
+
+  if (input.scanTypes?.length && projectNeedsLaserDetails(input.services)) {
+    const named = input.scanTypes.filter((t) => t !== 'not_sure');
+    if (named.length) factors.push(named.map((t) => PROJECT_SCAN_TYPE_LABELS[t]).join(' / '));
+  }
+  if (input.accuracy === 'high') factors.push('high accuracy');
+  if (input.lod && input.lod !== 'not_sure' && projectNeedsBimDetails(input.services)) {
+    factors.push(PROJECT_LOD_LABELS[input.lod]);
+  }
+
+  const extraDeliverables = Math.max(0, (input.deliverables?.length ?? 0) - 2);
+  if (extraDeliverables > 0) total *= 1 + 0.03 * extraDeliverables;
+  if (input.deliverables?.length) {
+    factors.push(
+      `${input.deliverables.length} deliverable${input.deliverables.length === 1 ? '' : 's'}`,
+    );
+  }
+
+  if (input.timeline === 'asap') {
+    total *= 1.2;
+    factors.push('ASAP turnaround');
+  }
+
+  const min = roundPrice(total * 0.85);
+  const max = Math.max(min, roundPrice(total * 1.2));
+  return { minCents: min * 100, maxCents: max * 100, factors };
+}
+
+export function formatEstimateRange(minCents: number, maxCents: number): string {
+  const fmt = (c: number) => `$${Math.round(c / 100).toLocaleString('en-US')}`;
+  return minCents === maxCents ? fmt(minCents) : `${fmt(minCents)} – ${fmt(maxCents)}`;
 }
 
 export type ProjectStepStatus = 'complete' | 'partial' | 'pending';
@@ -516,101 +775,46 @@ function statusFrom(complete: boolean, started: boolean): ProjectStepStatus {
 export function projectPostProgress(brief: BriefSource): ProjectPostProgress {
   const d = brief.details ?? emptyProjectDetails();
   const titleOk = Boolean(brief.title?.trim());
-  const servicesOk = (brief.services?.length ?? 0) > 0;
-  const descOk = d.description.trim().length >= 50;
-
-  const overview = statusFrom(
-    titleOk && servicesOk && descOk,
-    titleOk || servicesOk || d.description.trim().length > 0,
-  );
+  const descLen = d.description.trim().length;
 
   const locKnown = d.locationKnown;
-  const locComplete =
+  const addressOk =
     locKnown === 'not_yet' ||
-    (locKnown === 'yes' &&
-      Boolean(d.country.trim() && d.state.trim() && d.city.trim()) &&
-      (Boolean(brief.locationText?.trim()) || Boolean(brief.location)));
+    (locKnown === 'yes' && Boolean(d.country.trim() && d.state.trim() && d.city.trim()));
   const location = statusFrom(
-    locComplete,
-    Boolean(locKnown) || Boolean(brief.locationText?.trim()) || Boolean(brief.location),
+    addressOk && titleOk && descLen >= PROJECT_DESCRIPTION_MIN,
+    titleOk || descLen > 0 || Boolean(brief.locationText?.trim()) || Boolean(brief.location),
+  );
+
+  const serviceCount = brief.services?.length ?? 0;
+  const services = statusFrom(
+    serviceCount > 0 && d.scopeDeliverables.length > 0,
+    serviceCount > 0 || d.scopeDeliverables.length > 0,
   );
 
   const property = statusFrom(
-    Boolean(brief.buildingType?.trim()),
+    Boolean(brief.buildingType?.trim()) && (brief.areaSqft ?? 0) > 0,
     Boolean(brief.buildingType || d.buildingStatus || brief.floors != null || brief.areaSqft != null),
   );
 
-  const needsLaser = projectNeedsLaserDetails(brief.services ?? []);
-  const needsBim = projectNeedsBimDetails(brief.services ?? []);
-  const laserOk = !needsLaser || d.scanTypes.length > 0 || d.accuracy != null;
-  const bimOk = !needsBim || d.bimSoftware != null || d.lod != null || d.bimElements.length > 0;
-  // Services step is for laser/BIM refinements only. Picking services on Overview
-  // must not turn this step amber/green.
-  const servicesStarted =
-    d.scanTypes.length > 0 ||
-    d.accuracy != null ||
-    d.scanOutputs.length > 0 ||
-    d.bimSoftware != null ||
-    d.lod != null ||
-    d.bimElements.length > 0 ||
-    d.bimDeliverables.length > 0;
-  const refinementsNeeded = needsLaser || needsBim;
-  const services: ProjectStepStatus = refinementsNeeded
-    ? statusFrom(laserOk && bimOk, servicesStarted)
-    : 'pending';
-
-  const scope = statusFrom(d.scopeDeliverables.length > 0, d.scopeDeliverables.length > 0);
-
-  const budgetOk =
-    Boolean(d.timeline || brief.neededWithin) &&
-    Boolean(d.pricingMode) &&
-    (d.pricingMode === 'open' ||
-      (d.pricingMode === 'fixed' && (d.budgetFixedCents ?? 0) > 0) ||
-      (d.pricingMode === 'range' &&
-        (d.budgetMinCents ?? 0) > 0 &&
-        (d.budgetMaxCents ?? 0) >= (d.budgetMinCents ?? 0)));
   const budget = statusFrom(
-    budgetOk,
-    // Default priority ('standard') alone must not mark Budget as started.
-    Boolean(d.timeline || brief.neededWithin || d.pricingMode),
+    Boolean(d.timeline) && (d.timeline !== 'specific_date' || Boolean(d.completionDate)),
+    Boolean(d.timeline || brief.neededWithin),
   );
 
-  const files = statusFrom(
-    d.existingData != null || d.files.length > 0 || d.specialRequirements.trim().length > 0,
-    d.existingData != null ||
-      d.files.length > 0 ||
-      d.specialRequirements.trim().length > 0 ||
-      d.existingAssets.length > 0,
-  );
-
-  const servicesDone = !refinementsNeeded || services === 'complete';
   const coreComplete =
-    overview === 'complete' &&
-    location === 'complete' &&
-    property === 'complete' &&
-    servicesDone;
+    location === 'complete' && services !== 'pending' && property === 'complete';
   const review = statusFrom(coreComplete && budget === 'complete', coreComplete);
 
   const steps: Record<ProjectPostStepId, ProjectStepStatus> = {
-    overview,
     location,
-    property,
     services,
-    scope,
+    property,
     budget,
-    files,
     review,
   };
 
-  const weight: ProjectPostStepId[] = [
-    'overview',
-    'location',
-    'property',
-    'services',
-    'scope',
-    'budget',
-    'files',
-  ];
+  const weight: ProjectPostStepId[] = ['location', 'services', 'property', 'budget'];
   const score = weight.reduce((sum, id) => {
     if (steps[id] === 'complete') return sum + 1;
     if (steps[id] === 'partial') return sum + 0.45;

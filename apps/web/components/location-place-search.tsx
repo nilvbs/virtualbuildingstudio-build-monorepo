@@ -14,6 +14,9 @@ import { suggestAddresses, type AddressSuggestion } from '../lib/geocode';
 type Props = {
   /** Picked place with coordinates plus parsed street / city / state / ZIP / country. */
   onSelect: (place: AddressSuggestion & { lat: number; lng: number }) => void;
+  label?: string;
+  hint?: string;
+  autoFocus?: boolean;
 };
 
 function shortLabel(name: string) {
@@ -25,7 +28,12 @@ function shortLabel(name: string) {
   return `${parts[0]}, ${parts[1]}`;
 }
 
-export function LocationPlaceSearch({ onSelect }: Props) {
+export function LocationPlaceSearch({
+  onSelect,
+  label = 'Search place',
+  hint = 'Find an address or landmark, then pin it on the map.',
+  autoFocus,
+}: Props) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<AddressSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
@@ -72,8 +80,8 @@ export function LocationPlaceSearch({ onSelect }: Props) {
 
   return (
     <Stack spacing={0.75}>
-      <Typography variant="subtitle2">Search place</Typography>
-      <Typography variant="body2">Find an address or landmark, then pin it on the map.</Typography>
+      <Typography variant="subtitle2">{label}</Typography>
+      <Typography variant="body2">{hint}</Typography>
       <Autocomplete
         freeSolo
         options={hits}
@@ -114,6 +122,7 @@ export function LocationPlaceSearch({ onSelect }: Props) {
             <TextField
               {...params}
               placeholder="Search address, city, or landmark…"
+              autoFocus={autoFocus}
               slotProps={{
                 ...params.slotProps,
                 htmlInput: {
