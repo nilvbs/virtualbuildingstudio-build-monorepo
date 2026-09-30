@@ -106,7 +106,7 @@ Every sign-in (password, signup, Google, staff portal) is converted by the API i
 - **Suspended users:** blocked at login, on every authenticated request (`ActiveUserGuard`), and at refresh. Suspending a user (or staff), an admin-set staff password, or a password reset **revokes all refresh tokens**; access tokens expire within 15 minutes.
 - **Logout** revokes the refresh family and clears cookies (works even with an expired access token).
 - **Google OAuth state** is HMAC-signed, expires in 10 minutes, and is bound to a nonce held by the browser (httpOnly `bld_oauth` cookie) or by the mobile app (returned by start, echoed on exchange). A state/code pair cannot be completed in another browser (login CSRF).
-- **Rate limits:** global 120/min per IP plus tighter auth limits (login 10/min, signup 5/min, forgot-password 5/min, refresh 30/min, Google exchange 20/min). Shared across API instances when `REDIS_URL` is set (ElastiCache); falls back to per-process memory if Redis is down.
+- **Rate limits:** global 120/min per IP plus tighter auth limits (login 10/min, signup 5/min, forgot-password 5/min, refresh 30/min, Google exchange 20/min). Shared across API instances when `REDIS_URL` is set (staging: private `bld-redis` sidecar; ElastiCache for multi-host); falls back to per-process memory if Redis is down. On staging, Nginx also limits per IP before the API: credential routes (`/api/auth/login|signup|forgot-password|reset-password|refresh|oauth/*`) share 20/min with a burst of 20, other `/api/*` 20/s with a burst of 100 — excess gets `429`.
 
 ```mermaid
 sequenceDiagram
@@ -295,6 +295,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-29 | Abuse protection: staging rate limits now shared via Redis; Nginx per-IP edge limit on sign-in / sign-up / reset / refresh / OAuth (429 on bursts) |
 | 2026-09-29 | Security: httpOnly cookie sessions (web) / SecureStore (mobile), 15m access + rotating refresh with reuse detection; sign-out everywhere on suspend / password reset; Google OAuth state bound to browser nonce; tighter auth rate limits (Redis-shareable) |
 | 2026-09-24 | OTP lockout: admin in-app + email alert; staff can clear OTP lockout immediately on user detail |
 | 2026-09-24 | OTP resend: 30s cooldown, 3 resends then 1h lockout (send+verify), last-attempt warning, support ticket link |

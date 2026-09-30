@@ -155,6 +155,15 @@
         <em>gold-standard control set</em> (defense in depth) so BLD can be audited,
         hardened, and operated as highly secure in practice.
       </div>
+      <div class="callout">
+        <strong>Last updated 29 Sep 2026:</strong> Phase 1 and Phase 2 app controls are live on staging
+        (cookie sessions, refresh rotation, OAuth binding, Helmet/CSP, CORS fail-closed, DB TLS check).
+        Shared Redis rate limits and Nginx edge limits on <code>/api/auth/*</code> are deployed and
+        re-checked after every API deploy by <code>verify-staging-security.yml</code>.
+        <br />Verified on staging (29 Sep): Redis limiter active and private · DB TLS on ·
+        Nginx returned 429 to 22 of 45 burst requests on <code>/api/auth/refresh</code> while <code>/api/health</code> stayed 200.
+        Open: Aurora KMS confirmation · managed WAF.
+      </div>
     </header>
 
     <nav class="toc" aria-label="On this page">
@@ -173,11 +182,11 @@
       <div class="layer">
         <div class="layer-row">
           <div class="name">1. Edge / network</div>
-          <div>HTTPS (ALB / Nginx / CloudFront), private VPC for DB, WAF optional, no public DB ports.</div>
+          <div>HTTPS (Nginx + Certbot on staging; ALB in production design), per-IP Nginx rate limits on auth and API routes, private VPC for DB, no public DB ports. Managed WAF (Cloudflare / AWS) is the next step.</div>
         </div>
         <div class="layer-row">
           <div class="name">2. Identity</div>
-          <div>Auth0 + app JWT sessions; OTP for email/phone; scrypt password verifiers; no anonymous write paths except deliberate public endpoints.</div>
+          <div>Auth0 + first-party sessions in httpOnly cookies (15-minute access token, rotating refresh token with reuse detection); OTP for email/phone; scrypt password verifiers; OAuth state signed and bound to a nonce; no anonymous write paths except deliberate public endpoints.</div>
         </div>
         <div class="layer-row">
           <div class="name">3. Authorization</div>
@@ -185,11 +194,11 @@
         </div>
         <div class="layer-row">
           <div class="name">4. Application</div>
-          <div>Zod validation, rate limits, signed S3 URLs, MIME/size caps, log redaction, PII minimization in API responses.</div>
+          <div>Zod validation, Redis-shared rate limits, Helmet + CSP, CORS fail-closed, custom session header on cookie requests (CSRF), signed S3 URLs, MIME/size caps, log redaction, PII minimization in API responses.</div>
         </div>
         <div class="layer-row">
           <div class="name">5. Database</div>
-          <div>Private Aurora, encryption at rest (KMS), TLS in transit, Secrets Manager credentials, least-privilege DB users, backups + PITR, audit logging.</div>
+          <div>Private Aurora, encryption at rest (KMS), TLS in transit (enforced at API boot), Secrets Manager credentials, least-privilege DB users, backups + PITR, audit logging.</div>
         </div>
         <div class="layer-row">
           <div class="name">6. Data lifecycle</div>
@@ -242,6 +251,46 @@
           <strong>Onboarding legal gate</strong>
           <p>Terms + NDA timestamps required before workspace unlock.</p>
         </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>httpOnly cookie sessions</strong>
+          <p>Web tokens are not readable by JavaScript. 15-min access cookie + rotating refresh (<code>auth_refresh_tokens</code>, reuse revokes the family). Cookies are only read with the <code>X-BLD-Session: cookie</code> header (forces CORS preflight → CSRF defense on top of SameSite). Mobile keeps tokens in SecureStore.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Suspended users blocked</strong>
+          <p>Login, Google sign-in, refresh and every guarded request reject non-active users; suspend and password reset revoke all refresh tokens.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>OAuth state binding</strong>
+          <p>Signed, short-lived OAuth <code>state</code> bound to a nonce in an httpOnly cookie (web) or request body (mobile) — blocks login CSRF.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Headers, CSP, CORS</strong>
+          <p>Helmet on the API; CSP + frame/referrer/permissions headers on web. Production CORS fails closed when <code>CORS_ORIGINS</code> / <code>WEB_APP_URL</code> are missing.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>DB TLS enforced</strong>
+          <p>API checks <code>pg_stat_ssl</code> at boot and refuses to start on a cleartext Aurora connection; deploy refuses non-<code>sslmode=require</code> URLs.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Shared rate limits (Redis)</strong>
+          <p>API throttler backed by a private, password-protected Redis (<code>bld-redis</code>, no host port). Limits hold across API restarts and instances; swap <code>REDIS_URL</code> to ElastiCache with no code change.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Edge rate limit on auth</strong>
+          <p>Nginx per-IP limits before the API: <code>/api/auth/*</code> credential routes 20/min (burst 20) → 429; other <code>/api/*</code> 20/s (burst 100). Config auto-rolls back if <code>nginx -t</code> fails.</p>
+        </div>
+        <div class="card">
+          <span class="badge now">Live</span>
+          <strong>Post-deploy verification</strong>
+          <p><code>verify-staging-security.yml</code> runs after every API deploy: Aurora encryption (via EC2 instance role, no stored AWS keys), Redis limiter, DB TLS, and a real 429 burst test.</p>
+        </div>
       </div>
     </section>
 
@@ -268,8 +317,8 @@
       <table>
         <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td>Encryption at rest</td><td>Aurora storage encrypted with AWS KMS CMK</td><td><span class="badge gap">Verify in AWS</span></td></tr>
-          <tr><td>Encryption in transit</td><td><code>sslmode=require</code> (or verify-full) on <code>DATABASE_URL</code></td><td><span class="badge gap">App enforce</span></td></tr>
+          <tr><td>Encryption at rest</td><td>Aurora storage encrypted with AWS KMS CMK</td><td><span class="badge gap">Verify in AWS</span> (auto-check ready; needs EC2 instance role)</td></tr>
+          <tr><td>Encryption in transit</td><td><code>sslmode=require</code> (or verify-full) on <code>DATABASE_URL</code></td><td><span class="badge now">Live — boot check</span></td></tr>
           <tr><td>Credentials</td><td>Secrets Manager only; rotate periodically; no secrets in git</td><td><span class="badge now">Designed</span></td></tr>
           <tr><td>App-level field crypto</td><td>Optional KMS envelope for highest-sensitivity columns (phone, address)</td><td><span class="badge target">Phase 3+</span></td></tr>
           <tr><td>OTP / passwords</td><td>Never store plaintext; scrypt / SHA-256 hashes only</td><td><span class="badge now">Live</span></td></tr>
@@ -294,6 +343,7 @@
           <tr><td>Automated backups + PITR</td><td>Aurora continuous backup; tested restore drill</td><td><span class="badge gap">Ops</span></td></tr>
           <tr><td>Read replica</td><td>Designed in AWS topology</td><td><span class="badge now">Designed</span></td></tr>
           <tr><td>DB audit</td><td>pgaudit / CloudWatch for DDL + privileged reads</td><td><span class="badge target">Phase 2</span></td></tr>
+          <tr><td>Abuse / brute force</td><td>Redis-shared API throttler + Nginx per-IP limits on auth routes; managed WAF next</td><td><span class="badge now">Live</span></td></tr>
           <tr><td>App activity logs</td><td><code>activity_logs</code> for marketplace / ticket / staff actions</td><td><span class="badge now">Live</span></td></tr>
           <tr><td>Deletion safety</td><td>Documented cascades; surveyor profile delete ordered in admin</td><td><span class="badge now">Partial</span></td></tr>
         </tbody>
@@ -328,53 +378,81 @@
 
     <section id="gaps">
       <h2>Priority gaps (close these for “highly secured”)</h2>
+      <p class="sub">Status as of 29 Sep 2026. Closed rows stay listed so the audit trail is visible.</p>
       <table>
-        <thead><tr><th>Gap</th><th>Risk</th><th>Fix</th></tr></thead>
+        <thead><tr><th>Gap</th><th>Risk</th><th>Fix</th><th>Status</th></tr></thead>
         <tbody>
           <tr>
             <td><span class="badge critical">Critical</span> Tokens in localStorage / AsyncStorage</td>
             <td>XSS can steal sessions</td>
-            <td>Move to httpOnly Secure cookies + refresh rotation</td>
+            <td>httpOnly Secure cookies + rotating refresh (web); SecureStore (mobile)</td>
+            <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
             <td><span class="badge critical">Critical</span> Suspended users not blocked on login/API</td>
             <td>Disabled accounts may still act</td>
-            <td>Enforce <code>users.status !== 'active'</code> on auth + every request</td>
+            <td>Status enforced on login, refresh and every guarded request; suspend revokes refresh tokens</td>
+            <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
             <td><span class="badge gap">High</span> Media DELETE without ownership check</td>
             <td>Any auth user could delete objects by key</td>
-            <td>Verify key prefix / owner before delete</td>
+            <td>Key namespace / owner verified before delete</td>
+            <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
-            <td><span class="badge gap">High</span> DB TLS + KMS not verified in app/config</td>
-            <td>Possible cleartext DB links / unencrypted storage</td>
-            <td>Require <code>sslmode=require</code>; confirm Aurora KMS in AWS</td>
+            <td><span class="badge gap">High</span> DB TLS not verified in app/config</td>
+            <td>Possible cleartext DB links</td>
+            <td><code>sslmode=require</code> enforced by deploy + <code>pg_stat_ssl</code> boot check</td>
+            <td><span class="badge now">Closed</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">High</span> Aurora KMS encryption not confirmed</td>
+            <td>Unencrypted storage / snapshots</td>
+            <td>Read-only <code>describe-db-clusters</code> from EC2 via instance role (<code>verify-staging-security.yml</code>)</td>
+            <td><span class="badge gap">Pending — ops</span><br /><small>29 Sep: EC2 has no IAM instance role, so the check could not run. Confirm in RDS console (cluster → Configuration → Encryption) or attach a read-only role (<code>rds:DescribeDBClusters</code>, <code>rds:DescribeDBInstances</code>) — no access keys needed.</small></td>
           </tr>
           <tr>
             <td><span class="badge gap">High</span> OAuth state nonce not bound server-side</td>
             <td>Login CSRF risk</td>
-            <td>Store nonce in short-lived server store / cookie</td>
+            <td>Signed state + nonce in httpOnly cookie (web) / body (mobile)</td>
+            <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
             <td><span class="badge gap">Medium</span> Throttler is per-process</td>
-            <td>Bypass under multi-task scale</td>
-            <td>Redis throttling (ElastiCache already in design) + WAF</td>
+            <td>Bypass under multi-task scale / resets on restart</td>
+            <td>Redis-backed throttler (private <code>bld-redis</code> on staging; ElastiCache via <code>REDIS_URL</code> for multi-host)</td>
+            <td><span class="badge now">Closed</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">Medium</span> No edge rate limit / WAF</td>
+            <td>Credential stuffing and floods reach the API</td>
+            <td>Nginx per-IP limits on <code>/api/auth/*</code> + <code>/api/*</code> (live). Managed WAF needs DNS moved to Cloudflare (currently Hostinger) or an AWS ALB/CloudFront</td>
+            <td><span class="badge gap">Partial</span></td>
           </tr>
           <tr>
             <td><span class="badge gap">Medium</span> CORS fallback to any origin if env empty</td>
             <td>Browser API abuse</td>
-            <td>Fail closed in production</td>
+            <td>Fails closed in production</td>
+            <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
             <td><span class="badge gap">Medium</span> No Helmet / security headers</td>
             <td>Browser XSS/clickjacking surface</td>
-            <td>Helmet on Nest + CSP on web</td>
+            <td>Helmet on Nest + CSP / frame / referrer / HSTS on web</td>
+            <td><span class="badge now">Closed</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">Medium</span> Shared DB superuser, no DB audit</td>
+            <td>App compromise = full DB control; no trail</td>
+            <td>Separate app (DML) / migrate (DDL) roles; pgaudit → CloudWatch</td>
+            <td><span class="badge gap">Open — Ops</span></td>
           </tr>
           <tr>
             <td><span class="badge target">Later</span> No column-level encryption</td>
             <td>DB dump exposes PII</td>
             <td>KMS envelope for phone/address after baseline hardening</td>
+            <td><span class="badge target">Phase 3</span></td>
           </tr>
         </tbody>
       </table>
@@ -395,7 +473,8 @@
           <strong>Code status (repo):</strong> suspended-user guard + login/Google checks ·
           media DELETE ownership · CORS fail-closed · <code>devAuthEnabled</code> on JWT path ·
           Helmet on Nest · production DB SSL boot check · this ops checklist below.
-          <br /><strong>Still ops:</strong> verify Aurora KMS encryption + security groups in AWS.
+          <br /><strong>Status:</strong> <span class="badge now" style="margin:0">Done — live on staging</span>
+          <br /><strong>Still ops:</strong> Aurora KMS confirmation (EC2 needs a read-only IAM instance role, or check the RDS console) · security groups in AWS.
         </p>
       </div>
       <div class="phase">
@@ -403,6 +482,14 @@
         <p>
           httpOnly cookie sessions + refresh rotation · OAuth state binding ·
           Redis-backed rate limits · optional AWS WAF · pgaudit / CloudWatch DB audit ·
+          least-privilege DB roles + credential rotation drill.
+        </p>
+        <p style="margin-top:10px">
+          <strong>Done (live):</strong> httpOnly cookie sessions + rotating refresh with reuse detection ·
+          OAuth state/nonce binding · Redis-backed rate limits (<code>bld-redis</code>) ·
+          Nginx edge rate limits on <code>/api/auth/*</code> · web CSP + security headers · post-deploy security verification.
+          <br /><strong>Remaining:</strong> managed WAF (move <code>bld.online</code> DNS to Cloudflare, or ALB/CloudFront + AWS WAF) ·
+          ElastiCache when running more than one API host · pgaudit / CloudWatch DB audit ·
           least-privilege DB roles + credential rotation drill.
         </p>
       </div>
@@ -420,17 +507,20 @@
       <p class="sub">Print this for staging and production. All boxes should be true before calling the environment highly secured.</p>
       <ul>
         <li>☐ Aurora in private subnets; SG allows only Proxy / ECS</li>
-        <li>☐ Storage encryption enabled (KMS CMK)</li>
-        <li>☐ App <code>DATABASE_URL</code> uses SSL (<code>sslmode=require</code> or stronger)</li>
+        <li>☐ Storage encryption enabled (KMS CMK) — not yet confirmed (no AWS read access from the box)</li>
+        <li>☑ App <code>DATABASE_URL</code> uses SSL (<code>sslmode=require</code>, enforced by deploy + API boot check)</li>
         <li>☐ Credentials only in Secrets Manager; rotated; not in git or CI logs</li>
         <li>☐ Separate migrate vs app DB users (least privilege)</li>
         <li>☐ Automated backups + PITR enabled; restore tested in last 90 days</li>
         <li>☐ Staging and production fully isolated (no shared DB)</li>
-        <li>☑ Suspended / deleted users cannot authenticate (Phase 1 code)</li>
-        <li>☐ Staff actions permission-gated; super admin protected</li>
-        <li>☑ Media keys private; deletes ownership-checked; downloads signed (Phase 1 code)</li>
-        <li>☐ Auth tokens not readable by JavaScript (httpOnly) — Phase 2</li>
-        <li>☐ Audit trail for privileged DB and staff actions</li>
+        <li>☑ Suspended / deleted users cannot authenticate; refresh tokens revoked on suspend</li>
+        <li>☑ Staff actions permission-gated; super admin protected</li>
+        <li>☑ Media keys private; deletes ownership-checked; downloads signed</li>
+        <li>☑ Auth tokens not readable by JavaScript (httpOnly cookies, rotating refresh)</li>
+        <li>☑ OAuth login state signed and nonce-bound</li>
+        <li>☑ Rate limits shared via Redis; Nginx per-IP limit on <code>/api/auth/*</code> returns 429</li>
+        <li>☐ Managed WAF in front of Nginx (needs Cloudflare DNS or ALB/CloudFront)</li>
+        <li>☐ Audit trail for privileged DB actions (staff actions: <code>activity_logs</code> ☑)</li>
       </ul>
 
       <h3>Phase 1 — AWS KMS + security group verification</h3>
@@ -444,8 +534,11 @@
         <li>☐ <code>AUTH_DEV_MODE</code> unset or false; <code>NODE_ENV=production</code></li>
       </ul>
       <p class="sub" style="margin-top:12px">
-        Automated check (needs AWS CLI credentials):
-        <code>powershell -File scripts/verify-phase1-aws.ps1 -Region &lt;region&gt;</code>
+        Automated checks:
+        <br />• <strong>No AWS keys needed:</strong> GitHub Actions → <code>Verify staging security</code>
+        (runs after every API deploy; asks AWS from the EC2 box using its instance role — nothing is stored in GitHub,
+        and public logs show only yes/no results).
+        <br />• With an AWS CLI profile: <code>powershell -File scripts/verify-phase1-aws.ps1 -Region &lt;region&gt;</code>
       </p>
     </section>
 
