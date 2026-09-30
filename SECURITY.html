@@ -156,13 +156,14 @@
         hardened, and operated as highly secure in practice.
       </div>
       <div class="callout">
-        <strong>Last updated 29 Sep 2026:</strong> Phase 1 and Phase 2 app controls are live on staging
+        <strong>Last updated 30 Sep 2026:</strong> Phase 1 and Phase 2 app controls are live on staging
         (cookie sessions, refresh rotation, OAuth binding, Helmet/CSP, CORS fail-closed, DB TLS check).
         Shared Redis rate limits and Nginx edge limits on <code>/api/auth/*</code> are deployed and
         re-checked after every API deploy by <code>verify-staging-security.yml</code>.
-        <br />Verified on staging (29 Sep): Redis limiter active and private · DB TLS on ·
-        Nginx returned 429 to 22 of 45 burst requests on <code>/api/auth/refresh</code> while <code>/api/health</code> stayed 200.
-        Open: Aurora KMS confirmation · managed WAF.
+        <br />Verified on staging (30 Sep): Redis limiter active and private · DB TLS on ·
+        Nginx returned 429 to 22 of 45 burst requests on <code>/api/auth/refresh</code> while <code>/api/health</code> stayed 200 ·
+        API runs as least-privilege <code>bld_app</code> · restore drill passed (16/16 tables).
+        Open: Aurora KMS confirmation · managed WAF · pgaudit · owner credential in Secrets Manager.
       </div>
     </header>
 
@@ -329,7 +330,7 @@
       <table>
         <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td>Least-privilege DB roles</td><td>App role: DML only; migrate role: DDL; no shared superuser</td><td><span class="badge gap">Ops</span></td></tr>
+          <tr><td>Least-privilege DB roles</td><td>App role: DML only; migrate role: DDL; no shared superuser</td><td><span class="badge now">Live (staging)</span> <code>bld_app</code> / owner</td></tr>
           <tr><td>IAM / RDS auth (optional)</td><td>IAM DB auth via Proxy for humans/break-glass</td><td><span class="badge target">Phase 2</span></td></tr>
           <tr><td>No direct prod access</td><td>Bastion + audited sessions; prefer read replica for support</td><td><span class="badge gap">Ops</span></td></tr>
           <tr><td>Row-level intent</td><td>App ownership checks (client_id, surveyor_id, user_id)</td><td><span class="badge now">Live</span></td></tr>
@@ -340,7 +341,7 @@
       <table>
         <thead><tr><th>Control</th><th>Target</th><th>Status</th></tr></thead>
         <tbody>
-          <tr><td>Automated backups + PITR</td><td>Aurora continuous backup; tested restore drill</td><td><span class="badge gap">Ops</span></td></tr>
+          <tr><td>Automated backups + PITR</td><td>Aurora continuous backup; tested restore drill</td><td><span class="badge gap">Partial</span> monthly logical drill live; retention / PITR restore need AWS</td></tr>
           <tr><td>Read replica</td><td>Designed in AWS topology</td><td><span class="badge now">Designed</span></td></tr>
           <tr><td>DB audit</td><td>pgaudit / CloudWatch for DDL + privileged reads</td><td><span class="badge target">Phase 2</span></td></tr>
           <tr><td>Abuse / brute force</td><td>Redis-shared API throttler + Nginx per-IP limits on auth routes; managed WAF next</td><td><span class="badge now">Live</span></td></tr>
@@ -378,7 +379,7 @@
 
     <section id="gaps">
       <h2>Priority gaps (close these for “highly secured”)</h2>
-      <p class="sub">Status as of 29 Sep 2026. Closed rows stay listed so the audit trail is visible.</p>
+      <p class="sub">Status as of 30 Sep 2026. Closed rows stay listed so the audit trail is visible.</p>
       <table>
         <thead><tr><th>Gap</th><th>Risk</th><th>Fix</th><th>Status</th></tr></thead>
         <tbody>
@@ -410,7 +411,7 @@
             <td><span class="badge gap">High</span> Aurora KMS encryption not confirmed</td>
             <td>Unencrypted storage / snapshots</td>
             <td>Read-only <code>describe-db-clusters</code> from EC2 via instance role (<code>verify-staging-security.yml</code>)</td>
-            <td><span class="badge gap">Pending — ops</span><br /><small>29 Sep: EC2 has no IAM instance role, so the check could not run. Confirm in RDS console (cluster → Configuration → Encryption) or attach a read-only role (<code>rds:DescribeDBClusters</code>, <code>rds:DescribeDBInstances</code>) — no access keys needed.</small></td>
+            <td><span class="badge gap">Pending — ops</span><br /><small>30 Sep: EC2 has no IAM instance role, so the check could not run. Confirm in RDS console (cluster → Configuration → Encryption) or attach a read-only role (<code>rds:DescribeDBClusters</code>, <code>rds:DescribeDBInstances</code>) — no access keys needed.</small></td>
           </tr>
           <tr>
             <td><span class="badge gap">High</span> OAuth state nonce not bound server-side</td>
@@ -443,10 +444,22 @@
             <td><span class="badge now">Closed</span></td>
           </tr>
           <tr>
-            <td><span class="badge gap">Medium</span> Shared DB superuser, no DB audit</td>
-            <td>App compromise = full DB control; no trail</td>
-            <td>Separate app (DML) / migrate (DDL) roles; pgaudit → CloudWatch</td>
-            <td><span class="badge gap">Open — Ops</span></td>
+            <td><span class="badge gap">Medium</span> API uses the DB owner account</td>
+            <td>App compromise = can drop / alter tables</td>
+            <td>API runs as <code>bld_app</code> (DML only, no DDL, no <code>_prisma_migrations</code>); owner used only by migrations. Password generated on EC2, rotated quarterly</td>
+            <td><span class="badge now">Closed</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">Medium</span> No DB audit trail</td>
+            <td>Privileged DB actions leave no trail</td>
+            <td>pgaudit via Aurora cluster parameter group → CloudWatch Logs (AWS console)</td>
+            <td><span class="badge gap">Open — needs AWS</span></td>
+          </tr>
+          <tr>
+            <td><span class="badge gap">Medium</span> Restore never tested</td>
+            <td>Backups may not be recoverable when needed</td>
+            <td>Monthly logical restore drill (<code>staging-restore-drill.yml</code>). Aurora snapshot / PITR restore still needs AWS access</td>
+            <td><span class="badge gap">Partial</span></td>
           </tr>
           <tr>
             <td><span class="badge target">Later</span> No column-level encryption</td>
@@ -487,10 +500,11 @@
         <p style="margin-top:10px">
           <strong>Done (live):</strong> httpOnly cookie sessions + rotating refresh with reuse detection ·
           OAuth state/nonce binding · Redis-backed rate limits (<code>bld-redis</code>) ·
-          Nginx edge rate limits on <code>/api/auth/*</code> · web CSP + security headers · post-deploy security verification.
+          Nginx edge rate limits on <code>/api/auth/*</code> · web CSP + security headers · post-deploy security verification ·
+          least-privilege DB role <code>bld_app</code> with quarterly password rotation · monthly logical restore drill.
           <br /><strong>Remaining:</strong> managed WAF (move <code>bld.online</code> DNS to Cloudflare, or ALB/CloudFront + AWS WAF) ·
           ElastiCache when running more than one API host · pgaudit / CloudWatch DB audit ·
-          least-privilege DB roles + credential rotation drill.
+          owner credential into Secrets Manager + rotation · Aurora snapshot restore drill.
         </p>
       </div>
       <div class="phase">
@@ -509,9 +523,12 @@
         <li>☐ Aurora in private subnets; SG allows 5432 only from the app (staging: EC2 API host · production: ECS / RDS Proxy)</li>
         <li>☐ Storage encryption enabled (KMS CMK) — not yet confirmed (no AWS read access from the box)</li>
         <li>☑ App <code>DATABASE_URL</code> uses SSL (<code>sslmode=require</code>, enforced by deploy + API boot check)</li>
-        <li>☐ Credentials only in Secrets Manager; rotated; not in git or CI logs</li>
-        <li>☐ Separate migrate vs app DB users (least privilege)</li>
-        <li>☐ Automated backups + PITR enabled; restore tested in last 90 days</li>
+        <li>☑ DB credentials not in git or CI logs (compose has no passwords; workflows print only yes/no)</li>
+        <li>☑ App DB credential (<code>bld_app</code>) generated on the box and rotated quarterly (<code>setup-staging-db-app-role.yml</code>)</li>
+        <li>☐ Owner DB credential in Secrets Manager and rotated (today: GitHub Environment secret → EC2 <code>.env</code>)</li>
+        <li>☑ Separate migrate vs app DB users — API runs as <code>bld_app</code> (DML only); owner used only by <code>prisma migrate deploy</code></li>
+        <li>☑ Restore tested in last 90 days — logical drill passed 30 Sep 2026 (16/16 tables exact match), repeats monthly</li>
+        <li>☐ Aurora backup retention / PITR confirmed and snapshot restore drilled (needs AWS access)</li>
         <li>☐ Staging and production fully isolated (no shared DB)</li>
         <li>☑ Suspended / deleted users cannot authenticate; refresh tokens revoked on suspend</li>
         <li>☑ Staff actions permission-gated; super admin protected</li>
@@ -540,7 +557,18 @@
         (runs after every API deploy; asks AWS from the EC2 box using its instance role — nothing is stored in GitHub,
         and public logs show only yes/no results).
         <br />• With an AWS CLI profile: <code>powershell -File scripts/verify-phase1-aws.ps1 -Region &lt;region&gt;</code>
+        <br />• <code>Staging DB app role (create / rotate)</code> — quarterly; run manually to rotate the <code>bld_app</code> password now.
+        <br />• <code>Staging restore drill</code> — monthly logical dump → restore → row-count comparison on the EC2 box.
       </p>
+
+      <h3>Needs AWS console or DNS access (cannot be done from the repo)</h3>
+      <ul>
+        <li>☐ <strong>DB audit (pgaudit):</strong> RDS → Parameter groups → cluster parameter group → add <code>pgaudit</code> to <code>shared_preload_libraries</code>, set <code>pgaudit.log = 'ddl,role'</code> → reboot writer → cluster → Modify → Log exports → PostgreSQL log → CloudWatch. Then <code>CREATE EXTENSION pgaudit;</code></li>
+        <li>☐ <strong>Owner credential in Secrets Manager + rotation:</strong> store the owner URL as <code>bld/api/DIRECT_DATABASE_URL</code>, enable rotation, and update the GitHub <code>staging</code> environment secret after each rotation (deploy copies it into <code>DIRECT_DATABASE_URL</code> for migrations only).</li>
+        <li>☐ <strong>Snapshot restore drill:</strong> RDS → cluster → Actions → Restore to point in time → temporary cluster → check row counts → delete it.</li>
+        <li>☐ <strong>Managed WAF:</strong> move <code>bld.online</code> nameservers from Hostinger to Cloudflare, proxy <code>staging</code>, enable managed rules + a rate-limit rule on <code>/api/auth/*</code>, and set Nginx <code>real_ip_header CF-Connecting-IP</code> for Cloudflare ranges. Or: ALB / CloudFront + AWS WAF in front of EC2.</li>
+        <li>☐ <strong>KMS auto-check:</strong> attach an IAM instance role to the EC2 box with <code>rds:DescribeDBClusters</code> + <code>rds:DescribeDBInstances</code> (no access keys).</li>
+      </ul>
     </section>
 
     <section>

@@ -64,7 +64,11 @@ aws rds describe-db-clusters --region us-east-2 \
 
 No local AWS keys? Run **Verify staging security** (`verify-staging-security.yml`, also runs after every API deploy). It makes the same read-only call from the EC2 box using the **instance role** — no access keys are stored in GitHub. If the step reports `no_instance_role` or `denied`, attach a role to the instance with `rds:DescribeDBClusters` + `rds:DescribeDBInstances`.
 
-`encrypted` must be `true`. Storage encryption cannot be turned on in place: snapshot → restore an encrypted copy with a KMS key → repoint the secrets. For certificate pinning, move from `sslmode=require` to `sslmode=verify-full&sslrootcert=/path/global-bundle.pem` (RDS CA bundle mounted into the container).
+`encrypted` must be `true`.
+
+**Least-privilege DB role.** The API connects as `bld_app` (SELECT/INSERT/UPDATE/DELETE + sequences, no DDL, no `_prisma_migrations`). The original owner user is kept in `DIRECT_DATABASE_URL` and used only by `prisma migrate deploy`. `.env` carries `DB_APP_ROLE=bld_app`; while it is set, deploys refresh only `DIRECT_DATABASE_URL` from GitHub secrets and leave `DATABASE_URL` alone. Run **Staging DB app role (create / rotate)** to rotate the `bld_app` password (also quarterly on a schedule). If the API is not healthy on the new credential, the workflow switches `.env` back to the owner URL and removes `DB_APP_ROLE`.
+
+**Restore drill.** **Staging restore drill** (monthly) dumps Aurora on the EC2 box, restores into a throwaway PostGIS container, compares per-table row counts, then deletes the container, dump and image. This checks logical recovery only; Aurora snapshot / PITR restore still needs AWS console access. Storage encryption cannot be turned on in place: snapshot → restore an encrypted copy with a KMS key → repoint the secrets. For certificate pinning, move from `sslmode=require` to `sslmode=verify-full&sslrootcert=/path/global-bundle.pem` (RDS CA bundle mounted into the container).
 
 ### Security layers outside the app
 
