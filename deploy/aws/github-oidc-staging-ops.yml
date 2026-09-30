@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  BLD staging ops access without access keys. (1) An IAM role that GitHub Actions can
+  assume via OIDC, only from nilvbs/virtualbuildingstudio-build-monorepo jobs that use the
+  "staging" environment. (2) A read-only instance role for the staging EC2 API host.
+  No IAM users and no access keys are created.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: nilvbs/virtualbuildingstudio-build-monorepo
+  GitHubEnvironment:
+    Type: String
+    Default: staging
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+    Description: >
+      Set to false if IAM → Identity providers already lists token.actions.githubusercontent.com.
+  AuroraClusterId:
+    Type: String
+    Default: bld-aurora-pg
+    Description: DB cluster identifier of the staging Aurora cluster (RDS console → Databases).
+
+Conditions:
+  MakeProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  # ---- Role assumed by GitHub Actions (staging environment only) ----
+  StagingOpsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: bld-staging-github-ops
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:environment:${GitHubEnvironment}
+      Policies:
+        - PolicyName: read-posture
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:Describe*
+                  - rds:ListTagsForResource
+                  - ec2:DescribeInstances
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeIamInstanceProfileAssociations
+                  - kms:DescribeKey
+                  - logs:DescribeLogGroups
+                  - secretsmanager:ListSecrets
+                  - wafv2:ListWebACLs
+                Resource: '*'
+              - Effect: Allow
+                Action: iam:SimulatePrincipalPolicy
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/bld-staging-github-ops
+
+        - PolicyName: attach-ec2-instance-role
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AssociateIamInstanceProfile
+                  - ec2:ReplaceIamInstanceProfileAssociation
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt Ec2InstanceRole.Arn
+
+        - PolicyName: db-audit-logging
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:CreateDBClusterParameterGroup
+                  - rds:ModifyDBClusterParameterGroup
+                  - rds:CopyDBClusterParameterGroup
+                  - rds:AddTagsToResource
+                Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster-pg:bld-*
+              - Effect: Allow
+                Action: rds:CopyDBClusterParameterGroup
+                Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster-pg:*
+              - Effect: Allow
+                Action: rds:ModifyDBCluster
+                Resource:
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${AuroraClusterId}
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster-pg:*
+              # Static parameter (shared_preload_libraries) needs a writer reboot (~1 min).
+              - Effect: Allow
+                Action: rds:RebootDBInstance
+                Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:*
+              - Effect: Allow
+                Action: logs:PutRetentionPolicy
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/cluster/${AuroraClusterId}/*
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: rds.amazonaws.com
+
+        - PolicyName: snapshot-restore-drill
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Create: any supporting resource (subnet group, param groups, source cluster).
+              - Effect: Allow
+                Action:
+                  - rds:RestoreDBClusterToPointInTime
+                  - rds:CreateDBInstance
+                Resource: '*'
+              # Tag + delete: only the throwaway drill copies.
+              - Effect: Allow
+                Action:
+                  - rds:AddTagsToResource
+                  - rds:DeleteDBInstance
+                  - rds:DeleteDBCluster
+                Resource:
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:bld-restore-drill-*
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:bld-restore-drill-*
+              - Effect: Allow
+                Action:
+                  - kms:CreateGrant
+                  - kms:Decrypt
+                  - kms:DescribeKey
+                  - kms:GenerateDataKey*
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub rds.${AWS::Region}.amazonaws.com
+
+  # ---- Instance role for the staging EC2 API host (read-only) ----
+  Ec2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: bld-staging-ec2
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: verify-and-read-db-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBClusters
+                  - rds:DescribeDBInstances
+                Resource: '*'
+              # The box copies its own DB URLs into Secrets Manager (value never transits GitHub)
+              # and reads them back at deploy time.
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:PutSecretValue
+                  - secretsmanager:TagResource
+                # Staging namespace only — production reads bld/api/<NAME> (task-definition.json).
+                Resource:
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:bld/api/staging/*
+              - Effect: Allow
+                Action: secretsmanager:CreateSecret
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    secretsmanager:Name: bld/api/staging/*
+
+  Ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: bld-staging-ec2
+      Roles: [!Ref Ec2InstanceRole]
+
+Outputs:
+  OpsRoleArn:
+    Description: Put this in GitHub → Settings → Environments → staging → secret AWS_OPS_ROLE_ARN
+    Value: !GetAtt StagingOpsRole.Arn
+  Ec2InstanceProfileName:
+    Value: !Ref Ec2InstanceProfile

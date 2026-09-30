@@ -4,6 +4,26 @@ Reference for standing up **staging** and **production** on AWS ECS Fargate.
 Repeat every step once per environment (own account/VPC or at least own
 cluster, DB, secrets, and domains). Never let staging touch prod data.
 
+## Staging ops access without access keys (EC2 staging)
+
+`github-oidc-staging-ops.yml` (CloudFormation) creates two roles and **no IAM users or access keys**:
+
+- `bld-staging-github-ops` — assumable only by GitHub Actions jobs of this repo that use the
+  `staging` environment (OIDC, 1-hour temporary credentials). Used by `aws-staging-ops.yml`.
+- `bld-staging-ec2` — read-only instance role for the staging API host (RDS describe for the
+  KMS check; read/write only `bld/api/staging/*` secrets).
+
+One-time setup (AWS console, ~3 minutes):
+
+1. CloudFormation → Create stack → Upload `deploy/aws/github-oidc-staging-ops.yml`.
+   Region = the Aurora region (`us-east-2`). Set `CreateOidcProvider=false` if IAM → Identity
+   providers already lists `token.actions.githubusercontent.com`. Set `AuroraClusterId` to the
+   staging cluster identifier. Acknowledge IAM resource creation → Create.
+2. Copy the `OpsRoleArn` output → GitHub → Settings → Environments → `staging` → add secret
+   `AWS_OPS_ROLE_ARN`. Recommended: restrict the `staging` environment to the `main` branch.
+3. Edit `deploy/aws/staging-ops.request` (e.g. bump `REQUESTED=`) and push, or run
+   **AWS staging ops (OIDC)** manually.
+
 ## Architecture
 
 ```

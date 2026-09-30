@@ -1,0 +1,414 @@
+name: AWS staging ops (OIDC)
+
+# AWS changes for staging using the GitHub OIDC role from deploy/aws/github-oidc-staging-ops.yml
+# (secret AWS_OPS_ROLE_ARN on the "staging" environment). Temporary credentials only —
+# no IAM users, no access keys created, read or changed.
+#
+# Tasks (comma list in deploy/aws/staging-ops.request, or the dispatch input):
+#   probe            read-only posture: KMS, backups, public access, SGs, EC2 profile
+#   instance-profile attach bld-staging-ec2 (read-only instance role) to the API host
+#   secrets-copy     box copies its owner DB URL into Secrets Manager bld/api/staging/*
+#   audit-logs       pgaudit (ddl,role) + PostgreSQL log export to CloudWatch (writer reboot ~1 min)
+#   restore-drill    Aurora point-in-time restore to a throwaway cluster, compare, delete
+#
+# Public logs: identifiers are masked; only RESULT_* classifications are printed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tasks:
+        description: 'probe,instance-profile,secrets-copy,audit-logs,restore-drill'
+        default: probe
+  push:
+    branches: [main]
+    paths: ['deploy/aws/staging-ops.request']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-staging-ops
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      tasks: ${{ steps.p.outputs.tasks }}
+      has_role: ${{ steps.p.outputs.has_role }}
+      dbhost_sha: ${{ steps.p.outputs.dbhost_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hash of the Aurora host (EC2 .env)
+        id: host
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          capture_stdout: true
+          script: |
+            cd "${{ vars.EC2_APP_DIR || '/home/ubuntu/BLD/stage' }}"
+            U=$(grep '^DIRECT_DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            [ -n "$U" ] || U=$(grep '^DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            H=$(printf '%s' "$U" | sed -E 's|^[^@]*@([^:/?]+).*|\1|')
+            echo "DBHOST_SHA=$(printf '%s' "$H" | sha256sum | cut -d' ' -f1)"
+      - id: p
+        env:
+          REMOTE: ${{ steps.host.outputs.stdout }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then T="${{ inputs.tasks }}"
+          else T=$(grep '^TASKS=' deploy/aws/staging-ops.request | tail -n 1 | cut -d= -f2- | tr -d ' \r'); fi
+          echo "tasks=,${T},"
+          echo "tasks=,${T}," >> "$GITHUB_OUTPUT"
+          echo "has_role=${{ secrets.AWS_OPS_ROLE_ARN != '' }}" >> "$GITHUB_OUTPUT"
+          echo "dbhost_sha=$(printf '%s\n' "$REMOTE" | grep '^DBHOST_SHA=' | cut -d= -f2 | tr -d '\r')" >> "$GITHUB_OUTPUT"
+          if [ "${{ secrets.AWS_OPS_ROLE_ARN != '' }}" != "true" ]; then
+            echo "::warning title=AWS ops::AWS_OPS_ROLE_ARN is not set on the staging environment — deploy deploy/aws/github-oidc-staging-ops.yml and add the OpsRoleArn output as that secret."
+          fi
+
+  probe:
+    needs: plan
+    if: needs.plan.outputs.has_role == 'true' && contains(needs.plan.outputs.tasks, ',probe,')
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OPS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Resolve staging resources
+        env:
+          DBHOST_SHA: ${{ needs.plan.outputs.dbhost_sha }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: bash scripts/aws-resolve-staging.sh
+      - name: Posture
+        run: |
+          DB_HOST="$BLD_DB_HOST" EC2_INSTANCE_ID="$BLD_IID" AWS_DEFAULT_REGION="$AWS_REGION" \
+            bash scripts/aws-probe.sh | tee /tmp/r.txt
+          echo "::notice title=AWS posture::$(tr '\n' ' ' < /tmp/r.txt)"
+
+  instance-profile:
+    needs: plan
+    if: needs.plan.outputs.has_role == 'true' && contains(needs.plan.outputs.tasks, ',instance-profile,')
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OPS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Resolve staging resources
+        env:
+          DBHOST_SHA: ${{ needs.plan.outputs.dbhost_sha }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: bash scripts/aws-resolve-staging.sh
+      - name: Attach bld-staging-ec2
+        run: |
+          set -euo pipefail
+          [ -n "$BLD_IID" ] || { echo "RESULT_INSTANCE_PROFILE=ec2_not_found"; exit 1; }
+          CUR=$(aws ec2 describe-iam-instance-profile-associations \
+            --filters "Name=instance-id,Values=$BLD_IID" "Name=state,Values=associated,associating" \
+            --query 'IamInstanceProfileAssociations[0].IamInstanceProfile.Arn' --output text 2>/dev/null || true)
+          case "$CUR" in
+            ""|None)
+              aws ec2 associate-iam-instance-profile --instance-id "$BLD_IID" \
+                --iam-instance-profile Name=bld-staging-ec2 >/dev/null
+              R=attached ;;
+            */bld-staging-ec2) R=already_attached ;;
+            *) R=other_profile_present_left_unchanged ;;
+          esac
+          echo "RESULT_INSTANCE_PROFILE=$R"
+          echo "::notice title=Instance profile::$R"
+          [ "$R" != "other_profile_present_left_unchanged" ]
+      - name: Confirm role visible on the box
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            for i in $(seq 1 20); do
+              T=$(curl -sf -m 3 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' || true)
+              R=$(curl -sf -m 3 -H "X-aws-ec2-metadata-token: $T" http://169.254.169.254/latest/meta-data/iam/security-credentials/ || true)
+              if [ -n "$R" ]; then echo "RESULT_ROLE_ON_BOX=yes"; exit 0; fi
+              sleep 6
+            done
+            echo "RESULT_ROLE_ON_BOX=no"; exit 1
+
+  secrets-copy:
+    needs: [plan, instance-profile]
+    if: >-
+      always() && needs.plan.outputs.has_role == 'true' &&
+      contains(needs.plan.outputs.tasks, ',secrets-copy,') &&
+      needs.instance-profile.result != 'failure'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - name: Copy owner DB URL into Secrets Manager (from the box, via instance role)
+        id: remote
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          capture_stdout: true
+          script: |
+            set -u
+            cd "${{ vars.EC2_APP_DIR || '/home/ubuntu/BLD/stage' }}"
+            getenv() { grep "^$1=" .env | tail -n 1 | cut -d= -f2- | tr -d '\r'; }
+            V=$(getenv DIRECT_DATABASE_URL); [ -n "$V" ] || V=$(getenv DATABASE_URL)
+            case "$V" in postgresql://bld_app:*|"") echo "RESULT_SECRETS_COPY=no_owner_url"; exit 1 ;; esac
+            H=$(printf '%s' "$V" | sed -E 's|^[^@]*@([^:/?]+).*|\1|')
+            R=$(printf '%s' "$H" | awk -F. '{ if (NF >= 6) print $(NF-3) }')
+            export V
+            OUT=$(docker run --rm -i --network host -e V -e AWS_DEFAULT_REGION="${R:-us-east-2}" \
+              -e N=bld/api/staging/DIRECT_DATABASE_URL --entrypoint sh amazon/aws-cli -c '
+                if aws secretsmanager describe-secret --secret-id "$N" >/dev/null 2>&1; then
+                  aws secretsmanager put-secret-value --secret-id "$N" --secret-string "$V" >/dev/null 2>&1 && echo updated || echo put_failed
+                else
+                  aws secretsmanager create-secret --name "$N" --secret-string "$V" \
+                    --description "BLD staging owner DB URL (migrations only)" \
+                    --tags Key=bld:env,Value=staging >/dev/null 2>&1 && echo created || echo create_failed
+                fi' 2>/dev/null || echo docker_failed)
+            docker rmi amazon/aws-cli >/dev/null 2>&1 || true
+            echo "RESULT_SECRETS_COPY=$OUT"
+            case "$OUT" in created|updated) exit 0 ;; *) exit 1 ;; esac
+
+  audit-logs:
+    needs: plan
+    if: needs.plan.outputs.has_role == 'true' && contains(needs.plan.outputs.tasks, ',audit-logs,')
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OPS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+          role-duration-seconds: 3600
+      - name: Resolve staging resources
+        env:
+          DBHOST_SHA: ${{ needs.plan.outputs.dbhost_sha }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: bash scripts/aws-resolve-staging.sh
+      - name: Parameter group with pgaudit + log export
+        run: |
+          set -euo pipefail
+          C="$BLD_CID"; [ -n "$C" ] || { echo "RESULT_AUDIT=cluster_not_found"; exit 1; }
+          read -r PG EV <<<"$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
+            --query 'DBClusters[0].[DBClusterParameterGroup,EngineVersion]' --output text)"
+          MAJOR="${EV%%.*}"; FAMILY="aurora-postgresql${MAJOR}"; TARGET="bld-aurora-pg${MAJOR}-audit"
+          if ! aws rds describe-db-cluster-parameter-groups --db-cluster-parameter-group-name "$TARGET" >/dev/null 2>&1; then
+            case "$PG" in
+              default.*)
+                aws rds create-db-cluster-parameter-group --db-cluster-parameter-group-name "$TARGET" \
+                  --db-parameter-group-family "$FAMILY" --description "BLD staging: pgaudit ddl,role" >/dev/null ;;
+              *)
+                aws rds copy-db-cluster-parameter-group --source-db-cluster-parameter-group-identifier "$PG" \
+                  --target-db-cluster-parameter-group-identifier "$TARGET" \
+                  --target-db-cluster-parameter-group-description "BLD staging: pgaudit ddl,role" >/dev/null ;;
+            esac
+            echo "RESULT_PARAM_GROUP=created"
+          else
+            echo "RESULT_PARAM_GROUP=exists"
+          fi
+          SPL=$(aws rds describe-db-cluster-parameters --db-cluster-parameter-group-name "$TARGET" \
+            --query "Parameters[?ParameterName=='shared_preload_libraries'].ParameterValue | [0]" --output text)
+          case "$SPL" in None|"") SPL="pg_stat_statements" ;; esac
+          case ",$SPL," in *,pgaudit,*) NEW="$SPL" ;; *) NEW="$SPL,pgaudit" ;; esac
+          PARAMS=$(jq -nc --arg spl "$NEW" '[
+            {ParameterName:"shared_preload_libraries",ParameterValue:$spl,ApplyMethod:"pending-reboot"},
+            {ParameterName:"pgaudit.log",ParameterValue:"ddl,role",ApplyMethod:"pending-reboot"},
+            {ParameterName:"pgaudit.log_catalog",ParameterValue:"0",ApplyMethod:"pending-reboot"},
+            {ParameterName:"pgaudit.log_parameter",ParameterValue:"0",ApplyMethod:"pending-reboot"}]')
+          aws rds modify-db-cluster-parameter-group --db-cluster-parameter-group-name "$TARGET" --parameters "$PARAMS" >/dev/null
+          ARGS=(--db-cluster-identifier "$C" --apply-immediately)
+          CHANGE=no
+          if [ "$PG" != "$TARGET" ]; then ARGS+=(--db-cluster-parameter-group-name "$TARGET"); CHANGE=yes; fi
+          EXPORTS=$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
+            --query 'DBClusters[0].EnabledCloudwatchLogsExports' --output text)
+          case "$EXPORTS" in
+            *postgresql*) echo "RESULT_LOG_EXPORT=already" ;;
+            *) ARGS+=(--cloudwatch-logs-export-configuration '{"EnableLogTypes":["postgresql"]}'); CHANGE=yes; echo "RESULT_LOG_EXPORT=enabled" ;;
+          esac
+          if [ "$CHANGE" = yes ]; then aws rds modify-db-cluster "${ARGS[@]}" >/dev/null; sleep 30; fi
+          aws rds wait db-cluster-available --db-cluster-identifier "$C"
+      - name: Reboot members with pending parameters (writer first)
+        run: |
+          set -euo pipefail
+          C="$BLD_CID"
+          for i in $(seq 1 20); do
+            ST=$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
+              --query 'DBClusters[0].DBClusterMembers[].DBClusterParameterGroupStatus' --output text)
+            case "$ST" in *applying*) sleep 15 ;; *) break ;; esac
+          done
+          MEMBERS=$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
+            --query 'DBClusters[0].DBClusterMembers | sort_by(@, &to_string(!IsClusterWriter))[].[DBInstanceIdentifier,DBClusterParameterGroupStatus]' --output text)
+          N=0
+          while read -r ID STATUS; do
+            [ -n "$ID" ] || continue
+            echo "::add-mask::$ID"
+            if [ "$STATUS" = "pending-reboot" ]; then
+              aws rds reboot-db-instance --db-instance-identifier "$ID" >/dev/null
+              sleep 20
+              aws rds wait db-instance-available --db-instance-identifier "$ID"
+              N=$((N + 1))
+            fi
+          done <<<"$MEMBERS"
+          echo "RESULT_REBOOTED_INSTANCES=$N"
+      - name: Enable pgaudit extension and check the API
+        id: ext
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          capture_stdout: true
+          script: |
+            set -u
+            cd "${{ vars.EC2_APP_DIR || '/home/ubuntu/BLD/stage' }}"
+            U=$(grep '^DIRECT_DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            [ -n "$U" ] || U=$(grep '^DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            OUT=$(docker run --rm -i -e PGURL="${U%%\?*}?sslmode=require" postgres:17-alpine \
+              sh -c 'psql "$PGURL" -X -q -A -t -v ON_ERROR_STOP=1' <<'SQL'
+            CREATE EXTENSION IF NOT EXISTS pgaudit;
+            SELECT 'preloaded=' || (current_setting('shared_preload_libraries') LIKE '%pgaudit%')::text;
+            SELECT 'extension=' || EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgaudit')::text;
+            SELECT 'classes=' || current_setting('pgaudit.log');
+            SQL
+            ) || OUT="sql_failed=true"
+            docker rmi postgres:17-alpine >/dev/null 2>&1 || true
+            printf '%s\n' "$OUT" | sed 's/^/RESULT_PGAUDIT_/'
+            if ! curl -sf --max-time 10 http://127.0.0.1:4000/health | grep -q '"database":{"status":"up"}'; then
+              docker restart bld-api >/dev/null; sleep 25
+            fi
+            curl -sf --max-time 10 http://127.0.0.1:4000/health | grep -q '"database":{"status":"up"}' \
+              && echo "RESULT_API_DB=up" || echo "RESULT_API_DB=down"
+      - name: Log retention (90 days) + summary
+        if: always()
+        env:
+          REMOTE: ${{ steps.ext.outputs.stdout }}
+        run: |
+          for i in $(seq 1 10); do
+            if aws logs put-retention-policy --log-group-name "/aws/rds/cluster/$BLD_CID/postgresql" \
+              --retention-in-days 90 >/dev/null 2>&1; then echo "RESULT_LOG_RETENTION=90d"; break; fi
+            sleep 30
+          done
+          R=$(printf '%s\n' "$REMOTE" | grep -E '^RESULT_' | tr -d '\r' || true)
+          echo "::notice title=DB audit::$(printf '%s ' $R)"
+          printf '%s\n' "$R" | grep -qx 'RESULT_PGAUDIT_extension=true'
+
+  restore-drill:
+    needs: [plan, audit-logs]
+    if: >-
+      always() && needs.plan.outputs.has_role == 'true' &&
+      contains(needs.plan.outputs.tasks, ',restore-drill,')
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OPS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+          role-duration-seconds: 3600
+      - name: Resolve staging resources
+        env:
+          DBHOST_SHA: ${{ needs.plan.outputs.dbhost_sha }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: bash scripts/aws-resolve-staging.sh
+      - name: Point-in-time restore to a throwaway cluster
+        run: |
+          set -euo pipefail
+          C="$BLD_CID"; [ -n "$C" ] || { echo "RESULT_DRILL=cluster_not_found"; exit 1; }
+          read -r SUBNET ENGINE WRITER <<<"$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
+            --query 'DBClusters[0].[DBSubnetGroup,Engine,DBClusterMembers[?IsClusterWriter]|[0].DBInstanceIdentifier]' --output text)"
+          SGS=$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
+            --query 'DBClusters[0].VpcSecurityGroups[].VpcSecurityGroupId' --output text)
+          ICLASS=$(aws rds describe-db-instances --db-instance-identifier "$WRITER" \
+            --query 'DBInstances[0].DBInstanceClass' --output text)
+          NAME="bld-restore-drill-$(date -u +%Y%m%d%H%M)"
+          echo "DRILL=$NAME" >> "$GITHUB_ENV"
+          ARGS=(--source-db-cluster-identifier "$C" --db-cluster-identifier "$NAME"
+                --use-latest-restorable-time --db-subnet-group-name "$SUBNET"
+                --no-deletion-protection --tags Key=bld:purpose,Value=restore-drill)
+          # shellcheck disable=SC2206
+          ARGS+=(--vpc-security-group-ids $SGS)
+          if [ "$ICLASS" = "db.serverless" ]; then
+            ARGS+=(--serverless-v2-scaling-configuration MinCapacity=0.5,MaxCapacity=4)
+          fi
+          T0=$(date +%s)
+          aws rds restore-db-cluster-to-point-in-time "${ARGS[@]}" >/dev/null
+          for i in 1 2 3; do aws rds wait db-cluster-available --db-cluster-identifier "$NAME" && break; done
+          aws rds create-db-instance --db-instance-identifier "$NAME-1" --db-cluster-identifier "$NAME" \
+            --engine "$ENGINE" --db-instance-class "$ICLASS" --no-publicly-accessible \
+            --tags Key=bld:purpose,Value=restore-drill >/dev/null
+          for i in 1 2 3; do aws rds wait db-instance-available --db-instance-identifier "$NAME-1" && break; done
+          EP=$(aws rds describe-db-clusters --db-cluster-identifier "$NAME" --query 'DBClusters[0].Endpoint' --output text)
+          echo "::add-mask::$EP"
+          echo "DRILL_EP=$EP" >> "$GITHUB_ENV"
+          echo "RESULT_RESTORE_MINUTES=$(( ($(date +%s) - T0) / 60 ))"
+      - name: Compare restored copy with live data (from the box)
+        id: cmp
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          DRILL_EP: ${{ env.DRILL_EP }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DRILL_EP
+          capture_stdout: true
+          script: |
+            set -u
+            cd "${{ vars.EC2_APP_DIR || '/home/ubuntu/BLD/stage' }}"
+            U=$(grep '^DIRECT_DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            [ -n "$U" ] || U=$(grep '^DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            BASE="${U%%\?*}"
+            SRC="$BASE?sslmode=require"
+            DST="$(printf '%s' "$BASE" | sed -E "s|@[^:/]+|@${DRILL_EP}|")?sslmode=require"
+            Q="SELECT c.relname || '=' || (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM public.%I', c.relname), false, true, '')))[1]::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> 'spatial_ref_sys' ORDER BY 1"
+            docker run --rm -e PGURL="$DST" -e Q="$Q" postgres:17-alpine sh -c 'psql "$PGURL" -X -A -t -c "$Q"' > /tmp/d.txt 2>/dev/null || true
+            docker run --rm -e PGURL="$SRC" -e Q="$Q" postgres:17-alpine sh -c 'psql "$PGURL" -X -A -t -c "$Q"' > /tmp/s.txt 2>/dev/null || true
+            docker rmi postgres:17-alpine >/dev/null 2>&1 || true
+            TS=$(grep -c '=' /tmp/s.txt || true); TD=$(grep -c '=' /tmp/d.txt || true)
+            RS=$(awk -F= '{ s += $2 } END { print s + 0 }' /tmp/s.txt); RD=$(awk -F= '{ s += $2 } END { print s + 0 }' /tmp/d.txt)
+            EXACT=$(grep -cxFf /tmp/s.txt /tmp/d.txt || true)
+            rm -f /tmp/s.txt /tmp/d.txt
+            if [ "$RS" -gt 0 ]; then PCT=$((RD * 100 / RS)); else PCT=0; fi
+            echo "RESULT_TABLES_SOURCE=$TS"; echo "RESULT_TABLES_RESTORED=$TD"
+            echo "RESULT_TABLES_EXACT_MATCH=$EXACT"; echo "RESULT_ROWS_RESTORED_PCT=$PCT"
+            if [ "$TS" -gt 0 ] && [ "$TD" -eq "$TS" ] && [ "$PCT" -ge 99 ]; then echo "RESULT_DRILL=pass"; else echo "RESULT_DRILL=fail"; fi
+      - name: Delete the throwaway cluster
+        if: always() && env.DRILL != ''
+        run: |
+          case "$DRILL" in bld-restore-drill-*) ;; *) echo "refusing to delete non-drill resource"; exit 1 ;; esac
+          aws rds delete-db-instance --db-instance-identifier "$DRILL-1" >/dev/null 2>&1 || true
+          aws rds wait db-instance-deleted --db-instance-identifier "$DRILL-1" 2>/dev/null || true
+          aws rds delete-db-cluster --db-cluster-identifier "$DRILL" --skip-final-snapshot >/dev/null 2>&1 || true
+          echo "RESULT_DRILL_CLEANUP=requested"
+      - name: Summary
+        if: always()
+        env:
+          REMOTE: ${{ steps.cmp.outputs.stdout }}
+        run: |
+          R=$(printf '%s\n' "$REMOTE" | grep -E '^RESULT_' | tr -d '\r' || true)
+          echo "::notice title=Aurora restore drill::$(printf '%s ' $R)"
+          printf '%s\n' "$R" | grep -qx 'RESULT_DRILL=pass'

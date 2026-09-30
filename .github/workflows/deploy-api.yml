@@ -161,7 +161,23 @@ jobs:
             # (DATABASE_URL, generated on the box); the owner secrets only feed migrations.
             if grep -q '^DB_APP_ROLE=bld_app' "$APP_DIR/.env"; then
               echo "DB least-privilege mode: API uses bld_app; owner URL only for migrations"
-              upsert_env DIRECT_DATABASE_URL "${DIRECT_DATABASE_URL:-${DATABASE_URL:-}}"
+              # Source of truth for the owner URL: Secrets Manager (via the EC2 instance role) when
+              # available, else the GitHub Environment secret.
+              SM_DIRECT=""
+              IMDS_T=$(curl -sf -m 3 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' || true)
+              if [ -n "$(curl -sf -m 3 -H "X-aws-ec2-metadata-token: $IMDS_T" http://169.254.169.254/latest/meta-data/iam/security-credentials/ || true)" ]; then
+                DB_REGION=$(grep '^DATABASE_URL=' "$APP_DIR/.env" | tail -n 1 | sed -E 's|^[^@]*@([^:/?]+).*|\1|' | awk -F. '{ if (NF >= 6) print $(NF-3) }')
+                SM_DIRECT=$(docker run --rm --network host -e AWS_DEFAULT_REGION="${DB_REGION:-us-east-2}" amazon/aws-cli \
+                  secretsmanager get-secret-value --secret-id bld/api/staging/DIRECT_DATABASE_URL \
+                  --query SecretString --output text 2>/dev/null || true)
+              fi
+              case "$SM_DIRECT" in
+                postgresql://*|postgres://*)
+                  upsert_env DIRECT_DATABASE_URL "$SM_DIRECT"
+                  echo "Owner DB URL from Secrets Manager (bld/api/staging/DIRECT_DATABASE_URL)" ;;
+                *) upsert_env DIRECT_DATABASE_URL "${DIRECT_DATABASE_URL:-${DATABASE_URL:-}}" ;;
+              esac
+              unset SM_DIRECT IMDS_T
             else
               upsert_env DATABASE_URL "${DATABASE_URL:-}"
               upsert_env DIRECT_DATABASE_URL "${DIRECT_DATABASE_URL:-}"
