@@ -1,0 +1,200 @@
+name: Verify staging security
+
+# Post-deploy proof for the ops-side controls in SECURITY.html:
+#   - Aurora storage encrypted at rest (asked from the EC2 box via its instance role;
+#     no AWS access keys are stored in GitHub or created for this)
+#   - Shared Redis rate-limit store active
+#   - API → Aurora connection uses TLS
+#   - Nginx edge rate limit on /api/auth/* returns 429 under burst
+#
+# This repo's Actions logs are public: only print classified results (yes/no/denied),
+# never hostnames, ARNs, account IDs, URLs with credentials, or error bodies.
+
+on:
+  workflow_run:
+    workflows: ['Deploy API']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - name: Burst /api/auth/refresh (expect Nginx 429)
+        id: burst
+        run: |
+          set -uo pipefail
+          n429=0
+          n_other=0
+          for i in $(seq 1 45); do
+            out=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' --max-time 10 \
+              -X POST https://staging.bld.online/api/auth/refresh \
+              -H 'Content-Type: application/json' -d '{}' || echo "000 none")
+            case "$out" in
+              "429 text/html"*) n429=$((n429 + 1)) ;;
+              *) n_other=$((n_other + 1)) ;;
+            esac
+          done
+          health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://staging.bld.online/api/health || echo 000)
+          echo "nginx_429=$n429 other=$n_other health_after=$health"
+          echo "nginx_429=$n429" >> "$GITHUB_OUTPUT"
+          echo "health_after=$health" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve EC2 settings
+        id: dirs
+        if: always()
+        run: |
+          APP_DIR="${{ vars.EC2_APP_DIR }}"
+          USERNAME="${{ vars.EC2_USER }}"
+          echo "app_dir=${APP_DIR:-/home/ubuntu/BLD/stage}" >> "$GITHUB_OUTPUT"
+          echo "user=${USERNAME:-ubuntu}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect results on EC2
+        id: remote
+        if: always()
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ steps.dirs.outputs.user }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          capture_stdout: true
+          script: |
+            set -u
+            cd "${{ steps.dirs.outputs.app_dir }}"
+
+            # --- EC2 instance role (IMDSv2, falls back to v1) ---
+            TOKEN=$(curl -sf -m 3 -X PUT http://169.254.169.254/latest/api/token \
+              -H 'X-aws-ec2-metadata-token-ttl-seconds: 120' 2>/dev/null || true)
+            imds() {
+              if [ -n "$TOKEN" ]; then
+                curl -sf -m 3 -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/$1" 2>/dev/null
+              else
+                curl -sf -m 3 "http://169.254.169.254/latest/$1" 2>/dev/null
+              fi
+            }
+            ROLE=$(imds meta-data/iam/security-credentials/ || true)
+            if [ -n "$ROLE" ]; then echo "RESULT_INSTANCE_ROLE=yes"; else echo "RESULT_INSTANCE_ROLE=no"; fi
+
+            # --- Aurora StorageEncrypted (read-only describe call via instance role) ---
+            DB_HOST=$(grep '^DATABASE_URL=' .env | tail -n 1 | tr -d '\r' | sed -E 's|^[^@]*@([^:/?]+).*|\1|')
+            DB_REGION=$(printf '%s' "$DB_HOST" | awk -F. '{ if (NF >= 6) print $(NF-3) }')
+            [ -n "$DB_REGION" ] || DB_REGION=$(imds meta-data/placement/region || true)
+            ENC="skipped"
+            if [ -n "$ROLE" ] && [ -n "$DB_HOST" ] && [ -n "$DB_REGION" ]; then
+              if command -v aws >/dev/null 2>&1; then
+                AWS="aws"
+              else
+                AWS="docker run --rm --network host amazon/aws-cli"
+              fi
+              ENC=$($AWS rds describe-db-clusters --region "$DB_REGION" \
+                --query "DBClusters[?Endpoint=='$DB_HOST' || ReaderEndpoint=='$DB_HOST'] | [0].StorageEncrypted" \
+                --output text 2>/tmp/aws-err.txt || true)
+              if [ -z "$ENC" ] || [ "$ENC" = "None" ]; then
+                ENC=$($AWS rds describe-db-instances --region "$DB_REGION" \
+                  --query "DBInstances[?Endpoint.Address=='$DB_HOST'] | [0].StorageEncrypted" \
+                  --output text 2>>/tmp/aws-err.txt || true)
+              fi
+              if [ -z "$ENC" ] || [ "$ENC" = "None" ]; then
+                if grep -qiE 'AccessDenied|not authorized|UnauthorizedOperation' /tmp/aws-err.txt 2>/dev/null; then
+                  ENC="denied"
+                elif [ -s /tmp/aws-err.txt ]; then
+                  ENC="error"
+                else
+                  ENC="not_found"
+                fi
+              fi
+              rm -f /tmp/aws-err.txt
+              [ "$AWS" = "aws" ] || docker rmi amazon/aws-cli >/dev/null 2>&1 || true
+            elif [ -z "$ROLE" ]; then
+              ENC="no_instance_role"
+            fi
+            echo "RESULT_AURORA_ENCRYPTED=$(printf '%s' "$ENC" | tr 'A-Z' 'a-z' | tr -d '[:space:]')"
+
+            # --- Redis shared limiter ---
+            if docker logs bld-api 2>&1 | grep -q 'Rate limiting backed by Redis'; then
+              echo "RESULT_REDIS_LIMITER=yes"
+            else
+              echo "RESULT_REDIS_LIMITER=no"
+            fi
+            PONG=$(docker exec bld-redis sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping' 2>/dev/null || true)
+            [ "$PONG" = "PONG" ] && echo "RESULT_REDIS_PING=yes" || echo "RESULT_REDIS_PING=no"
+            KEYS=$(docker exec bld-redis sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning dbsize' 2>/dev/null || echo 0)
+            echo "RESULT_REDIS_KEYS=${KEYS:-0}"
+            if [ -z "$(docker port bld-redis 2>/dev/null)" ]; then
+              echo "RESULT_REDIS_PRIVATE=yes"
+            else
+              echo "RESULT_REDIS_PRIVATE=no"
+            fi
+
+            # --- DB TLS (runtime pg_stat_ssl check logged at API boot) ---
+            if docker logs bld-api 2>&1 | grep -q 'Database connection encrypted'; then
+              echo "RESULT_DB_TLS=yes"
+            else
+              echo "RESULT_DB_TLS=no"
+            fi
+
+            # --- Nginx rate-limit zones loaded ---
+            if sudo nginx -T 2>/dev/null | grep -q 'zone=bld_auth'; then
+              echo "RESULT_NGINX_ZONES=yes"
+            else
+              echo "RESULT_NGINX_ZONES=no"
+            fi
+
+      - name: Summarize
+        id: parse
+        if: always()
+        env:
+          REMOTE: ${{ steps.remote.outputs.stdout }}
+          NGINX_429: ${{ steps.burst.outputs.nginx_429 }}
+          HEALTH_AFTER: ${{ steps.burst.outputs.health_after }}
+        run: |
+          set -uo pipefail
+          get() { printf '%s\n' "$REMOTE" | grep -E "^RESULT_$1=" | tail -n 1 | cut -d= -f2- | tr -d '\r'; }
+          {
+            echo "instance_role=$(get INSTANCE_ROLE)"
+            echo "aurora_encrypted=$(get AURORA_ENCRYPTED)"
+            echo "redis_limiter=$(get REDIS_LIMITER)"
+            echo "redis_ping=$(get REDIS_PING)"
+            echo "redis_keys=$(get REDIS_KEYS)"
+            echo "redis_private=$(get REDIS_PRIVATE)"
+            echo "db_tls=$(get DB_TLS)"
+            echo "nginx_zones=$(get NGINX_ZONES)"
+          } | tee -a "$GITHUB_OUTPUT" > /tmp/results.txt
+          echo "nginx_429=${NGINX_429:-0}" >> /tmp/results.txt
+          echo "health_after=${HEALTH_AFTER:-000}" >> /tmp/results.txt
+          {
+            echo "### Staging security verification"
+            echo '```'
+            cat /tmp/results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Security verification::$(tr '\n' ' ' < /tmp/results.txt)"
+
+      - name: Check - Aurora storage encrypted (KMS)
+        if: always()
+        run: |
+          v="${{ steps.parse.outputs.aurora_encrypted }}"
+          echo "aurora_encrypted=$v (instance_role=${{ steps.parse.outputs.instance_role }})"
+          [ "$v" = "true" ] || { echo "::warning title=Aurora KMS::StorageEncrypted not confirmed ($v)"; exit 1; }
+
+      - name: Check - Redis shared rate-limit store
+        if: always()
+        run: |
+          echo "limiter=${{ steps.parse.outputs.redis_limiter }} ping=${{ steps.parse.outputs.redis_ping }} private=${{ steps.parse.outputs.redis_private }} keys=${{ steps.parse.outputs.redis_keys }}"
+          [ "${{ steps.parse.outputs.redis_limiter }}" = "yes" ] && [ "${{ steps.parse.outputs.redis_ping }}" = "yes" ] && [ "${{ steps.parse.outputs.redis_private }}" = "yes" ]
+
+      - name: Check - API to Aurora TLS
+        if: always()
+        run: '[ "${{ steps.parse.outputs.db_tls }}" = "yes" ]'
+
+      - name: Check - Nginx 429 on /api/auth burst
+        if: always()
+        run: |
+          echo "zones=${{ steps.parse.outputs.nginx_zones }} nginx_429=${{ steps.burst.outputs.nginx_429 }} health_after=${{ steps.burst.outputs.health_after }}"
+          [ "${{ steps.parse.outputs.nginx_zones }}" = "yes" ] && [ "${{ steps.burst.outputs.nginx_429 }}" -gt 0 ] && [ "${{ steps.burst.outputs.health_after }}" = "200" ]

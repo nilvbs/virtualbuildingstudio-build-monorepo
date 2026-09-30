@@ -85,7 +85,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ steps.dirs.outputs.user }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: deploy/ec2/docker-compose.yml,deploy/ec2/postgres-init/*,deploy/ec2/nginx-snippets/*
+          source: deploy/ec2/docker-compose.yml,deploy/ec2/postgres-init/*,deploy/ec2/nginx-snippets/*,deploy/ec2/nginx-conf.d/*
           target: ${{ steps.dirs.outputs.app_dir }}/
           strip_components: 2
           overwrite: true
@@ -161,6 +161,16 @@ jobs:
             upsert_env DIRECT_DATABASE_URL "${DIRECT_DATABASE_URL:-}"
             upsert_env WEB_APP_URL "${WEB_APP_URL:-}"
             upsert_env CORS_ORIGINS "${CORS_ORIGINS:-}"
+            # Shared rate-limit store: password generated on the box, never printed.
+            # Keep an operator-set REDIS_URL (e.g. ElastiCache) untouched.
+            if ! grep -q '^REDIS_PASSWORD=.\+' "$APP_DIR/.env"; then
+              upsert_env REDIS_PASSWORD "$(openssl rand -hex 24)"
+            fi
+            if ! grep -q '^REDIS_URL=.\+' "$APP_DIR/.env"; then
+              REDIS_PW=$(grep '^REDIS_PASSWORD=' "$APP_DIR/.env" | tail -n 1 | cut -d= -f2-)
+              upsert_env REDIS_URL "redis://:${REDIS_PW}@redis:6379"
+              unset REDIS_PW
+            fi
             if grep -q '^TWILIO_ACCOUNT_SID=AC' "$APP_DIR/.env"; then
               echo "Twilio SMS env present on EC2 .env"
             else
@@ -216,7 +226,15 @@ jobs:
               "${{ steps.meta.outputs.image }}" \
               sh -c "cd /app/apps/api && npx prisma migrate deploy"
 
-            # API only — database is Aurora (credentials live in host .env / Secrets Manager).
+            # Redis first (API fails open to in-memory limits if it is not up).
+            docker compose up -d redis
+            for i in $(seq 1 15); do
+              [ "$(docker inspect -f '{{.State.Health.Status}}' bld-redis 2>/dev/null)" = "healthy" ] && break
+              sleep 2
+            done
+            echo "Redis: $(docker inspect -f '{{.State.Health.Status}}' bld-redis 2>/dev/null || echo missing)"
+
+            # API — database is Aurora (credentials live in host .env / Secrets Manager).
             docker compose up -d --force-recreate --remove-orphans api
             echo "Waiting for Docker health..."
             timeout=90
@@ -232,8 +250,17 @@ jobs:
               echo "Waiting... (${elapsed}/${timeout}s)"
             done
             echo "Container is healthy!"
-            # Proxy snippet only — never overwrite the Certbot 443 site file.
-            sudo mkdir -p /etc/nginx/snippets
+            # Proxy snippet + rate-limit zones only — never overwrite the Certbot 443 site file.
+            # Back up the live files; if the new config fails `nginx -t`, restore them so
+            # Nginx is never left with a config that cannot start.
+            sudo mkdir -p /etc/nginx/snippets /etc/nginx/conf.d
+            NGINX_BK=$(mktemp -d)
+            for f in /etc/nginx/snippets/bld-staging-proxy.conf /etc/nginx/conf.d/bld-rate-limits.conf; do
+              [ -f "$f" ] && sudo cp -a "$f" "$NGINX_BK/" || true
+            done
+            if [ -f "$APP_DIR/nginx-conf.d/bld-rate-limits.conf" ]; then
+              sudo cp "$APP_DIR/nginx-conf.d/bld-rate-limits.conf" /etc/nginx/conf.d/bld-rate-limits.conf
+            fi
             if [ -f "$APP_DIR/nginx-snippets/bld-staging-proxy.conf" ]; then
               sudo cp "$APP_DIR/nginx-snippets/bld-staging-proxy.conf" /etc/nginx/snippets/bld-staging-proxy.conf
             elif [ -f "$APP_DIR/bld-staging-proxy.conf" ]; then
@@ -242,17 +269,30 @@ jobs:
               echo "WARN: nginx snippet not synced; skip Nginx reload"
             fi
             if [ -f /etc/nginx/snippets/bld-staging-proxy.conf ]; then
-              sudo nginx -t
+              if ! sudo nginx -t; then
+                echo "::warning::New Nginx config failed nginx -t — restoring previous snippet/zones"
+                sudo rm -f /etc/nginx/conf.d/bld-rate-limits.conf
+                for f in "$NGINX_BK"/*; do
+                  [ -e "$f" ] || continue
+                  case "$(basename "$f")" in
+                    bld-staging-proxy.conf) sudo cp -a "$f" /etc/nginx/snippets/ ;;
+                    bld-rate-limits.conf) sudo cp -a "$f" /etc/nginx/conf.d/ ;;
+                  esac
+                done
+                sudo nginx -t
+              fi
               sudo systemctl enable nginx
               sudo systemctl start nginx
               sudo systemctl reload nginx
               sudo systemctl enable --now certbot.timer || true
             fi
+            rm -rf "$NGINX_BK"
             echo "Public smoke:"
             curl -sSI --max-time 15 https://staging.bld.online/ | head -n 12
             curl -sS --max-time 15 https://staging.bld.online/api/health
             echo
             docker logs bld-api --tail=40 2>&1 | grep -E 'Twilio|SMS' || true
+            docker logs bld-api 2>&1 | grep -E 'Rate limiting backed by Redis|db-tls' || true
 
   production-ecs:
     needs: setup

@@ -62,12 +62,18 @@ aws rds describe-db-clusters --region us-east-2 \
   --query 'DBClusters[].{id:DBClusterIdentifier,encrypted:StorageEncrypted,kms:KmsKeyId}'
 ```
 
+No local AWS keys? Run **Verify staging security** (`verify-staging-security.yml`, also runs after every API deploy). It makes the same read-only call from the EC2 box using the **instance role** — no access keys are stored in GitHub. If the step reports `no_instance_role` or `denied`, attach a role to the instance with `rds:DescribeDBClusters` + `rds:DescribeDBInstances`.
+
 `encrypted` must be `true`. Storage encryption cannot be turned on in place: snapshot → restore an encrypted copy with a KMS key → repoint the secrets. For certificate pinning, move from `sslmode=require` to `sslmode=verify-full&sslrootcert=/path/global-bundle.pem` (RDS CA bundle mounted into the container).
 
 ### Security layers outside the app
 
-- **Rate limiting:** set `REDIS_URL` (ElastiCache Redis, `rediss://` for in-transit TLS, same VPC / security group as EC2) so limits are shared across API instances. Without it limits are per-process.
-- **WAF / edge:** put Cloudflare (proxied DNS + WAF managed rules + rate-limit rule on `/api/auth/*`) or AWS WAF (on an ALB / CloudFront in front of EC2) ahead of Nginx. Nginx already forwards `X-Forwarded-For`; the API trusts one proxy hop.
+- **Shared rate-limit store (live):** `bld-redis` runs next to the API in `docker-compose.yml` — no host port, password-protected, memory-only (limits are ephemeral by design). Deploy generates `REDIS_PASSWORD` on the box and sets `REDIS_URL=redis://:…@redis:6379` **only if `REDIS_URL` is empty**. To move to ElastiCache (multi-host), set `REDIS_URL=rediss://…` (same VPC / SG as EC2) in `.env` and redeploy — no code change. Check: `docker logs bld-api | grep 'Rate limiting backed by Redis'`.
+- **Edge rate limit (live):** Nginx per-client-IP limits, zones in `nginx-conf.d/bld-rate-limits.conf` (copied to `/etc/nginx/conf.d/`):
+  - `/api/auth/(login|signup|forgot-password|reset-password|refresh|oauth/*)`: 20 req/min, burst 20, max 20 concurrent → `429`
+  - all other `/api/*`: 20 req/s, burst 100, max 50 concurrent → `429`
+  - Deploy backs up the live snippet/zones and **restores them if `nginx -t` fails**, so a bad config never takes Nginx down.
+- **Managed WAF (not yet):** `bld.online` DNS is on Hostinger (`dns-parking.com`), so Cloudflare WAF needs the nameservers moved to Cloudflare first (then proxy `staging`, add managed rules + a rate-limit rule on `/api/auth/*`, and restore real client IPs in Nginx with `set_real_ip_from` Cloudflare ranges + `real_ip_header CF-Connecting-IP`, otherwise the Nginx per-IP limits would see Cloudflare IPs). AWS WAF needs an ALB or CloudFront in front of EC2. Nginx already forwards `X-Forwarded-For`; the API trusts one proxy hop.
 - **Sessions:** set a dedicated `SESSION_SIGNING_SECRET` (rotating it signs everyone out).
 
 ```bash

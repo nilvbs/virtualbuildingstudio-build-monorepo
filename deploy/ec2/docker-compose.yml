@@ -2,7 +2,7 @@
 # No local Postgres service. No bld_pgdata volume. No DB passwords in this file.
 #
 #   cd ~/BLD/stage
-#   docker compose up -d api
+#   docker compose up -d redis api
 #   curl http://127.0.0.1:4000/health
 
 services:
@@ -25,3 +25,27 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
+
+  # Shared rate-limit store. Private compose network only (no host port);
+  # REDIS_PASSWORD is generated on the box by deploy-api.yml. Swap REDIS_URL to
+  # ElastiCache later without code changes.
+  redis:
+    image: redis:7-alpine
+    container_name: bld-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 64mb --maxmemory-policy volatile-ttl --save "" --appendonly no
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
