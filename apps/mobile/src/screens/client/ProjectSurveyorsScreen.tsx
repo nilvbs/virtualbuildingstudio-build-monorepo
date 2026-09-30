@@ -42,11 +42,21 @@ type Filters = {
   q: string;
   minRating: string;
   bldVerified: boolean;
-  radiusKm: string;
+  radiusMiles: string;
   minDayRate: string;
   maxDayRate: string;
   sort: ClientSurveyorSort;
 };
+
+/** API distances / radii are km; UI shows miles. */
+const KM_PER_MILE = 1.609344;
+
+function formatDistanceMi(km: number): string {
+  const miles = km / KM_PER_MILE;
+  if (miles < 0.1) return '< 0.1 mi';
+  if (miles < 10) return `${Math.round(miles * 10) / 10} mi`;
+  return `${Math.round(miles).toLocaleString('en-US')} mi`;
+}
 
 function formatRate(cents: number | null): string {
   if (cents == null) return 'Rate on request';
@@ -79,7 +89,7 @@ export function ProjectSurveyorsScreen({ route, navigation }: Props) {
           q: '',
           minRating: '',
           bldVerified: false,
-          radiusKm: '100',
+          radiusMiles: '60',
           minDayRate: '',
           maxDayRate: '',
           sort: 'relevance',
@@ -103,7 +113,10 @@ export function ProjectSurveyorsScreen({ route, navigation }: Props) {
           q: active.q || undefined,
           minRating: active.minRating ? Number(active.minRating) : undefined,
           bldVerified: active.bldVerified || undefined,
-          radiusKm: active.radiusKm ? Number(active.radiusKm) : undefined,
+          radiusKm:
+            Number(active.radiusMiles) > 0
+              ? Math.max(1, Math.round(Number(active.radiusMiles) * KM_PER_MILE))
+              : undefined,
           minDayRateCents: active.minDayRate
             ? Math.round(Number(active.minDayRate) * 100)
             : undefined,
@@ -204,7 +217,7 @@ export function ProjectSurveyorsScreen({ route, navigation }: Props) {
                     {item.bldVerified ? <Feather name="check-circle" size={16} color="#2563eb" /> : null}
                   </View>
                   <Text style={styles.meta}>
-                    {[item.baseCity, item.distanceKm != null ? `${item.distanceKm} km` : null]
+                    {[item.baseCity, item.distanceKm != null ? formatDistanceMi(item.distanceKm) : null]
                       .filter(Boolean)
                       .join(' · ') || 'Location TBD'}
                   </Text>
@@ -283,12 +296,12 @@ export function ProjectSurveyorsScreen({ route, navigation }: Props) {
                   })}
                 </View>
 
-                <Text style={styles.label}>Distance (km)</Text>
+                <Text style={styles.label}>Distance (mi)</Text>
                 <TextInput
                   style={styles.input}
                   keyboardType="numeric"
-                  value={filters.radiusKm}
-                  onChangeText={(radiusKm) => setFilters((f) => (f ? { ...f, radiusKm } : f))}
+                  value={filters.radiusMiles}
+                  onChangeText={(radiusMiles) => setFilters((f) => (f ? { ...f, radiusMiles } : f))}
                 />
 
                 <Text style={styles.label}>Sort</Text>
@@ -359,7 +372,7 @@ export function ProjectSurveyorsScreen({ route, navigation }: Props) {
                         q: '',
                         minRating: '',
                         bldVerified: false,
-                        radiusKm: '100',
+                        radiusMiles: '60',
                         minDayRate: '',
                         maxDayRate: '',
                         sort: 'relevance',

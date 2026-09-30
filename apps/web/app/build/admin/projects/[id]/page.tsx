@@ -26,6 +26,7 @@ import {
 import { api, ApiError, errorMessage } from '../../../../../lib/api';
 import { StatusBadge } from '../../../../../components/status';
 import { LocationMapPreview } from '../../../../../components/location-map-preview';
+import { formatDistanceMi, milesToKm } from '../../../../../lib/geocode';
 
 const OPEN: ProjectStatus[] = ['submitted', 'matching'];
 
@@ -62,7 +63,7 @@ export default function AdminMatcherPage({ params }: { params: Promise<{ id: str
 
   const [service, setService] = useState<SurveyService | ''>('');
   const [useNear, setUseNear] = useState(true);
-  const [radiusKm, setRadiusKm] = useState(100);
+  const [radiusMiles, setRadiusMiles] = useState(60);
   const [surveyors, setSurveyors] = useState<AdminSurveyor[] | null>(null);
   const [browsing, setBrowsing] = useState(false);
   const [notes, setNotes] = useState('');
@@ -95,7 +96,8 @@ export default function AdminMatcherPage({ params }: { params: Promise<{ id: str
         service: service || undefined,
         nearLat: near?.lat,
         nearLng: near?.lng,
-        radiusKm: near ? radiusKm : undefined,
+        radiusKm:
+          near && radiusMiles > 0 ? Math.max(1, Math.round(milesToKm(radiusMiles))) : undefined,
       });
       setSurveyors(list);
     } catch (err) {
@@ -385,12 +387,12 @@ export default function AdminMatcherPage({ params }: { params: Promise<{ id: str
               </select>
             </label>
             <label className="ops-control">
-              <span>Radius (km)</span>
+              <span>Radius (mi)</span>
               <input
                 type="number"
-                value={radiusKm}
+                value={radiusMiles}
                 min={1}
-                onChange={(e) => setRadiusKm(Number(e.target.value))}
+                onChange={(e) => setRadiusMiles(Number(e.target.value))}
                 disabled={!useNear}
               />
             </label>
@@ -451,7 +453,7 @@ export default function AdminMatcherPage({ params }: { params: Promise<{ id: str
                       </Link>
                       <div className="admin-match-card-meta">
                         {s.baseCity ?? 'No base city'}
-                        {s.distanceKm != null ? ` · ${s.distanceKm} km away` : ''}
+                        {s.distanceKm != null ? ` · ${formatDistanceMi(s.distanceKm)} away` : ''}
                         {' · '}
                         {s.services.map((v) => SURVEY_SERVICE_LABELS[v]).join(', ')}
                       </div>

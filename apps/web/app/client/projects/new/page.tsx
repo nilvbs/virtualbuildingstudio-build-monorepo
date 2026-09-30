@@ -66,7 +66,7 @@ import {
   readProjectPostDraft,
   writeProjectPostDraft,
 } from '../../../../lib/project-post-draft';
-import { reverseGeocode } from '../../../../lib/geocode';
+import { reverseGeocodeAddress, type AddressSuggestion } from '../../../../lib/geocode';
 import { BldMuiProvider } from '../../../../lib/bld-mui-theme';
 import {
   ChoicePills,
@@ -364,6 +364,28 @@ export default function NewProjectPage() {
     setStep(i);
   }
 
+  /** Fill address text + country / state / city / ZIP from a geocoded place. */
+  function applyAddress(place: AddressSuggestion) {
+    if (place.label) setLocationText(place.label);
+    patchDetails({
+      ...(place.country ? { country: place.country } : {}),
+      state: place.state,
+      city: place.city,
+      zip: place.postalCode,
+    });
+  }
+
+  async function pinAndFill(nextLat: number, nextLng: number) {
+    setLat(nextLat.toFixed(6));
+    setLng(nextLng.toFixed(6));
+    try {
+      const place = await reverseGeocodeAddress(nextLat, nextLng);
+      if (place) applyAddress(place);
+    } catch {
+      // keep pin
+    }
+  }
+
   function useMyLocation() {
     if (!navigator.geolocation) {
       setError('Geolocation is not supported in this browser.');
@@ -373,16 +395,9 @@ export default function NewProjectPage() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const nextLat = pos.coords.latitude;
-        const nextLng = pos.coords.longitude;
-        setLat(nextLat.toFixed(6));
-        setLng(nextLng.toFixed(6));
         patchDetails({ locationKnown: 'yes' });
         try {
-          const address = await reverseGeocode(nextLat, nextLng);
-          if (address) setLocationText(address);
-        } catch {
-          // pin still set
+          await pinAndFill(pos.coords.latitude, pos.coords.longitude);
         } finally {
           setLocating(false);
         }
@@ -649,10 +664,10 @@ export default function NewProjectPage() {
                     </Grid>
 
                     <LocationPlaceSearch
-                      onSelect={(nextLat, nextLng, label) => {
-                        setLat(nextLat.toFixed(6));
-                        setLng(nextLng.toFixed(6));
-                        setLocationText(label);
+                      onSelect={(place) => {
+                        setLat(place.lat.toFixed(6));
+                        setLng(place.lng.toFixed(6));
+                        applyAddress(place);
                       }}
                     />
 
@@ -704,16 +719,7 @@ export default function NewProjectPage() {
                       lat={lat}
                       lng={lng}
                       label={locationText.trim() || null}
-                      onPick={async (nextLat, nextLng) => {
-                        setLat(nextLat.toFixed(6));
-                        setLng(nextLng.toFixed(6));
-                        try {
-                          const address = await reverseGeocode(nextLat, nextLng);
-                          if (address) setLocationText(address);
-                        } catch {
-                          // keep pin
-                        }
-                      }}
+                      onPick={(nextLat, nextLng) => pinAndFill(nextLat, nextLng)}
                     />
                   </div>
                 </div>

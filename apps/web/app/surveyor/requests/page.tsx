@@ -20,6 +20,7 @@ import {
 } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../lib/api';
 import { LocationMapPreview } from '../../../components/location-map-preview';
+import { formatDistanceMi } from '../../../lib/geocode';
 
 const TIMELINE_LABELS: Record<string, string> = {
   asap: 'As soon as possible',
@@ -47,9 +48,7 @@ function firstName(fullName: string): string {
 }
 
 function formatDistance(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m from your base`;
-  const rounded = km >= 10 ? Math.round(km) : Math.round(km * 10) / 10;
-  return `${rounded} km from your base`;
+  return `${formatDistanceMi(km)} from your base`;
 }
 
 function formatWorkingCountdown(ms: number | null): string {

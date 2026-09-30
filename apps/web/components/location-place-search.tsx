@@ -9,16 +9,11 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import SearchIcon from '@mui/icons-material/Search';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
-
-type SearchHit = {
-  place_id: number;
-  display_name: string;
-  lat: string;
-  lon: string;
-};
+import { suggestAddresses, type AddressSuggestion } from '../lib/geocode';
 
 type Props = {
-  onSelect: (lat: number, lng: number, label: string) => void;
+  /** Picked place with coordinates plus parsed street / city / state / ZIP / country. */
+  onSelect: (place: AddressSuggestion & { lat: number; lng: number }) => void;
 };
 
 function shortLabel(name: string) {
@@ -32,7 +27,7 @@ function shortLabel(name: string) {
 
 export function LocationPlaceSearch({ onSelect }: Props) {
   const [query, setQuery] = useState('');
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [hits, setHits] = useState<AddressSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -55,19 +50,8 @@ export function LocationPlaceSearch({ onSelect }: Props) {
       setError(null);
 
       try {
-        const url = new URL('https://nominatim.openstreetmap.org/search');
-        url.searchParams.set('format', 'json');
-        url.searchParams.set('q', q);
-        url.searchParams.set('limit', '6');
-        url.searchParams.set('addressdetails', '0');
-
-        const res = await fetch(url.toString(), {
-          signal: ctrl.signal,
-          headers: { Accept: 'application/json' },
-        });
-        if (!res.ok) throw new Error('Search failed');
-        const data = (await res.json()) as SearchHit[];
-        setHits(data);
+        const data = await suggestAddresses(q, ctrl.signal, { includePoi: true });
+        setHits(data.filter((h) => h.lat != null && h.lng != null));
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         setHits([]);
@@ -80,13 +64,10 @@ export function LocationPlaceSearch({ onSelect }: Props) {
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  function selectHit(hit: SearchHit | null) {
-    if (!hit) return;
-    const nextLat = Number(hit.lat);
-    const nextLng = Number(hit.lon);
-    if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng)) return;
-    onSelect(nextLat, nextLng, hit.display_name);
-    setQuery(hit.display_name);
+  function selectHit(hit: AddressSuggestion | null) {
+    if (!hit || hit.lat == null || hit.lng == null) return;
+    onSelect({ ...hit, lat: hit.lat, lng: hit.lng });
+    setQuery(hit.label);
   }
 
   return (
@@ -97,7 +78,7 @@ export function LocationPlaceSearch({ onSelect }: Props) {
         freeSolo
         options={hits}
         filterOptions={(x) => x}
-        getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.display_name)}
+        getOptionLabel={(opt) => (typeof opt === 'string' ? opt : opt.label)}
         inputValue={query}
         onInputChange={(_e, value) => setQuery(value ?? '')}
         onChange={(_e, value) => {
@@ -108,13 +89,13 @@ export function LocationPlaceSearch({ onSelect }: Props) {
         renderOption={(props, option) => {
           const { key, ...rest } = props;
           return (
-            <li key={key} {...rest}>
+            <li key={option.id} {...rest}>
               <PlaceOutlinedIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />
               <span>
-                <strong>{shortLabel(option.display_name)}</strong>
+                <strong>{shortLabel(option.label)}</strong>
                 <br />
                 <Typography variant="caption" color="text.secondary">
-                  {option.display_name}
+                  {option.label}
                 </Typography>
               </span>
             </li>

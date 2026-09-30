@@ -19,6 +19,7 @@ import {
   type SurveyService,
 } from '@surveylink/types';
 import { api, ApiError, errorMessage } from '../../../../../lib/api';
+import { formatDistanceMi, milesToKm } from '../../../../../lib/geocode';
 
 const PAGE_SIZE = 12;
 
@@ -26,7 +27,7 @@ type Filters = {
   q: string;
   minRating: string;
   bldVerified: boolean;
-  radiusKm: string;
+  radiusMiles: string;
   minDayRate: string;
   maxDayRate: string;
   sort: ClientSurveyorSort;
@@ -36,7 +37,7 @@ const DEFAULT_FILTERS: Filters = {
   q: '',
   minRating: '',
   bldVerified: false,
-  radiusKm: '100',
+  radiusMiles: '60',
   minDayRate: '',
   maxDayRate: '',
   sort: 'relevance',
@@ -92,7 +93,10 @@ export default function ProjectSurveyorsPage({ params }: { params: Promise<{ id:
           q: active.q || undefined,
           minRating: active.minRating ? Number(active.minRating) : undefined,
           bldVerified: active.bldVerified || undefined,
-          radiusKm: active.radiusKm ? Number(active.radiusKm) : undefined,
+          radiusKm:
+            Number(active.radiusMiles) > 0
+              ? Math.max(1, Math.round(milesToKm(Number(active.radiusMiles))))
+              : undefined,
           minDayRateCents: active.minDayRate
             ? Math.round(Number(active.minDayRate) * 100)
             : undefined,
@@ -202,10 +206,10 @@ export default function ProjectSurveyorsPage({ params }: { params: Promise<{ id:
                 <input
                   type="number"
                   min={1}
-                  value={filters.radiusKm}
-                  onChange={(e) => setFilters((f) => ({ ...f, radiusKm: e.target.value }))}
+                  value={filters.radiusMiles}
+                  onChange={(e) => setFilters((f) => ({ ...f, radiusMiles: e.target.value }))}
                 />
-                <em>km</em>
+                <em>mi</em>
               </div>
             </label>
 
@@ -313,7 +317,7 @@ export default function ProjectSurveyorsPage({ params }: { params: Promise<{ id:
                         <MapPin size={13} /> {s.baseCity}
                       </span>
                     ) : null}
-                    {s.distanceKm != null ? <span>{s.distanceKm} km away</span> : null}
+                    {s.distanceKm != null ? <span>{formatDistanceMi(s.distanceKm)} away</span> : null}
                   </div>
                 </div>
                 <div className="discover-rating">

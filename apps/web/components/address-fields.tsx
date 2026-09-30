@@ -142,9 +142,9 @@ export function AddressFields({
     onChange((prev) => ({
       ...prev,
       line1: hit.line1 || prev.line1,
-      city: hit.city || prev.city,
-      state: hit.state || prev.state,
-      postalCode: hit.postalCode || prev.postalCode,
+      city: hit.city,
+      state: hit.state,
+      postalCode: hit.postalCode,
       country: hit.country || prev.country,
     }));
     setSuggestions([]);

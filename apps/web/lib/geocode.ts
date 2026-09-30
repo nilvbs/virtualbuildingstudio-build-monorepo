@@ -102,6 +102,14 @@ export function formatMilesFromKm(km: number, digits = 0): string {
   return digits > 0 ? miles.toFixed(digits) : String(Math.round(miles));
 }
 
+/** "1,366 mi" / "4.2 mi" / "< 0.1 mi" from an API distance in km. */
+export function formatDistanceMi(km: number): string {
+  const miles = kmToMiles(km);
+  if (miles < 0.1) return '< 0.1 mi';
+  if (miles < 10) return `${(Math.round(miles * 10) / 10).toLocaleString('en-US')} mi`;
+  return `${Math.round(miles).toLocaleString('en-US')} mi`;
+}
+
 export async function reverseGeocode(lat: number, lng: number, signal?: AbortSignal): Promise<string | null> {
   const token = mapboxToken();
   if (token) {
@@ -186,21 +194,31 @@ function contextByPrefix(context: MapboxContext[] | undefined, prefix: string): 
 
 function parseMapboxAddress(feature: MapboxFeature): AddressSuggestion {
   const ctx = feature.context ?? [];
+  const types = feature.place_type ?? [];
+  const self = feature.text?.trim() || '';
+  // When the feature itself is a city / ZIP / state, its value is `text`, not in `context`.
+  const own = (type: string) => (types.includes(type) ? self : '');
   const place =
+    own('place') ||
     contextByPrefix(ctx, 'place')?.text?.trim() ||
+    own('locality') ||
     contextByPrefix(ctx, 'locality')?.text?.trim() ||
+    own('neighborhood') ||
     contextByPrefix(ctx, 'neighborhood')?.text?.trim() ||
     '';
-  const region = contextByPrefix(ctx, 'region')?.text?.trim() || '';
-  const postcode = contextByPrefix(ctx, 'postcode')?.text?.trim() || '';
-  const country = contextByPrefix(ctx, 'country')?.text?.trim() || '';
+  const region = own('region') || contextByPrefix(ctx, 'region')?.text?.trim() || '';
+  const postcode = own('postcode') || contextByPrefix(ctx, 'postcode')?.text?.trim() || '';
+  const country = own('country') || contextByPrefix(ctx, 'country')?.text?.trim() || '';
 
   const house = feature.address?.trim() || '';
-  const street = feature.text?.trim() || '';
-  const isAddress = feature.place_type?.includes('address');
-  const line1 = isAddress
-    ? [house, street].filter(Boolean).join(' ').trim()
-    : street || feature.place_name?.split(',')[0]?.trim() || '';
+  const isArea = ['place', 'locality', 'neighborhood', 'postcode', 'region', 'country'].some((t) =>
+    types.includes(t),
+  );
+  const line1 = types.includes('address')
+    ? [house, self].filter(Boolean).join(' ').trim()
+    : isArea
+      ? ''
+      : self || feature.place_name?.split(',')[0]?.trim() || '';
 
   const center = feature.center;
   return {
@@ -216,13 +234,58 @@ function parseMapboxAddress(feature: MapboxFeature): AddressSuggestion {
   };
 }
 
+type NominatimAddressHit = {
+  place_id?: number;
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+  address?: {
+    house_number?: string;
+    road?: string;
+    pedestrian?: string;
+    neighbourhood?: string;
+    suburb?: string;
+    hamlet?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+    municipality?: string;
+    county?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+  };
+};
+
+function parseNominatimAddress(hit: NominatimAddressHit): AddressSuggestion {
+  const a = hit.address ?? {};
+  const line1 = [a.house_number, a.road || a.pedestrian].filter(Boolean).join(' ').trim()
+    || hit.display_name?.split(',')[0]?.trim()
+    || '';
+  // Rural US addresses often have no city/town: fall back to hamlet, then county.
+  const city =
+    a.city || a.town || a.village || a.hamlet || a.municipality || a.suburb || a.neighbourhood || a.county || '';
+  return {
+    id: String(hit.place_id ?? hit.display_name ?? line1),
+    label: hit.display_name?.trim() || line1,
+    line1,
+    city,
+    state: a.state || '',
+    postalCode: a.postcode || '',
+    country: a.country || '',
+    lat: Number.isFinite(Number(hit.lat)) ? Number(hit.lat) : null,
+    lng: Number.isFinite(Number(hit.lon)) ? Number(hit.lon) : null,
+  };
+}
+
 /**
  * Address autocomplete suggestions while the user types line 1.
- * Prefers Mapbox; falls back to Nominatim.
+ * Prefers Mapbox; falls back to Nominatim. `includePoi` adds landmarks / businesses.
  */
 export async function suggestAddresses(
   query: string,
   signal?: AbortSignal,
+  opts: { includePoi?: boolean } = {},
 ): Promise<AddressSuggestion[]> {
   const q = query.trim();
   if (q.length < 3) return [];
@@ -233,7 +296,12 @@ export async function suggestAddresses(
     url.searchParams.set('access_token', token);
     url.searchParams.set('autocomplete', 'true');
     url.searchParams.set('limit', '6');
-    url.searchParams.set('types', 'address,place,locality,neighborhood,postcode');
+    url.searchParams.set(
+      'types',
+      opts.includePoi
+        ? 'address,poi,place,locality,neighborhood,postcode'
+        : 'address,place,locality,neighborhood,postcode',
+    );
     const res = await fetch(url.toString(), { signal, headers: { Accept: 'application/json' } });
     if (!res.ok) return [];
     const data = (await res.json()) as MapboxGeocode;
@@ -253,45 +321,42 @@ export async function suggestAddresses(
     },
   });
   if (!res.ok) return [];
-  const data = (await res.json()) as Array<{
-    place_id?: number;
-    display_name?: string;
-    lat?: string;
-    lon?: string;
-    address?: {
-      house_number?: string;
-      road?: string;
-      pedestrian?: string;
-      neighbourhood?: string;
-      suburb?: string;
-      city?: string;
-      town?: string;
-      village?: string;
-      municipality?: string;
-      state?: string;
-      postcode?: string;
-      country?: string;
-    };
-  }>;
+  const data = (await res.json()) as NominatimAddressHit[];
+  return data.map(parseNominatimAddress);
+}
 
-  return data.map((hit) => {
-    const a = hit.address ?? {};
-    const line1 = [a.house_number, a.road || a.pedestrian].filter(Boolean).join(' ').trim()
-      || hit.display_name?.split(',')[0]?.trim()
-      || '';
-    const city = a.city || a.town || a.village || a.municipality || a.suburb || a.neighbourhood || '';
-    return {
-      id: String(hit.place_id ?? hit.display_name ?? line1),
-      label: hit.display_name?.trim() || line1,
-      line1,
-      city,
-      state: a.state || '',
-      postalCode: a.postcode || '',
-      country: a.country || '',
-      lat: Number.isFinite(Number(hit.lat)) ? Number(hit.lat) : null,
-      lng: Number.isFinite(Number(hit.lon)) ? Number(hit.lon) : null,
-    };
-  });
+/** Structured address (street / city / state / ZIP / country) for a map pin. */
+export async function reverseGeocodeAddress(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<AddressSuggestion | null> {
+  const token = mapboxToken();
+  if (token) {
+    const url = new URL(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(`${lng},${lat}`)}.json`,
+    );
+    url.searchParams.set('access_token', token);
+    url.searchParams.set('limit', '1');
+    url.searchParams.set('types', 'address,place,locality,neighborhood,postcode');
+    const res = await fetch(url.toString(), { signal, headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const data = (await res.json()) as MapboxGeocode;
+    const feature = data.features?.[0];
+    return feature ? { ...parseMapboxAddress(feature), lat, lng } : null;
+  }
+
+  const url = new URL('https://nominatim.openstreetmap.org/reverse');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('lat', String(lat));
+  url.searchParams.set('lon', String(lng));
+  url.searchParams.set('zoom', '18');
+  url.searchParams.set('addressdetails', '1');
+  const res = await fetch(url.toString(), { signal, headers: { Accept: 'application/json' } });
+  if (!res.ok) return null;
+  const data = (await res.json()) as NominatimAddressHit;
+  if (!data.display_name) return null;
+  return { ...parseNominatimAddress(data), lat, lng };
 }
 
 /**
