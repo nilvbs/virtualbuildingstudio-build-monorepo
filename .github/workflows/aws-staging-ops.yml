@@ -10,6 +10,7 @@ name: AWS staging ops (OIDC)
 #   secrets-copy     box copies its owner DB URL into Secrets Manager bld/api/staging/*
 #   audit-logs       pgaudit (ddl,role) + PostgreSQL log export to CloudWatch (writer reboot ~1 min)
 #   restore-drill    Aurora point-in-time restore to a throwaway cluster, compare, delete
+#   drill-cleanup    delete any leftover bld-restore-drill-* copies and confirm they are gone
 #
 # Public logs: identifiers are masked; only RESULT_* classifications are printed.
 
@@ -17,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       tasks:
-        description: 'probe,instance-profile,secrets-copy,audit-logs,restore-drill'
+        description: 'probe,instance-profile,secrets-copy,audit-logs,restore-drill,drill-cleanup'
         default: probe
   push:
     branches: [main]
@@ -95,6 +96,26 @@ jobs:
           DB_HOST="$BLD_DB_HOST" EC2_INSTANCE_ID="$BLD_IID" AWS_DEFAULT_REGION="$AWS_REGION" \
             bash scripts/aws-probe.sh | tee /tmp/r.txt
           echo "::notice title=AWS posture::$(tr '\n' ' ' < /tmp/r.txt)"
+
+  drill-cleanup:
+    needs: plan
+    if: needs.plan.outputs.has_role == 'true' && contains(needs.plan.outputs.tasks, ',drill-cleanup,')
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OPS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Delete leftover drill copies
+        run: |
+          bash scripts/aws-drill-cleanup.sh | tee /tmp/r.txt
+          RC=${PIPESTATUS[0]}
+          echo "::notice title=Drill cleanup::$(tr '\n' ' ' < /tmp/r.txt)"
+          exit "$RC"
 
   instance-profile:
     needs: plan
@@ -209,17 +230,34 @@ jobs:
       - name: Parameter group with pgaudit + log export
         run: |
           set -euo pipefail
+          : > /tmp/audit-r.txt
+          exec > >(tee -a /tmp/audit-r.txt)
+          trap 'sleep 1; echo "::notice title=Audit params::$(grep -h "^RESULT_" /tmp/audit-r.txt | tr "\n" " ")"' EXIT
+          # AWS CLI wrapper: on failure print only the error code + denied action (no ARNs / account id).
+          awsx() {
+            local err
+            if ! err=$(aws "$@" 2>&1 >/tmp/awsx.out); then
+              local code act
+              code=$(printf '%s' "$err" | grep -oE '\([A-Za-z]+\)' | head -1 | tr -d '()')
+              act=$(printf '%s' "$err" | grep -oE 'perform: [a-z0-9-]+:[A-Za-z]+' | head -1)
+              echo "::error title=AWS $1 $2::${code:-unknown} ${act}" >&2
+              return 1
+            fi
+            cat /tmp/awsx.out
+          }
           C="$BLD_CID"; [ -n "$C" ] || { echo "RESULT_AUDIT=cluster_not_found"; exit 1; }
-          read -r PG EV <<<"$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
-            --query 'DBClusters[0].[DBClusterParameterGroup,EngineVersion]' --output text)"
+          INFO=$(awsx rds describe-db-clusters --db-cluster-identifier "$C" \
+            --query 'DBClusters[0].[DBClusterParameterGroup,EngineVersion]' --output text)
+          read -r PG EV <<<"$INFO"
           MAJOR="${EV%%.*}"; FAMILY="aurora-postgresql${MAJOR}"; TARGET="bld-aurora-pg${MAJOR}-audit"
+          echo "RESULT_CURRENT_PARAM_GROUP=$(case "$PG" in default.*) echo default ;; "$TARGET") echo audit ;; *) echo custom ;; esac)"
           if ! aws rds describe-db-cluster-parameter-groups --db-cluster-parameter-group-name "$TARGET" >/dev/null 2>&1; then
             case "$PG" in
               default.*)
-                aws rds create-db-cluster-parameter-group --db-cluster-parameter-group-name "$TARGET" \
+                awsx rds create-db-cluster-parameter-group --db-cluster-parameter-group-name "$TARGET" \
                   --db-parameter-group-family "$FAMILY" --description "BLD staging: pgaudit ddl,role" >/dev/null ;;
               *)
-                aws rds copy-db-cluster-parameter-group --source-db-cluster-parameter-group-identifier "$PG" \
+                awsx rds copy-db-cluster-parameter-group --source-db-cluster-parameter-group-identifier "$PG" \
                   --target-db-cluster-parameter-group-identifier "$TARGET" \
                   --target-db-cluster-parameter-group-description "BLD staging: pgaudit ddl,role" >/dev/null ;;
             esac
@@ -227,7 +265,7 @@ jobs:
           else
             echo "RESULT_PARAM_GROUP=exists"
           fi
-          SPL=$(aws rds describe-db-cluster-parameters --db-cluster-parameter-group-name "$TARGET" \
+          SPL=$(awsx rds describe-db-cluster-parameters --db-cluster-parameter-group-name "$TARGET" \
             --query "Parameters[?ParameterName=='shared_preload_libraries'].ParameterValue | [0]" --output text)
           case "$SPL" in None|"") SPL="pg_stat_statements" ;; esac
           case ",$SPL," in *,pgaudit,*) NEW="$SPL" ;; *) NEW="$SPL,pgaudit" ;; esac
@@ -236,17 +274,19 @@ jobs:
             {ParameterName:"pgaudit.log",ParameterValue:"ddl,role",ApplyMethod:"pending-reboot"},
             {ParameterName:"pgaudit.log_catalog",ParameterValue:"0",ApplyMethod:"pending-reboot"},
             {ParameterName:"pgaudit.log_parameter",ParameterValue:"0",ApplyMethod:"pending-reboot"}]')
-          aws rds modify-db-cluster-parameter-group --db-cluster-parameter-group-name "$TARGET" --parameters "$PARAMS" >/dev/null
+          awsx rds modify-db-cluster-parameter-group --db-cluster-parameter-group-name "$TARGET" --parameters "$PARAMS" >/dev/null
+          echo "RESULT_PARAMS_SET=yes"
           ARGS=(--db-cluster-identifier "$C" --apply-immediately)
           CHANGE=no
           if [ "$PG" != "$TARGET" ]; then ARGS+=(--db-cluster-parameter-group-name "$TARGET"); CHANGE=yes; fi
-          EXPORTS=$(aws rds describe-db-clusters --db-cluster-identifier "$C" \
+          EXPORTS=$(awsx rds describe-db-clusters --db-cluster-identifier "$C" \
             --query 'DBClusters[0].EnabledCloudwatchLogsExports' --output text)
           case "$EXPORTS" in
             *postgresql*) echo "RESULT_LOG_EXPORT=already" ;;
             *) ARGS+=(--cloudwatch-logs-export-configuration '{"EnableLogTypes":["postgresql"]}'); CHANGE=yes; echo "RESULT_LOG_EXPORT=enabled" ;;
           esac
-          if [ "$CHANGE" = yes ]; then aws rds modify-db-cluster "${ARGS[@]}" >/dev/null; sleep 30; fi
+          if [ "$CHANGE" = yes ]; then awsx rds modify-db-cluster "${ARGS[@]}" >/dev/null; sleep 30; fi
+          echo "RESULT_CLUSTER_MODIFIED=$CHANGE"
           aws rds wait db-cluster-available --db-cluster-identifier "$C"
       - name: Reboot members with pending parameters (writer first)
         run: |
@@ -334,6 +374,33 @@ jobs:
           DBHOST_SHA: ${{ needs.plan.outputs.dbhost_sha }}
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: bash scripts/aws-resolve-staging.sh
+      # Live data keeps changing while the restore runs (~30 min), so compare the copy with
+      # row counts taken right before the restore, not with live data afterwards.
+      - name: Row counts at restore start (from the box)
+        id: base
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ vars.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          capture_stdout: true
+          script: |
+            set -u
+            cd "${{ vars.EC2_APP_DIR || '/home/ubuntu/BLD/stage' }}"
+            U=$(grep '^DIRECT_DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            [ -n "$U" ] || U=$(grep '^DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
+            Q="SELECT c.relname || '=' || (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM public.%I', c.relname), false, true, '')))[1]::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> 'spatial_ref_sys' ORDER BY 1"
+            docker run --rm -e PGURL="${U%%\?*}?sslmode=require" -e Q="$Q" postgres:17-alpine \
+              sh -c 'psql "$PGURL" -X -A -t -c "$Q"' > /tmp/b.txt 2>/dev/null || true
+            echo "RESULT_BASE_B64=$(base64 -w0 < /tmp/b.txt)"
+            rm -f /tmp/b.txt
+      - name: Keep baseline
+        env:
+          REMOTE: ${{ steps.base.outputs.stdout }}
+        run: |
+          B=$(printf '%s\n' "$REMOTE" | grep '^RESULT_BASE_B64=' | tail -n 1 | cut -d= -f2- | tr -d '\r')
+          [ -n "$B" ] || { echo "::error title=Restore drill::no baseline row counts"; exit 1; }
+          echo "BASE_B64=$B" >> "$GITHUB_ENV"
       - name: Point-in-time restore to a throwaway cluster
         run: |
           set -euo pipefail
@@ -364,17 +431,18 @@ jobs:
           EP=$(aws rds describe-db-clusters --db-cluster-identifier "$NAME" --query 'DBClusters[0].Endpoint' --output text)
           echo "::add-mask::$EP"
           echo "DRILL_EP=$EP" >> "$GITHUB_ENV"
-          echo "RESULT_RESTORE_MINUTES=$(( ($(date +%s) - T0) / 60 ))"
-      - name: Compare restored copy with live data (from the box)
+          echo "RESTORE_MINUTES=$(( ($(date +%s) - T0) / 60 ))" >> "$GITHUB_ENV"
+      - name: Compare restored copy with the restore-start baseline (from the box)
         id: cmp
         uses: appleboy/ssh-action@v1.2.2
         env:
           DRILL_EP: ${{ env.DRILL_EP }}
+          BASE_B64: ${{ env.BASE_B64 }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ vars.EC2_USER || 'ubuntu' }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DRILL_EP
+          envs: DRILL_EP,BASE_B64
           capture_stdout: true
           script: |
             set -u
@@ -382,33 +450,41 @@ jobs:
             U=$(grep '^DIRECT_DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
             [ -n "$U" ] || U=$(grep '^DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')
             BASE="${U%%\?*}"
-            SRC="$BASE?sslmode=require"
             DST="$(printf '%s' "$BASE" | sed -E "s|@[^:/]+|@${DRILL_EP}|")?sslmode=require"
             Q="SELECT c.relname || '=' || (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM public.%I', c.relname), false, true, '')))[1]::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> 'spatial_ref_sys' ORDER BY 1"
             docker run --rm -e PGURL="$DST" -e Q="$Q" postgres:17-alpine sh -c 'psql "$PGURL" -X -A -t -c "$Q"' > /tmp/d.txt 2>/dev/null || true
-            docker run --rm -e PGURL="$SRC" -e Q="$Q" postgres:17-alpine sh -c 'psql "$PGURL" -X -A -t -c "$Q"' > /tmp/s.txt 2>/dev/null || true
+            printf '%s' "$BASE_B64" | base64 -d > /tmp/s.txt
             docker rmi postgres:17-alpine >/dev/null 2>&1 || true
             TS=$(grep -c '=' /tmp/s.txt || true); TD=$(grep -c '=' /tmp/d.txt || true)
             RS=$(awk -F= '{ s += $2 } END { print s + 0 }' /tmp/s.txt); RD=$(awk -F= '{ s += $2 } END { print s + 0 }' /tmp/d.txt)
             EXACT=$(grep -cxFf /tmp/s.txt /tmp/d.txt || true)
-            rm -f /tmp/s.txt /tmp/d.txt
-            if [ "$RS" -gt 0 ]; then PCT=$((RD * 100 / RS)); else PCT=0; fi
-            echo "RESULT_TABLES_SOURCE=$TS"; echo "RESULT_TABLES_RESTORED=$TD"
-            echo "RESULT_TABLES_EXACT_MATCH=$EXACT"; echo "RESULT_ROWS_RESTORED_PCT=$PCT"
-            if [ "$TS" -gt 0 ] && [ "$TD" -eq "$TS" ] && [ "$PCT" -ge 99 ]; then echo "RESULT_DRILL=pass"; else echo "RESULT_DRILL=fail"; fi
-      - name: Delete the throwaway cluster
-        if: always() && env.DRILL != ''
+            # Tables whose counts differ (table names are public schema, counts are not sensitive).
+            LC_ALL=C sort -t= -k1,1 /tmp/s.txt > /tmp/s.sorted; LC_ALL=C sort -t= -k1,1 /tmp/d.txt > /tmp/d.sorted
+            DIFF=$(LC_ALL=C join -t= -a1 -e missing -o 0,1.2,2.2 /tmp/s.sorted /tmp/d.sorted | awk -F= '$2 != $3 { printf "%s:%s->%s,", $1, $2, $3 }')
+            rm -f /tmp/s.txt /tmp/d.txt /tmp/s.sorted /tmp/d.sorted
+            GAP=$(( RS > RD ? RS - RD : RD - RS ))
+            echo "RESULT_TABLES_BASELINE=$TS"; echo "RESULT_TABLES_RESTORED=$TD"
+            echo "RESULT_TABLES_EXACT_MATCH=$EXACT"; echo "RESULT_ROWS_BASELINE=$RS"; echo "RESULT_ROWS_RESTORED=$RD"
+            echo "RESULT_DIFF_TABLES=${DIFF:-none}"
+            # Restore point is up to ~5 min before the baseline: allow a 1% (or 5-row) gap.
+            if [ "$TS" -gt 0 ] && [ "$TD" -eq "$TS" ] && { [ $((GAP * 100)) -le "$RS" ] || [ "$GAP" -le 5 ]; }; then
+              echo "RESULT_DRILL=pass"
+            else
+              echo "RESULT_DRILL=fail"
+            fi
+      - name: Delete the throwaway cluster (and any older drill copies)
+        id: cleanup
+        if: always()
         run: |
-          case "$DRILL" in bld-restore-drill-*) ;; *) echo "refusing to delete non-drill resource"; exit 1 ;; esac
-          aws rds delete-db-instance --db-instance-identifier "$DRILL-1" >/dev/null 2>&1 || true
-          aws rds wait db-instance-deleted --db-instance-identifier "$DRILL-1" 2>/dev/null || true
-          aws rds delete-db-cluster --db-cluster-identifier "$DRILL" --skip-final-snapshot >/dev/null 2>&1 || true
-          echo "RESULT_DRILL_CLEANUP=requested"
+          bash scripts/aws-drill-cleanup.sh | tee /tmp/cleanup.txt
+          RC=${PIPESTATUS[0]}
+          echo "CLEANUP=$(grep -h '^RESULT_DRILL_CLEANUP=' /tmp/cleanup.txt | cut -d= -f2)" >> "$GITHUB_ENV"
+          exit "$RC"
       - name: Summary
         if: always()
         env:
           REMOTE: ${{ steps.cmp.outputs.stdout }}
         run: |
           R=$(printf '%s\n' "$REMOTE" | grep -E '^RESULT_' | tr -d '\r' || true)
-          echo "::notice title=Aurora restore drill::$(printf '%s ' $R)"
+          echo "::notice title=Aurora restore drill::RESULT_RESTORE_MINUTES=${RESTORE_MINUTES:-?} RESULT_DRILL_CLEANUP=${CLEANUP:-?} $(printf '%s ' $R)"
           printf '%s\n' "$R" | grep -qx 'RESULT_DRILL=pass'

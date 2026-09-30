@@ -1,5 +1,6 @@
 # Edit + push to run .github/workflows/aws-staging-ops.yml (needs staging secret AWS_OPS_ROLE_ARN).
-# Tasks: probe,instance-profile,secrets-copy,audit-logs,restore-drill
+# Tasks: probe,instance-profile,secrets-copy,audit-logs,restore-drill,drill-cleanup
 # audit-logs reboots the Aurora writer (~1 min of staging DB downtime).
-TASKS=audit-logs,restore-drill
-REQUESTED=2026-09-30T15:40
+# Never combine drill-cleanup with restore-drill (cleanup would delete the running drill copy).
+TASKS=drill-cleanup,audit-logs
+REQUESTED=2026-09-30T16:25
