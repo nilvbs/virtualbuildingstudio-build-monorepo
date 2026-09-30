@@ -14,6 +14,9 @@ on:
   workflow_run:
     workflows: ['Deploy API', 'Staging DB app role (create / rotate)']
     types: [completed]
+  push:
+    branches: [main]
+    paths: ['.github/workflows/verify-staging-security.yml']
   workflow_dispatch:
 
 permissions:
@@ -21,7 +24,7 @@ permissions:
 
 jobs:
   verify:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
@@ -189,7 +192,15 @@ jobs:
         run: |
           v="${{ steps.parse.outputs.aurora_encrypted }}"
           echo "aurora_encrypted=$v (instance_role=${{ steps.parse.outputs.instance_role }})"
-          [ "$v" = "true" ] || { echo "::warning title=Aurora KMS::StorageEncrypted not confirmed ($v)"; exit 1; }
+          case "$v" in
+            true) echo "::notice title=Aurora KMS::StorageEncrypted=true" ;;
+            false) echo "::error title=Aurora KMS::Aurora storage is NOT encrypted"; exit 1 ;;
+            no_instance_role)
+              # Unverifiable, not failing: the EC2 box has no IAM role until the
+              # deploy/aws/github-oidc-staging-ops.yml stack attaches bld-staging-ec2.
+              echo "::warning title=Aurora KMS::Not verifiable yet - EC2 has no instance role. Deploy deploy/aws/github-oidc-staging-ops.yml, then run aws-staging-ops (instance-profile)." ;;
+            *) echo "::error title=Aurora KMS::StorageEncrypted check failed ($v)"; exit 1 ;;
+          esac
 
       - name: Check - Redis shared rate-limit store
         if: always()
