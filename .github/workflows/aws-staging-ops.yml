@@ -238,9 +238,12 @@ jobs:
             local err
             if ! err=$(aws "$@" 2>&1 >/tmp/awsx.out); then
               local code act
-              code=$(printf '%s' "$err" | grep -oE '\([A-Za-z]+\)' | head -1 | tr -d '()')
-              act=$(printf '%s' "$err" | grep -oE 'perform: [a-z0-9-]+:[A-Za-z]+' | head -1)
+              code=$(printf '%s' "$err" | grep -oE '\([A-Za-z]+\)' | head -1 | tr -d '()' || true)
+              act=$(printf '%s' "$err" | grep -oE 'perform: [a-z0-9-]+:[A-Za-z]+' | head -1 || true)
+              # Parameter names in validation errors are not sensitive; strip anything ARN-like.
+              detail=$(printf '%s' "$err" | grep -oE "[Pp]arameter[^.]{0,120}" | head -1 | sed -E 's/arn:[^ ]+/<arn>/g; s/[0-9]{12}/<acct>/g' || true)
               echo "RESULT_AWS_ERROR=$2:${code:-unknown}${act:+:${act#perform: }}" >> /tmp/audit-r.txt
+              [ -z "$detail" ] || echo "RESULT_AWS_DETAIL=$(printf '%s' "$detail" | tr ' ' '_')" >> /tmp/audit-r.txt
               return 1
             fi
             cat /tmp/awsx.out
