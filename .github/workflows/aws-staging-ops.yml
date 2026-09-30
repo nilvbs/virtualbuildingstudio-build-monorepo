@@ -240,7 +240,7 @@ jobs:
               local code act
               code=$(printf '%s' "$err" | grep -oE '\([A-Za-z]+\)' | head -1 | tr -d '()')
               act=$(printf '%s' "$err" | grep -oE 'perform: [a-z0-9-]+:[A-Za-z]+' | head -1)
-              echo "::error title=AWS $1 $2::${code:-unknown} ${act}" >&2
+              echo "RESULT_AWS_ERROR=$2:${code:-unknown}${act:+:${act#perform: }}" >> /tmp/audit-r.txt
               return 1
             fi
             cat /tmp/awsx.out
