@@ -12,7 +12,7 @@ name: Verify staging security
 
 on:
   workflow_run:
-    workflows: ['Deploy API', 'Staging DB app role (create / rotate)']
+    workflows: ['Deploy API', 'Staging DB app role (create / rotate)', 'AWS staging ops (OIDC)']
     types: [completed]
   push:
     branches: [main]
