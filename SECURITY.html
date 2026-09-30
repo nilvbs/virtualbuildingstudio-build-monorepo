@@ -562,6 +562,13 @@
       </p>
 
       <h3>Needs AWS console or DNS access (cannot be done from the repo)</h3>
+      <p class="sub">
+        <strong>Keyless path ready:</strong> deploy <code>deploy/aws/github-oidc-staging-ops.yml</code> once in CloudFormation
+        and add its <code>OpsRoleArn</code> as the <code>staging</code> environment secret <code>AWS_OPS_ROLE_ARN</code>.
+        <code>AWS staging ops (OIDC)</code> then does the items below (except WAF) with temporary credentials:
+        instance role, KMS check, Secrets Manager copy, pgaudit + CloudWatch export, and an Aurora point-in-time restore drill.
+        No IAM users or access keys are created. <code>bld_app</code> rotations already send only a SCRAM hash, so audit logs never hold the password.
+      </p>
       <ul>
         <li>☐ <strong>DB audit (pgaudit):</strong> RDS → Parameter groups → cluster parameter group → add <code>pgaudit</code> to <code>shared_preload_libraries</code>, set <code>pgaudit.log = 'ddl,role'</code> → reboot writer → cluster → Modify → Log exports → PostgreSQL log → CloudWatch. Then <code>CREATE EXTENSION pgaudit;</code></li>
         <li>☐ <strong>Owner credential in Secrets Manager + rotation:</strong> store the owner URL as <code>bld/api/DIRECT_DATABASE_URL</code>, enable rotation, and update the GitHub <code>staging</code> environment secret after each rotation (deploy copies it into <code>DIRECT_DATABASE_URL</code> for migrations only).</li>
