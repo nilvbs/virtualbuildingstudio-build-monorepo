@@ -182,7 +182,7 @@ Allowed transitions: `PROJECT_STATUS_TRANSITIONS` in `@surveylink/types`.
 ```mermaid
 flowchart LR
   L["1 Site & property<br/>address → city/state/ZIP + title, description, type, status, size*, floors"] --> S["2 Services<br/>category → types → matching deliverables"]
-  S --> B["3 Timeline & estimate<br/>ASAP / Flexible / date + recommended price"]
+  S --> B["3 Timeline & estimate<br/>ASAP / Flexible / date + BUILDI price + optional budget"]
   B --> R["4 Review<br/>files, notes, publish"]
 ```
 
@@ -194,7 +194,10 @@ flowchart LR
   - The client first picks one or more categories (Survey, Laser & Reality Capture, Drone, BIM & CAD), then service types from each category's dropdown.
   - The deliverables dropdown only lists items from `SERVICE_DELIVERABLES` for the chosen types. Removing a type or category drops deliverables that no longer apply.
   - At least one type and one deliverable are required. Scan type/accuracy (laser) and LOD/software (BIM) are optional dropdowns.
-- **Timeline & estimate:** ASAP, Flexible or Specific date. The **recommended price** (`estimateProjectPrice`) is read-only. It is calculated from services, size, floors, status, property type, scan type, accuracy, LOD, deliverable count and ASAP. It is saved as `details.estimateMinCents/MaxCents`, and `pricingMode` is `open` (surveyors quote). The client doesn't choose a pricing mode, priority, provider type, verified-only, experience, minimum rating or existing data.
+- **Timeline & estimate:** ASAP, Flexible or Specific date.
+  - The **BUILDI AI price recommendation** (`estimateProjectPrice`) is calculated from services, size, floors, status, property type, scan type, accuracy, LOD, deliverable count and ASAP. It is saved as `details.estimateMinCents/MaxCents`.
+  - The client may type an optional **budget** (or tap "Use BUILDI's price" to fill the midpoint). When set, it is saved as `details.budgetFixedCents` with `pricingMode: fixed`; when blank, `pricingMode` is `open` (surveyors quote).
+  - The client doesn't choose priority, provider type, verified-only, experience, minimum rating or existing data.
 
 **Key code:** `apps/api/src/projects/projects.service.ts`, `apps/web/app/client/projects/**`, `packages/types/src/project-brief.ts`
 
@@ -314,6 +317,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-09-30 | Brief price step: recommendation branded as **BUILDI AI**. The client can type an optional budget (saved as fixed pricing); leaving it blank keeps open quotes |
 | 2026-09-30 | New brief is now 4 steps: Property is merged into step 1 (Site & property), and the site address is always required (the "not confirmed yet" option is removed). Services are picked as category, then type dropdowns, then a filtered deliverables dropdown. Site access questions are removed |
 | 2026-09-30 | New brief is 5 steps ("Step X of 5"). Location and overview are merged, and the title is auto-named from the address. Services now show only the deliverables relevant to them. Property is simplified (Existing / Under construction, size required, floors dropdown). Timeline is ASAP / Flexible / date. Pricing choice is replaced by a read-only recommended price. Priority, existing-data and provider preferences (verified / experience / rating) are removed |
 | 2026-09-30 | Notification emails (match found / matched / new request / accepted, feedback thanks, help desk, ops alerts) use the branded BLD template: greeting by first name, project details card, button CTA, support footer. Triggers and SMS unchanged |

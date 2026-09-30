@@ -4,7 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Check } from 'lucide-react';
+import {
+  ArrowLeft,
+  Boxes,
+  Check,
+  PackageCheck,
+  Plane,
+  Ruler,
+  ScanLine,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   deliverableGroupsForServices,
   deliverablesForServices,
@@ -41,7 +51,6 @@ import {
   type ProjectDetails,
   type ProjectFileRef,
   type ProjectPropertyType,
-  type ProjectStepStatus,
   type ProjectTimeline,
   type SurveyService,
 } from '@surveylink/types';
@@ -58,6 +67,7 @@ import { BldMuiProvider } from '../../../../lib/bld-mui-theme';
 import {
   ChoicePills,
   FieldLabel,
+  MENU_PROPS,
   MultiPills,
   MultiSelectField,
   OptionCards,
@@ -72,6 +82,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import FormHelperText from '@mui/material/FormHelperText';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
+import InputAdornment from '@mui/material/InputAdornment';
 import InputLabel from '@mui/material/InputLabel';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
@@ -113,11 +124,23 @@ const SERVICE_GROUPS = SURVEY_SERVICE_GROUPS.map((g) => ({
   label: g.label as string,
   services: g.services as readonly SurveyService[],
 }));
-const SERVICE_GROUP_IDS = SERVICE_GROUPS.map((g) => g.id);
-const SERVICE_GROUP_LABELS = Object.fromEntries(SERVICE_GROUPS.map((g) => [g.id, g.label])) as Record<
-  ServiceGroupId,
-  string
->;
+const SERVICE_GROUP_META: Record<ServiceGroupId, { icon: LucideIcon; blurb: string }> = {
+  survey_services: { icon: Ruler, blurb: 'Measured, topo, boundary, as-built' },
+  laser_reality: { icon: ScanLine, blurb: 'Laser scanning, LiDAR, point clouds' },
+  drone: { icon: Plane, blurb: 'Aerial survey, orthomosaics, thermal' },
+  bim_cad: { icon: Boxes, blurb: 'Scan-to-BIM, Revit, CAD drafting' },
+};
+
+function dollarsToCents(raw: string): number | null {
+  const n = Number(raw.replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100);
+}
+
+function centsToDollars(cents: number | null | undefined): string {
+  if (cents == null || cents <= 0) return '';
+  return String(Math.round(cents / 100));
+}
 
 function groupsWithServices(services: readonly SurveyService[]): ServiceGroupId[] {
   return SERVICE_GROUPS.filter((g) => g.services.some((s) => services.includes(s))).map((g) => g.id);
@@ -125,12 +148,6 @@ function groupsWithServices(services: readonly SurveyService[]): ServiceGroupId[
 
 function toggleIn<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
-}
-
-function statusClass(s: ProjectStepStatus): string {
-  if (s === 'complete') return 'is-complete';
-  if (s === 'partial') return 'is-partial';
-  return 'is-pending';
 }
 
 function todayIso(): string {
@@ -537,7 +554,7 @@ export default function NewProjectPage() {
 
     const finalDetails: ProjectDetails = {
       ...details,
-      pricingMode: 'open',
+      pricingMode: details.budgetFixedCents ? 'fixed' : 'open',
       estimateMinCents: estimate?.minCents ?? null,
       estimateMaxCents: estimate?.maxCents ?? null,
     };
@@ -652,31 +669,9 @@ export default function NewProjectPage() {
         </p>
       ) : null}
 
-      <nav className="project-post-steps" aria-label="Project steps">
-        <ol>
-          {STEPS.map((s, i) => {
-            const st = progress.steps[s.id];
-            const active = i === step;
-            return (
-              <li key={s.id} className={`${statusClass(st)} ${active ? 'is-active' : ''}`}>
-                <button type="button" onClick={() => jumpTo(i)} aria-current={active ? 'step' : undefined}>
-                  <span className="project-post-steps-dot" aria-hidden>
-                    {st === 'complete' && !active ? <Check size={12} strokeWidth={2.75} /> : i + 1}
-                  </span>
-                  <span className="project-post-steps-label">{s.label}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-
       <form className="project-post-card" onSubmit={onFormSubmit} noValidate>
         <div className="project-post-card-head">
           <div>
-            <p className="ops-kicker">
-              Step {step + 1} of {STEPS.length}
-            </p>
             <h2 className="project-post-card-title">{current.label}</h2>
             <p className="project-post-card-blurb">{current.blurb}</p>
           </div>
@@ -813,6 +808,7 @@ export default function NewProjectPage() {
                             label="Number of floors"
                             value={floors}
                             onChange={(e) => setFloors(String(e.target.value))}
+                            MenuProps={MENU_PROPS}
                           >
                             <MenuItem value="">
                               <em>Not sure</em>
@@ -841,60 +837,93 @@ export default function NewProjectPage() {
         )}
 
         {current.id === 'services' && (
-          <Stack className="wizard-panel" key="services" spacing={3}>
-            <Stack spacing={2}>
-              <SectionTitle hint="Pick one or more categories, then choose the service types.">
-                What do you need? *
-              </SectionTitle>
-              <OptionCards
-                options={SERVICE_GROUP_IDS}
-                labels={SERVICE_GROUP_LABELS}
-                value={serviceGroups}
-                onToggle={toggleServiceGroup}
-              />
-              {SERVICE_GROUPS.filter((g) => serviceGroups.includes(g.id)).map((group) => (
-                <MultiSelectField
-                  key={group.id}
-                  id={`svc-${group.id}`}
-                  required
-                  label={`${group.label} — service types`}
-                  options={group.services}
-                  labels={SURVEY_SERVICE_LABELS}
-                  value={services.filter((s) => group.services.includes(s))}
-                  onChange={(next) => setGroupServices(group.services, next)}
-                />
-              ))}
-            </Stack>
+          <Stack className="wizard-panel" key="services" spacing={2}>
+            <SectionTitle hint="Pick one or more categories, then choose the exact service types.">
+              What do you need? *
+            </SectionTitle>
+            <div className="svc-tiles" role="group" aria-label="Service categories">
+              {SERVICE_GROUPS.map((group) => {
+                const meta = SERVICE_GROUP_META[group.id];
+                const Icon = meta.icon;
+                const on = serviceGroups.includes(group.id);
+                const count = services.filter((s) => group.services.includes(s)).length;
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    className={`svc-tile${on ? ' is-on' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => toggleServiceGroup(group.id)}
+                  >
+                    <span className="svc-tile-icon" aria-hidden>
+                      <Icon size={18} strokeWidth={2} />
+                    </span>
+                    <span className="svc-tile-text">
+                      <strong>{group.label}</strong>
+                      <small>{meta.blurb}</small>
+                    </span>
+                    <span className="svc-tile-state" aria-hidden>
+                      {on ? count > 0 ? count : <Check size={12} strokeWidth={3} /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {SERVICE_GROUPS.filter((g) => serviceGroups.includes(g.id)).map((group) => {
+              const Icon = SERVICE_GROUP_META[group.id].icon;
+              return (
+                <div key={group.id} className="svc-panel">
+                  <div className="svc-panel-head">
+                    <Icon size={15} strokeWidth={2.2} aria-hidden />
+                    <span>{group.label}</span>
+                  </div>
+                  <MultiSelectField
+                    id={`svc-${group.id}`}
+                    required
+                    chips
+                    label="Service types"
+                    options={group.services}
+                    labels={SURVEY_SERVICE_LABELS}
+                    value={services.filter((s) => group.services.includes(s))}
+                    onChange={(next) => setGroupServices(group.services, next)}
+                  />
+                </div>
+              );
+            })}
 
             {services.length > 0 && (
-              <Stack spacing={1.5} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
-                <Stack
-                  direction="row"
-                  sx={{ alignItems: 'flex-end', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}
-                >
-                  <SectionTitle hint="Only deliverables that fit your selected service types are listed.">
-                    Deliverables *
-                  </SectionTitle>
-                  <Button type="button" size="small" onClick={selectAllDeliverables}>
+              <div className="svc-panel svc-panel--accent">
+                <div className="svc-panel-head">
+                  <PackageCheck size={15} strokeWidth={2.2} aria-hidden />
+                  <span>Deliverables</span>
+                  <Button
+                    type="button"
+                    size="small"
+                    onClick={selectAllDeliverables}
+                    sx={{ ml: 'auto', minWidth: 0, py: 0 }}
+                  >
                     Select all
                   </Button>
-                </Stack>
+                </div>
                 <MultiSelectField
                   id="deliverables"
                   required
+                  chips
                   label="Deliverables"
                   options={deliverablesForServices(services)}
                   groups={deliverableGroups}
                   labels={PROJECT_SCOPE_DELIVERABLE_LABELS}
                   value={details.scopeDeliverables}
                   onChange={(next) => patchDetails({ scopeDeliverables: next })}
+                  helperText="Only deliverables that fit your selected service types are listed."
                 />
-              </Stack>
+              </div>
             )}
 
             {(needsLaser || needsBim) && (
-              <Stack spacing={2} sx={{ pt: 2.5, borderTop: 1, borderColor: 'divider' }}>
-                <SectionTitle hint="Optional — helps us recommend a price.">Preferences</SectionTitle>
+              <Stack spacing={1.5} sx={{ pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                <SectionTitle hint="Optional — sharpens BUILDI's price recommendation.">Preferences</SectionTitle>
                 <Grid container spacing={2}>
                   {needsLaser && (
                     <>
@@ -951,7 +980,7 @@ export default function NewProjectPage() {
         )}
 
         {current.id === 'budget' && (
-          <Stack className="wizard-panel" key="budget" spacing={3}>
+          <Stack className="wizard-panel" key="budget" spacing={2}>
             <div>
               <FieldLabel required>When do you need the work completed?</FieldLabel>
               <ChoicePills
@@ -977,47 +1006,73 @@ export default function NewProjectPage() {
               )}
             </div>
 
-            <Paper
-              variant="outlined"
-              sx={{
-                p: { xs: 2, sm: 2.75 },
-                borderRadius: 2,
-                borderColor: 'primary.main',
-                bgcolor: 'rgba(113, 104, 246, 0.05)',
-              }}
-            >
-              <Typography
-                variant="caption"
-                sx={{ fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'primary.main' }}
-              >
-                Recommended price
-              </Typography>
+            <section className="buildi-card" aria-label="BUILDI price recommendation">
+              <div className="buildi-card-head">
+                <span className="buildi-badge">
+                  <Sparkles size={13} strokeWidth={2.4} aria-hidden /> BUILDI AI
+                </span>
+                <span className="buildi-card-kicker">Price recommendation</span>
+              </div>
               {estimate ? (
                 <>
-                  <Typography variant="h4" sx={{ fontWeight: 750, letterSpacing: '-0.02em', mt: 0.5 }}>
-                    {formatEstimateRange(estimate.minCents, estimate.maxCents)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    Based on {estimate.factors.join(' · ')}.
-                  </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mt: 1.25, color: 'text.secondary' }}>
-                    An estimate from typical marketplace rates — verified surveyors send their own quotes
-                    after you publish.
-                  </Typography>
+                  <p className="buildi-card-range">{formatEstimateRange(estimate.minCents, estimate.maxCents)}</p>
+                  <div className="buildi-factors">
+                    {estimate.factors.map((f) => (
+                      <span key={f}>{f}</span>
+                    ))}
+                  </div>
+                  <p className="buildi-card-note">
+                    BUILDI analysed your scope against typical marketplace rates. Verified surveyors still send
+                    their own quotes after you publish.
+                  </p>
                 </>
               ) : (
-                <Typography variant="body2" sx={{ mt: 0.75 }}>
-                  Add your services and the approximate building size to see a recommended price.
-                </Typography>
+                <p className="buildi-card-note">
+                  Add your services and the approximate building size — BUILDI will recommend a price.
+                </p>
               )}
-            </Paper>
+            </section>
+
+            <div>
+              <FieldLabel hint="Optional — share what you'd like to pay. Surveyors see it next to BUILDI's recommendation.">
+                Your budget
+              </FieldLabel>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { sm: 'center' } }}>
+                <TextField
+                  sx={{ maxWidth: { sm: 260 } }}
+                  fullWidth
+                  label="Budget (USD)"
+                  placeholder={estimate ? String(Math.round((estimate.minCents + estimate.maxCents) / 200)) : '5000'}
+                  value={centsToDollars(details.budgetFixedCents)}
+                  onChange={(e) => patchDetails({ budgetFixedCents: dollarsToCents(e.target.value) })}
+                  slotProps={{
+                    htmlInput: { inputMode: 'numeric' },
+                    input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
+                  }}
+                />
+                {estimate && (
+                  <Button
+                    type="button"
+                    variant="text"
+                    startIcon={<Sparkles size={15} />}
+                    onClick={() =>
+                      patchDetails({
+                        budgetFixedCents: Math.round((estimate.minCents + estimate.maxCents) / 200) * 100,
+                      })
+                    }
+                  >
+                    Use BUILDI&apos;s price
+                  </Button>
+                )}
+              </Stack>
+            </div>
           </Stack>
         )}
 
         {current.id === 'review' && (
-          <Stack className="wizard-panel" key="review" spacing={3}>
-            <Paper variant="outlined" sx={{ p: { xs: 2, sm: 2.75 }, borderRadius: 2 }}>
-              <Stack spacing={0.5} sx={{ mb: 2.5 }}>
+          <Stack className="wizard-panel" key="review" spacing={2}>
+            <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 2 }}>
+              <Stack spacing={0.5} sx={{ mb: 1.75 }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
                   {title.trim() || 'Untitled project'}
                 </Typography>
@@ -1059,9 +1114,16 @@ export default function NewProjectPage() {
                         : '—'}
                   </Typography>
                 </ReviewFact>
-                <ReviewFact label="Recommended price">
+                <ReviewFact label="BUILDI recommendation">
                   <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 600 }}>
                     {estimate ? formatEstimateRange(estimate.minCents, estimate.maxCents) : '—'}
+                  </Typography>
+                </ReviewFact>
+                <ReviewFact label="Your budget">
+                  <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 600 }}>
+                    {details.budgetFixedCents
+                      ? `$${Math.round(details.budgetFixedCents / 100).toLocaleString()}`
+                      : 'Open to quotes'}
                   </Typography>
                 </ReviewFact>
               </Grid>
@@ -1204,8 +1266,8 @@ export default function NewProjectPage() {
           direction="row"
           spacing={1.5}
           sx={{
-            mt: 3,
-            pt: 2.5,
+            mt: 2,
+            pt: 1.75,
             borderTop: 1,
             borderColor: 'divider',
             justifyContent: 'space-between',
@@ -1250,7 +1312,7 @@ export default function NewProjectPage() {
               endIcon={<ArrowForwardIcon />}
               title={!stepValid ? stepHint[current.id] : undefined}
             >
-              Continue · Step {step + 2} of {STEPS.length}
+              Continue
             </Button>
           )}
         </Stack>

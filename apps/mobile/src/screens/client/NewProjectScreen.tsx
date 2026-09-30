@@ -49,7 +49,6 @@ import {
   suggestProjectTitle,
   type ProjectDetails,
   type ProjectFileRef,
-  type ProjectStepStatus,
   type SurveyService,
 } from '@surveylink/types';
 import type { CreateProjectBody } from '@surveylink/api-client';
@@ -234,18 +233,22 @@ function MultiSelectField({
   );
 }
 
-function statusTone(s: ProjectStepStatus): 'success' | 'warn' | 'neutral' {
-  if (s === 'complete') return 'success';
-  if (s === 'partial') return 'warn';
-  return 'neutral';
-}
-
 type ServiceGroupId = (typeof SURVEY_SERVICE_GROUPS)[number]['id'];
 const SERVICE_GROUPS = SURVEY_SERVICE_GROUPS.map((g) => ({
   id: g.id as ServiceGroupId,
   label: g.label as string,
   services: g.services as readonly SurveyService[],
 }));
+
+const SERVICE_GROUP_META: Record<
+  ServiceGroupId,
+  { icon: 'map' | 'crosshair' | 'navigation' | 'box'; blurb: string }
+> = {
+  survey_services: { icon: 'map', blurb: 'Measured, topo, boundary, as-built' },
+  laser_reality: { icon: 'crosshair', blurb: 'Laser scanning, LiDAR, point clouds' },
+  drone: { icon: 'navigation', blurb: 'Aerial survey, orthomosaics, thermal' },
+  bim_cad: { icon: 'box', blurb: 'Scan-to-BIM, Revit, CAD drafting' },
+};
 
 function groupsWithServices(services: readonly SurveyService[]): ServiceGroupId[] {
   return SERVICE_GROUPS.filter((g) => g.services.some((s) => services.includes(s))).map((g) => g.id);
@@ -496,7 +499,7 @@ export function NewProjectScreen({ navigation }: Props) {
     setError(null);
     const finalDetails: ProjectDetails = {
       ...details,
-      pricingMode: 'open',
+      pricingMode: details.budgetFixedCents ? 'fixed' : 'open',
       estimateMinCents: estimate?.minCents ?? null,
       estimateMaxCents: estimate?.maxCents ?? null,
     };
@@ -562,44 +565,7 @@ export function NewProjectScreen({ navigation }: Props) {
       >
         <Text style={styles.title}>Post a project</Text>
 
-        <View style={styles.rail}>
-          {STEPS.map((s, i) => {
-            const st = progress.steps[s.id];
-            const active = i === step;
-            const tone = statusTone(st);
-            return (
-              <Pressable
-                key={s.id}
-                accessibilityLabel={`Step ${i + 1} of ${STEPS.length}: ${s.label}`}
-                onPress={() => {
-                  setError(null);
-                  setStep(i);
-                }}
-                style={styles.railItem}
-              >
-                <View
-                  style={[
-                    styles.railMark,
-                    tone === 'success' && styles.railMarkOk,
-                    tone === 'warn' && styles.railMarkWarn,
-                    active && styles.railMarkActive,
-                  ]}
-                >
-                  {st === 'complete' && !active ? (
-                    <Feather name="check" size={12} color={colors.ice} />
-                  ) : (
-                    <Text style={[styles.railMarkText, active && { color: colors.ice }]}>{i + 1}</Text>
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-
         <View style={styles.card}>
-          <Text style={styles.stepKicker}>
-            Step {step + 1} of {STEPS.length}
-          </Text>
           <Text style={styles.stepTitle}>{current.label}</Text>
           <Text style={styles.stepBlurb}>{current.blurb}</Text>
 
@@ -733,15 +699,36 @@ export function NewProjectScreen({ navigation }: Props) {
             <View style={styles.panel}>
               <Text style={styles.sectionTitle}>What do you need? *</Text>
               <Text style={styles.hint}>Pick one or more categories, then choose the service types.</Text>
-              <View style={[styles.chipGrid, { marginTop: spacing.md }]}>
-                {SERVICE_GROUPS.map((g) => (
-                  <Chip
-                    key={g.id}
-                    label={g.label}
-                    selected={serviceGroups.includes(g.id)}
-                    onPress={() => toggleServiceGroup(g.id)}
-                  />
-                ))}
+              <View style={styles.tileGrid}>
+                {SERVICE_GROUPS.map((g) => {
+                  const on = serviceGroups.includes(g.id);
+                  const count = services.filter((s) => g.services.includes(s)).length;
+                  const meta = SERVICE_GROUP_META[g.id];
+                  return (
+                    <Pressable
+                      key={g.id}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      onPress={() => toggleServiceGroup(g.id)}
+                      style={[styles.tile, on && styles.tileOn]}
+                    >
+                      <View style={[styles.tileIcon, on && styles.tileIconOn]}>
+                        <Feather name={meta.icon} size={16} color={on ? colors.ice : colors.accent} />
+                      </View>
+                      <Text style={styles.tileTitle} numberOfLines={2}>
+                        {g.label}
+                      </Text>
+                      <Text style={styles.tileBlurb} numberOfLines={2}>
+                        {meta.blurb}
+                      </Text>
+                      {on && count > 0 ? (
+                        <View style={styles.tileCount}>
+                          <Text style={styles.tileCountText}>{count}</Text>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
               </View>
               {SERVICE_GROUPS.filter((g) => serviceGroups.includes(g.id)).map((g) => (
                 <View key={g.id} style={{ marginTop: spacing.md }}>
@@ -882,25 +869,68 @@ export function NewProjectScreen({ navigation }: Props) {
                 </>
               ) : null}
 
-              <View style={styles.estimateCard}>
-                <Text style={styles.estimateKicker}>Recommended price</Text>
+              <View style={styles.buildiCard}>
+                <View style={styles.buildiHead}>
+                  <View style={styles.buildiBadge}>
+                    <Feather name="zap" size={11} color="#fff" />
+                    <Text style={styles.buildiBadgeText}>BUILDI AI</Text>
+                  </View>
+                  <Text style={styles.buildiKicker}>Price recommendation</Text>
+                </View>
                 {estimate ? (
                   <>
-                    <Text style={styles.estimateValue}>
+                    <Text style={styles.buildiRange}>
                       {formatEstimateRange(estimate.minCents, estimate.maxCents)}
                     </Text>
-                    <Text style={styles.estimateBasis}>Based on {estimate.factors.join(' · ')}.</Text>
-                    <Text style={styles.hint}>
-                      An estimate from typical marketplace rates — verified surveyors send their own quotes
-                      after you publish.
+                    <View style={styles.buildiFactors}>
+                      {estimate.factors.map((f) => (
+                        <View key={f} style={styles.buildiFactor}>
+                          <Text style={styles.buildiFactorText}>{f}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={styles.buildiNote}>
+                      BUILDI analysed your scope against typical marketplace rates. Verified surveyors still send
+                      their own quotes after you publish.
                     </Text>
                   </>
                 ) : (
-                  <Text style={styles.estimateBasis}>
-                    Add your services and the approximate building size to see a recommended price.
+                  <Text style={styles.buildiNote}>
+                    Add your services and the approximate building size — BUILDI will recommend a price.
                   </Text>
                 )}
               </View>
+
+              <Text style={[styles.label, { marginTop: spacing.lg }]}>Your budget (USD)</Text>
+              <View style={styles.row2}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  keyboardType="number-pad"
+                  placeholder={
+                    estimate ? String(Math.round((estimate.minCents + estimate.maxCents) / 200)) : '5000'
+                  }
+                  placeholderTextColor={colors.faint}
+                  value={details.budgetFixedCents ? String(Math.round(details.budgetFixedCents / 100)) : ''}
+                  onChangeText={(t) => {
+                    const n = Number(t.replace(/[^0-9]/g, ''));
+                    patchDetails({ budgetFixedCents: n > 0 ? n * 100 : null });
+                  }}
+                />
+                {estimate ? (
+                  <Pressable
+                    style={styles.buildiUse}
+                    onPress={() =>
+                      patchDetails({
+                        budgetFixedCents: Math.round((estimate.minCents + estimate.maxCents) / 200) * 100,
+                      })
+                    }
+                  >
+                    <Feather name="zap" size={13} color={colors.accent} />
+                    <Text style={styles.link}>Use BUILDI&apos;s</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <Text style={styles.hint}>Optional — surveyors see it next to BUILDI&apos;s recommendation.</Text>
             </View>
           )}
 
@@ -943,9 +973,15 @@ export function NewProjectScreen({ navigation }: Props) {
                       ? PROJECT_TIMELINE_LABELS[details.timeline]
                       : '—'}
                 </Text>
-                <Text style={styles.reviewDt}>Recommended price</Text>
+                <Text style={styles.reviewDt}>BUILDI recommendation</Text>
                 <Text style={styles.reviewDd}>
                   {estimate ? formatEstimateRange(estimate.minCents, estimate.maxCents) : '—'}
+                </Text>
+                <Text style={styles.reviewDt}>Your budget</Text>
+                <Text style={styles.reviewDd}>
+                  {details.budgetFixedCents
+                    ? `$${Math.round(details.budgetFixedCents / 100).toLocaleString()}`
+                    : 'Open to quotes'}
                 </Text>
               </View>
 
@@ -1076,28 +1112,13 @@ const styles = StyleSheet.create({
   },
   meterFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 2 },
   scroll: { padding: spacing.xl, paddingBottom: 120 },
-  title: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.4 },
-  rail: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
+  title: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.4,
     marginBottom: spacing.md,
   },
-  railItem: { flex: 1, alignItems: 'center' },
-  railMark: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accentSoft2,
-  },
-  railMarkOk: { backgroundColor: colors.ok, borderColor: colors.ok },
-  railMarkWarn: { backgroundColor: colors.warnSoft, borderColor: colors.warn },
-  railMarkActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  railMarkText: { fontSize: 12, fontWeight: '800', color: colors.accent },
   card: {
     backgroundColor: colors.panel,
     borderRadius: radius.lg,
@@ -1218,23 +1239,83 @@ const styles = StyleSheet.create({
   },
   choiceText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
   choiceTextOn: { color: colors.accent, fontWeight: '800' },
-  estimateCard: {
-    marginTop: spacing.lg,
-    padding: spacing.lg,
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: spacing.md },
+  tile: {
+    width: '48%',
+    flexGrow: 1,
+    padding: 12,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
+  },
+  tileOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  tileIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.accentSoft2,
+    marginBottom: 8,
   },
-  estimateKicker: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+  tileIconOn: { backgroundColor: colors.accent },
+  tileTitle: { fontSize: 13.5, fontWeight: '800', color: colors.text },
+  tileBlurb: { fontSize: 11.5, color: colors.muted, marginTop: 2, lineHeight: 15 },
+  tileCount: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
   },
-  estimateValue: { fontSize: 26, fontWeight: '800', color: colors.text, marginTop: 4 },
-  estimateBasis: { fontSize: 13, color: colors.text, marginTop: 6, lineHeight: 18 },
+  tileCountText: { color: colors.ice, fontSize: 11, fontWeight: '800' },
+  buildiCard: {
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: '#312e81',
+    borderWidth: 1,
+    borderColor: '#5b21b6',
+    ...shadows.sm,
+  },
+  buildiHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  buildiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  buildiBadgeText: { color: '#fff', fontSize: 10.5, fontWeight: '800', letterSpacing: 0.6 },
+  buildiKicker: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600' },
+  buildiRange: { color: '#fff', fontSize: 26, fontWeight: '800', marginTop: 10, letterSpacing: -0.5 },
+  buildiFactors: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  buildiFactor: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  buildiFactorText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  buildiNote: { color: 'rgba(255,255,255,0.8)', fontSize: 12, lineHeight: 17, marginTop: 10 },
+  buildiUse: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+  },
   fileRow: {
     flexDirection: 'row',
     alignItems: 'center',

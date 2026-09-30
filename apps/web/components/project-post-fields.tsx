@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import Checkbox from '@mui/material/Checkbox';
+import Chip from '@mui/material/Chip';
 import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormHelperText from '@mui/material/FormHelperText';
@@ -133,7 +134,17 @@ export function MultiPills<T extends string>({
   );
 }
 
-const MENU_PROPS = { slotProps: { paper: { sx: { maxHeight: 380 } } } };
+/** Keeps long option lists compact: ~6 rows visible, then scroll. */
+export const MENU_PROPS = {
+  slotProps: {
+    paper: {
+      sx: {
+        maxHeight: 260,
+        '& .MuiMenuItem-root': { minHeight: 36, fontSize: 14, py: 0.75 },
+      },
+    },
+  },
+};
 
 /** Checkbox dropdown; pass `groups` to show section headers inside the menu. */
 export function MultiSelectField<T extends string>({
@@ -147,6 +158,7 @@ export function MultiSelectField<T extends string>({
   helperText,
   required,
   disabled,
+  chips,
 }: {
   id: string;
   label: string;
@@ -158,6 +170,8 @@ export function MultiSelectField<T extends string>({
   helperText?: ReactNode;
   required?: boolean;
   disabled?: boolean;
+  /** Show the selection as chips inside the field instead of comma text. */
+  chips?: boolean;
 }) {
   const item = (opt: T) => (
     <MenuItem key={opt} value={opt} dense>
@@ -186,7 +200,22 @@ export function MultiSelectField<T extends string>({
           const next = e.target.value;
           onChange((typeof next === 'string' ? next.split(',') : next) as T[]);
         }}
-        renderValue={(selected) => selected.map((s) => labels[s]).join(', ')}
+        renderValue={(selected) =>
+          chips ? (
+            <Stack direction="row" useFlexGap spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+              {selected.map((s) => (
+                <Chip
+                  key={s}
+                  size="small"
+                  label={labels[s]}
+                  sx={{ bgcolor: 'rgba(113, 104, 246, 0.1)', color: '#3f37c9', fontWeight: 600 }}
+                />
+              ))}
+            </Stack>
+          ) : (
+            selected.map((s) => labels[s]).join(', ')
+          )
+        }
         MenuProps={MENU_PROPS}
       >
         {menuItems}
