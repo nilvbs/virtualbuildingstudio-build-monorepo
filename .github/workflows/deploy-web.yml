@@ -4,6 +4,7 @@ name: Deploy Web
 # Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
 # Vars:    NEXT_PUBLIC_API_URL (e.g. https://staging.bld.online/api)
 #          NEXT_PUBLIC_MAPBOX_TOKEN (public Mapbox token for coverage maps)
+#          NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY (optional; inline Street View, referrer-restricted)
 
 on:
   push:
@@ -76,6 +77,8 @@ jobs:
           NEXT_PUBLIC_AUTH_DEV_MODE: 'false'
           # Inlined at build time — required for landing / coverage Mapbox maps.
           NEXT_PUBLIC_MAPBOX_TOKEN: ${{ vars.NEXT_PUBLIC_MAPBOX_TOKEN }}
+          # Optional — without it, Street View opens Google Maps in a new tab.
+          NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY: ${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${NEXT_PUBLIC_MAPBOX_TOKEN:-}" ]; then
@@ -84,12 +87,18 @@ jobs:
           else
             echo "Mapbox token present for web build."
           fi
+          if [ -z "${NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY:-}" ]; then
+            echo "Google Maps embed key not set; Street View will open in Google Maps."
+          else
+            echo "Google Maps embed key present; inline Street View enabled."
+          fi
           # OpenNext/Next only reliably inlines NEXT_PUBLIC_* from .env* files during
           # `next build`. Process env alone was not making it into the Worker bundle.
           {
             echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}"
             echo "NEXT_PUBLIC_AUTH_DEV_MODE=${NEXT_PUBLIC_AUTH_DEV_MODE:-false}"
             echo "NEXT_PUBLIC_MAPBOX_TOKEN=${NEXT_PUBLIC_MAPBOX_TOKEN:-}"
+            echo "NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY:-}"
           } > .env.production
           pnpm run deploy
 

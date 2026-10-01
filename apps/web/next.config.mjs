@@ -61,7 +61,7 @@ function contentSecurityPolicy() {
     'worker-src': ["'self'", 'blob:'],
     'child-src': ["'self'", 'blob:'],
     'media-src': ["'self'", 'blob:', 'https://*.amazonaws.com'],
-    'frame-src': ["'self'", 'https://*.amazonaws.com'],
+    'frame-src': ["'self'", 'https://*.amazonaws.com', 'https://www.google.com'],
     'object-src': ["'none'"],
     'base-uri': ["'self'"],
     'form-action': ["'self'"],

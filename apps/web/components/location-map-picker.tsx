@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl';
 import { MapPin } from 'lucide-react';
 import { mapboxToken } from '../lib/geocode';
+import { StreetViewButton, StreetViewFrame, hasInlineStreetView } from './street-view';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629];
@@ -75,6 +76,7 @@ export function LocationMapPicker({ lat, lng, label, compact, mapId, onPick }: P
   const [mounted, setMounted] = useState(false);
   const token = mapboxToken();
   const [mapReady, setMapReady] = useState(false);
+  const [street, setStreet] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
   const markerRef = useRef<MapboxMarker | null>(null);
@@ -96,6 +98,10 @@ export function LocationMapPicker({ lat, lng, label, compact, mapId, onPick }: P
     if (la < -90 || la > 90 || ln < -180 || ln > 180) return null;
     return [la, ln];
   }, [lat, lng]);
+
+  useEffect(() => {
+    if (!position) setStreet(false);
+  }, [position]);
 
   const center = position ?? DEFAULT_CENTER;
   const zoom = position ? PICKED_ZOOM : DEFAULT_ZOOM;
@@ -241,6 +247,20 @@ export function LocationMapPicker({ lat, lng, label, compact, mapId, onPick }: P
           </div>
         </div>
       )}
+
+      {position && street && hasInlineStreetView() ? (
+        <StreetViewFrame lat={position[0]} lng={position[1]} className="location-map-street" />
+      ) : null}
+
+      {position ? (
+        <StreetViewButton
+          lat={position[0]}
+          lng={position[1]}
+          open={street && hasInlineStreetView()}
+          onToggle={() => setStreet((v) => !v)}
+          className="location-map-street-toggle"
+        />
+      ) : null}
     </div>
   );
 }

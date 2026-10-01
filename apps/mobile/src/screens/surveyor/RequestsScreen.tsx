@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { SurveyorRequest } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
+import { openStreetView } from '../../lib/street-view';
 import { colors, radius, shadows, spacing } from '../../lib/theme';
 import { AlertBox, Badge, Button } from '../../components/ui';
 import { AppHeader } from '../../components/AppHeader';
@@ -160,6 +161,15 @@ export function RequestsScreen() {
                   <Text style={styles.noteText}>Notes: {item.project.notes}</Text>
                 ) : null}
               </View>
+
+              {item.project.location ? (
+                <Button
+                  label="Street View"
+                  icon="eye"
+                  variant="outline"
+                  onPress={() => openStreetView(item.project.location)}
+                />
+              ) : null}
 
               <Text style={styles.cardMeta}>Requested {formatDate(item.createdAt)}</Text>
 

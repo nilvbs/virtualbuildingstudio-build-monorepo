@@ -10,6 +10,7 @@ import {
   type ProjectStatus,
 } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
+import { openStreetView } from '../../lib/street-view';
 import { colors, radius, shadows, spacing } from '../../lib/theme';
 import { AlertBox, BackButton, Badge, Button } from '../../components/ui';
 import { AppHeader } from '../../components/AppHeader';
@@ -86,6 +87,14 @@ export function ProjectDetailScreen({ route, navigation }: Props) {
                   <Feather name="map-pin" size={16} color={colors.faint} />
                   <Text style={styles.rowText}>{project.locationText}</Text>
                 </View>
+              ) : null}
+              {project.location ? (
+                <Button
+                  label="Street View"
+                  icon="eye"
+                  variant="outline"
+                  onPress={() => openStreetView(project.location)}
+                />
               ) : null}
               <View style={styles.row}>
                 <Feather name="layers" size={16} color={colors.faint} />
