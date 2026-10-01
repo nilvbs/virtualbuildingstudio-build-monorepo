@@ -969,7 +969,7 @@
   overflow: hidden;
   background:
     radial-gradient(ellipse 70% 55% at 12% 18%, rgba(113, 104, 246, 0.14), transparent 60%),
-    radial-gradient(ellipse 60% 50% at 88% 82%, rgba(217, 119, 6, 0.1), transparent 58%),
+    radial-gradient(ellipse 60% 50% at 88% 82%, rgba(20, 184, 166, 0.1), transparent 58%),
     linear-gradient(180deg, #f4f6ff 0%, #ffffff 48%, #f7f8ff 100%);
 }
 
@@ -1075,7 +1075,7 @@
 }
 
 .bld-path-card--surveyor::before {
-  background: linear-gradient(90deg, #d97706, #f5b041);
+  background: linear-gradient(90deg, #0f766e, #2dd4bf);
 }
 
 .bld-path-card:hover {
@@ -1089,10 +1089,10 @@
 }
 
 .bld-path-card--surveyor:hover {
-  border-color: rgba(217, 119, 6, 0.28);
+  border-color: rgba(15, 118, 110, 0.28);
   box-shadow:
     0 28px 64px rgba(15, 44, 82, 0.14),
-    0 8px 20px rgba(217, 119, 6, 0.1);
+    0 8px 20px rgba(15, 118, 110, 0.12);
 }
 
 .bld-path-media {
@@ -1136,7 +1136,7 @@
 .bld-path-card--surveyor .bld-path-media-veil {
   background: linear-gradient(
     185deg,
-    rgba(217, 119, 6, 0.08) 0%,
+    rgba(20, 184, 166, 0.08) 0%,
     rgba(0, 29, 50, 0.28) 100%
   );
 }
@@ -1167,7 +1167,7 @@
 }
 
 .bld-path-card--surveyor .bld-path-badge {
-  color: #b45309;
+  color: #0f766e;
 }
 
 .bld-path-body {
@@ -1206,8 +1206,8 @@
 }
 
 .bld-path-card--surveyor .bld-path-trust {
-  background: rgba(255, 250, 244, 0.92);
-  border-color: rgba(217, 119, 6, 0.14);
+  background: rgba(240, 253, 250, 0.92);
+  border-color: rgba(15, 118, 110, 0.14);
 }
 
 .bld-path-trust li {
@@ -1227,7 +1227,7 @@
 }
 
 .bld-path-card--surveyor .bld-path-trust svg {
-  color: #d97706;
+  color: #0d9488;
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -1258,8 +1258,8 @@
 }
 
 .bld-path-card--surveyor .bld-path-cta {
-  background: #d97706;
-  box-shadow: 0 8px 20px rgba(217, 119, 6, 0.24);
+  background: linear-gradient(135deg, #0f766e, #0d9488);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.26);
 }
 
 .bld-path-card:hover .bld-path-cta {
@@ -1272,8 +1272,8 @@
 }
 
 .bld-path-card--surveyor:hover .bld-path-cta {
-  background: #b45309;
-  box-shadow: 0 10px 24px rgba(180, 83, 9, 0.28);
+  background: linear-gradient(135deg, #115e59, #0f766e);
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.32);
 }
 
 @media (max-width: 767px) {
@@ -2275,9 +2275,9 @@
 }
 
 .bld-service-card:nth-child(2) .bld-service-demand {
-  background: rgba(217, 119, 6, 0.1);
-  border-color: rgba(217, 119, 6, 0.18);
-  color: #b45309;
+  background: rgba(3, 105, 161, 0.08);
+  border-color: rgba(3, 105, 161, 0.16);
+  color: #0369a1;
 }
 
 .bld-service-card:nth-child(3) .bld-service-demand {
