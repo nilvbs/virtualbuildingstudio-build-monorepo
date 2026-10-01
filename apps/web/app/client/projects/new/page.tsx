@@ -33,6 +33,9 @@ import {
   PROJECT_FLOOR_OPTIONS,
   PROJECT_LOD,
   PROJECT_LOD_LABELS,
+  PROJECT_OCCUPANCY,
+  PROJECT_OCCUPANCY_LABELS,
+  PROJECT_OCCUPANCY_SHORT_LABELS,
   PROJECT_POST_BUILDING_STATUSES,
   PROJECT_POST_STEPS,
   PROJECT_POST_TIMELINES,
@@ -44,12 +47,14 @@ import {
   PROJECT_TIMELINE_LABELS,
   SURVEY_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
+  projectAsksOccupancy,
   projectNeedsBimDetails,
   projectNeedsLaserDetails,
   projectPostProgress,
   suggestProjectTitle,
   type ProjectDetails,
   type ProjectFileRef,
+  type ProjectOccupancy,
   type ProjectPropertyType,
   type ProjectTimeline,
   type SurveyService,
@@ -80,6 +85,7 @@ import Chip from '@mui/material/Chip';
 import FormControl from '@mui/material/FormControl';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormHelperText from '@mui/material/FormHelperText';
+import FormLabel from '@mui/material/FormLabel';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
@@ -89,6 +95,8 @@ import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
+import Radio from '@mui/material/Radio';
+import RadioGroup from '@mui/material/RadioGroup';
 import Select from '@mui/material/Select';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
@@ -383,7 +391,8 @@ export default function NewProjectPage() {
         title.trim().length > 0 &&
         descLen >= PROJECT_DESCRIPTION_MIN &&
         Boolean(buildingType) &&
-        Number(areaSqft) > 0
+        Number(areaSqft) > 0 &&
+        (!projectAsksOccupancy(details.buildingStatus) || Boolean(details.occupancy))
       );
     }
     if (id === 'services') return services.length > 0 && details.scopeDeliverables.length > 0;
@@ -395,7 +404,7 @@ export default function NewProjectPage() {
   }, [current.id, title, services, details, descLen, buildingType, areaSqft]);
 
   const stepHint: Record<string, string> = {
-    location: `Add city & state, a title, a ${PROJECT_DESCRIPTION_MIN}+ character description, property type and building size`,
+    location: `Add city & state, a title, a ${PROJECT_DESCRIPTION_MIN}+ character description, property type, building size and whether it is occupied`,
     services: 'Pick at least one service and one deliverable',
     budget: 'Choose when you need the work completed',
   };
@@ -774,14 +783,14 @@ export default function NewProjectPage() {
                           emptyLabel="Not sure"
                           options={PROJECT_POST_BUILDING_STATUSES}
                           labels={PROJECT_BUILDING_STATUS_LABELS}
-                          value={
-                            (PROJECT_POST_BUILDING_STATUSES as readonly string[]).includes(
-                              details.buildingStatus ?? '',
+                          value={details.buildingStatus}
+                          onChange={(s) =>
+                            patchDetails(
+                              projectAsksOccupancy(s)
+                                ? { buildingStatus: s }
+                                : { buildingStatus: s, occupancy: null },
                             )
-                              ? (details.buildingStatus as (typeof PROJECT_POST_BUILDING_STATUSES)[number])
-                              : null
                           }
-                          onChange={(s) => patchDetails({ buildingStatus: s })}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
@@ -821,6 +830,30 @@ export default function NewProjectPage() {
                           </Select>
                         </FormControl>
                       </Grid>
+                      {projectAsksOccupancy(details.buildingStatus) ? (
+                        <Grid size={12}>
+                          <FormControl required>
+                            <FormLabel id="occupancy-label" sx={{ fontWeight: 700, fontSize: 14, color: 'text.primary' }}>
+                              Is the Building Occupied?
+                            </FormLabel>
+                            <RadioGroup
+                              row
+                              aria-labelledby="occupancy-label"
+                              value={details.occupancy ?? ''}
+                              onChange={(_e, v) => patchDetails({ occupancy: v as ProjectOccupancy })}
+                            >
+                              {PROJECT_OCCUPANCY.map((o) => (
+                                <FormControlLabel
+                                  key={o}
+                                  value={o}
+                                  control={<Radio size="small" />}
+                                  label={PROJECT_OCCUPANCY_LABELS[o]}
+                                />
+                              ))}
+                            </RadioGroup>
+                          </FormControl>
+                        </Grid>
+                      ) : null}
                     </Grid>
                   </Stack>
                   <div className="location-split-map">
@@ -1100,6 +1133,7 @@ export default function NewProjectPage() {
                           ] ?? buildingType)
                         : '',
                       details.buildingStatus ? PROJECT_BUILDING_STATUS_LABELS[details.buildingStatus] : '',
+                      details.occupancy ? PROJECT_OCCUPANCY_SHORT_LABELS[details.occupancy] : '',
                       areaSqft ? `${Number(areaSqft).toLocaleString()} sq ft` : '',
                       floors ? floorOptionLabel(Number(floors)) : '',
                     ].filter(Boolean)}

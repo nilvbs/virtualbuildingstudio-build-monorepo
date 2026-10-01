@@ -628,6 +628,7 @@ export function isValidTransition<T extends string>(
 
 export * from './surveyor-portfolio';
 export * from './project-brief';
+export * from './help-faqs';
 
 import type {
   EquipmentId,
@@ -635,7 +636,7 @@ import type {
   SurveyService,
 } from './surveyor-portfolio';
 import { emptyPortfolioDetails } from './surveyor-portfolio';
-import { type ProjectDetails } from './project-brief';
+import { type ProjectDetails, type ProjectOccupancy } from './project-brief';
 
 /** Full surveyor dossier for admin detail view. */
 export interface AdminSurveyorDetail extends AdminSurveyor {
@@ -783,6 +784,8 @@ export interface SurveyorRequest {
     buildingAge: string | null;
     floors: number | null;
     areaSqft: number | null;
+    /** Whether the building is occupied (from the brief). */
+    occupancy: ProjectOccupancy | null;
     neededWithin: string | null;
     notes: string | null;
     status: ProjectStatus;

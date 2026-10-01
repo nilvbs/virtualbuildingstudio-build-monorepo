@@ -17,6 +17,7 @@ import {
   isValidTransition,
   MATCH_STATUS_TRANSITIONS,
   normalizePortfolioDetails,
+  normalizeProjectDetails,
   surveyorProfileCompletion,
 } from '@surveylink/types';
 import type {
@@ -406,6 +407,7 @@ export class ProfilesService {
           buildingAge: m.project.buildingAge,
           floors: m.project.floors,
           areaSqft: m.project.areaSqft,
+          occupancy: normalizeProjectDetails(m.project.details).occupancy,
           neededWithin: m.project.neededWithin,
           notes: m.project.notes,
           status: m.project.status as SurveyorRequest['project']['status'],

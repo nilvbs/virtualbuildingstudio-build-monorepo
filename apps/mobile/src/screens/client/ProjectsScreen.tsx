@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -18,6 +18,12 @@ import {
   type ProjectStatus,
 } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
+import { firstName } from '../../lib/format';
+import {
+  clearProjectDraft,
+  readProjectDraftSummary,
+  type ProjectDraftSummary,
+} from '../../lib/project-draft';
 import { colors, radius, shadows, spacing } from '../../lib/theme';
 import { AlertBox, Badge, Button } from '../../components/ui';
 import { AppHeader } from '../../components/AppHeader';
@@ -46,16 +52,23 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+const OPEN_STATUSES: ProjectStatus[] = ['submitted', 'matching', 'matched', 'confirmed'];
+
 export function ProjectsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [userName, setUserName] = useState('');
+  const [draft, setDraft] = useState<ProjectDraftSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
+    setDraft(await readProjectDraftSummary());
     try {
-      setProjects(await api.getProjects());
+      const [rows, me] = await Promise.all([api.getProjects(), api.me()]);
+      setProjects(rows);
+      setUserName(me.firstName || firstName(me.fullName));
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -67,7 +80,19 @@ export function ProjectsScreen() {
     }, [load]),
   );
 
-  const count = projects?.length ?? 0;
+  const stats = useMemo(() => {
+    const rows = projects ?? [];
+    return {
+      total: rows.length,
+      active: rows.filter((p) => OPEN_STATUSES.includes(p.status)).length,
+      completed: rows.filter((p) => p.status === 'completed').length,
+    };
+  }, [projects]);
+
+  async function discardDraft() {
+    await clearProjectDraft();
+    setDraft(null);
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -94,14 +119,9 @@ export function ProjectsScreen() {
             <View style={styles.intro}>
               <View style={styles.introTop}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>Your projects</Text>
-                  <Text style={styles.sub}>
-                    {projects == null
-                      ? 'Loading…'
-                      : count === 0
-                        ? 'No projects yet'
-                        : `${count} active ${count === 1 ? 'project' : 'projects'}`}
-                  </Text>
+                  <Text style={styles.kicker}>Client workspace</Text>
+                  <Text style={styles.title}>{projects == null ? 'Your projects' : `Hi ${userName || 'there'}`}</Text>
+                  <Text style={styles.sub}>Post a brief and we&apos;ll notify nearby surveyors automatically.</Text>
                 </View>
                 <Button
                   label="Post"
@@ -111,16 +131,90 @@ export function ProjectsScreen() {
                 />
               </View>
             </View>
+
+            <View style={styles.stats}>
+              {([
+                ['All projects', stats.total],
+                ['In progress', stats.active],
+                ['Completed', stats.completed],
+              ] as const).map(([label, value]) => (
+                <View key={label} style={styles.stat}>
+                  <Text style={styles.statLabel}>{label}</Text>
+                  <Text style={styles.statValue}>{projects == null ? '—' : value}</Text>
+                </View>
+              ))}
+            </View>
+
             {error ? (
               <View style={{ marginTop: spacing.md }}>
                 <AlertBox message={error} />
               </View>
+            ) : null}
+
+            {draft ? (
+              <View style={[styles.card, styles.draftCard]}>
+                <View style={styles.cardTop}>
+                  <View style={styles.cardIcon}>
+                    <Feather name="edit-3" size={18} color={colors.accent} />
+                  </View>
+                  <Badge label="Draft" tone="warn" />
+                </View>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {draft.title}
+                </Text>
+                <Text style={styles.cardMeta}>
+                  Saved at {draft.stepLabel}
+                  {draft.savedAt ? ` · ${formatDate(draft.savedAt)}` : ''}
+                </Text>
+                {(draft.locationText || draft.services.length > 0) && (
+                  <View style={styles.facts}>
+                    {draft.locationText ? (
+                      <View style={styles.fact}>
+                        <Feather name="map-pin" size={13} color={colors.faint} />
+                        <Text style={styles.factText}>{draft.locationText}</Text>
+                      </View>
+                    ) : null}
+                    {draft.services.length > 0 ? (
+                      <Text style={styles.services}>
+                        {draft.services
+                          .slice(0, 2)
+                          .map((s) => SURVEY_SERVICE_LABELS[s])
+                          .join(' · ')}
+                        {draft.services.length > 2 ? ` +${draft.services.length - 2}` : ''}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
+                <View style={styles.draftActions}>
+                  <Button
+                    label="Discard"
+                    icon="trash-2"
+                    variant="outline"
+                    onPress={() => void discardDraft()}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label="Continue"
+                    icon="arrow-right"
+                    onPress={() => navigation.navigate('NewProject')}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </View>
+            ) : null}
+
+            {projects && projects.length > 0 ? (
+              <Text style={styles.sectionTitle}>Your projects · {stats.total}</Text>
             ) : null}
           </FadeInUp>
         }
         ListEmptyComponent={
           projects == null ? (
             <ActivityIndicator style={{ marginTop: 48 }} color={colors.accent} />
+          ) : draft ? (
+            <Text style={styles.draftOnly}>
+              No published projects yet — finish your draft when you&apos;re ready.
+            </Text>
           ) : (
             <FadeInUp delay={80}>
               <View style={styles.empty}>
@@ -210,8 +304,33 @@ const styles = StyleSheet.create({
   },
   introTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   postBtn: { paddingHorizontal: 14, minWidth: 96 },
+  kicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
   title: { fontSize: 27, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
-  sub: { color: colors.muted, fontSize: 14, marginTop: 4 },
+  sub: { color: colors.muted, fontSize: 14, marginTop: 4, lineHeight: 20 },
+  stats: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  stat: {
+    flex: 1,
+    backgroundColor: colors.panel,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    ...shadows.sm,
+  },
+  statLabel: { fontSize: 11.5, fontWeight: '700', color: colors.muted },
+  statValue: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: 2 },
+  draftCard: { borderStyle: 'dashed', borderColor: colors.borderStrong },
+  draftActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  draftOnly: { color: colors.muted, fontSize: 13.5, textAlign: 'center', marginTop: spacing.sm },
+  sectionTitle: { fontSize: 15.5, fontWeight: '800', color: colors.text, marginBottom: spacing.md },
   card: {
     backgroundColor: colors.panel,
     borderRadius: radius.lg,

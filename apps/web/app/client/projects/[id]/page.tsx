@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Check, MapPin, Sparkles, UserCheck } from 'lucide-react';
 import {
+  PROJECT_OCCUPANCY_SHORT_LABELS,
   SURVEY_SERVICE_LABELS,
   clientProjectHeadline,
   type ProjectDetail,
@@ -239,6 +240,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         <Detail label="Floors">{project.floors}</Detail>
         <Detail label="Area (sq ft)">
           {project.areaSqft != null ? project.areaSqft.toLocaleString() : null}
+        </Detail>
+        <Detail label="Occupied">
+          {project.details.occupancy ? PROJECT_OCCUPANCY_SHORT_LABELS[project.details.occupancy] : null}
         </Detail>
         <Detail label="Needed within">{timelineLabel}</Detail>
         <Detail label="Notes">{project.notes}</Detail>

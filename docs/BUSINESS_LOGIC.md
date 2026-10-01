@@ -181,7 +181,7 @@ Allowed transitions: `PROJECT_STATUS_TRANSITIONS` in `@surveylink/types`.
 
 ```mermaid
 flowchart LR
-  L["1 Site & property<br/>address → city/state/ZIP + title, description, type, status, size*, floors"] --> S["2 Services<br/>category → types → matching deliverables"]
+  L["1 Site & property<br/>address → city/state/ZIP + title, description, type, status, size*, floors, occupied*"] --> S["2 Services<br/>category → types → matching deliverables"]
   S --> B["3 Timeline & estimate<br/>ASAP / Flexible / date + BUILDI price + optional budget"]
   B --> R["4 Review<br/>files, notes, publish"]
 ```
@@ -189,7 +189,8 @@ flowchart LR
 - **Site & property:**
   - An address is required (city, state, country). Picking one fills city/state/ZIP and names the project after the address until the client edits the title.
   - A short description (≥ 50 chars) is required.
-  - Property type and approximate building size are required. Status is Existing or Under construction; floors come from a dropdown.
+  - Property type and approximate building size are required. **Is the Building Occupied?** (Yes / No / Partially / Not Sure, `details.occupancy`) is required unless the status is **Under construction**, where the question is hidden and cleared. Status is Existing or Under construction (the only statuses that exist; legacy Renovation / Demolition / Unknown / New construction values read back as unset); floors come from a dropdown.
+  - Occupancy is shown on the review step, the client project page, and surveyor request / match cards (`SurveyorRequest.project.occupancy`).
 - **Services:**
   - The client first picks one or more categories (Survey, Laser & Reality Capture, Drone, BIM & CAD), then service types from each category's dropdown.
   - The deliverables dropdown only lists items from `SERVICE_DELIVERABLES` for the chosen types. Removing a type or category drops deliverables that no longer apply.
@@ -246,14 +247,15 @@ Match statuses: `proposed → accepted | declined | cancelled`; `accepted → co
 - **Remote services** is no longer collected in surveyor UI (field may still exist in stored JSON as legacy `false`).
 - Incomplete portfolio blocks receiving / acting on marketplace requests (web gates + matching filters for “live” surveyors).
 - Profile completion % drives UI prompts (`profile-completion`, surveyor shell snooze).
-
-**Key code:** `apps/api/src/profiles/profiles.service.ts`, `apps/web/app/surveyor/profile/page.tsx`
+- Web and mobile editors use the same required fields (`SURVEYOR_PROFILE_COMPLETION_CHECKS`): services, base location + map location, availability, equipment, pricing, years of reality capture, industries, general liability insurance. **Continue** is blocked until the current stage's required fields are filled; "Available for new matches" can only be on at 100%.
+**Key code:** `apps/api/src/profiles/profiles.service.ts`, `apps/web/app/surveyor/profile/page.tsx`, `apps/mobile/src/screens/surveyor/ProfileScreen.tsx`
 
 ---
 
 ## 8. Feedback
 
 - After completed work, client ↔ surveyor can leave feedback (one per direction per match).
+- Available on web and mobile (client project page, surveyor Matches tab): emoji rating, aspect stars, would-recommend, comment (min 10 chars).
 - Product / landing feedback also collected for ops.
 
 **Key code:** `apps/api/src/feedback/feedback.service.ts`
@@ -262,7 +264,8 @@ Match statuses: `proposed → accepted | declined | cancelled`; `accepted → co
 
 ## 9. Helpdesk
 
-- Authenticated users open tickets (workspace-scoped).
+- Authenticated users open tickets (workspace-scoped) on web or mobile (account menu → **Help & support**): category, priority (a blocker forces urgent), subject, details, up to 5 image attachments. Users can reply until the ticket is resolved / closed.
+- Workspace FAQs are shared between web and mobile (`packages/types` `faqsForWorkspace`).
 - Staff assign / reply in admin help desk.
 - Notifications on create / reply.
 
@@ -317,6 +320,9 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-10-01 | Brief cleanup: "Within 3 / 7 / 14 / 30 days" timelines, "Do you already have project data?", provider preferences, experience and minimum rating are removed from the brief entirely (timeline is ASAP / Flexible / Specific date only; old values read back as unset). Surveyor search "Minimum rating" filter is unchanged |
+| 2026-10-01 | Brief: new "Is the Building Occupied?" (Yes / No / Partially / Not Sure) on web and mobile, required except for buildings Under construction (not asked), shown to surveyors on request / match cards and on the client project page. Building status options Renovation, Demolition, Unknown and New construction are removed everywhere |
+| 2026-09-30 | Mobile app matches web. Clients get a project status timeline, all matches, feedback and draft resume. Surveyors get the full brief on request cards with a working-hours timer, a dashboard with pending items, and feedback on matches. Both roles get a help desk (tickets, replies, attachments, FAQs). The mobile portfolio now collects the remaining web-required fields (years of reality capture, insurance, daily capacity, minimum project, travel charges), so it can reach 100% |
 | 2026-09-30 | Brief price step: recommendation branded as **BUILDI AI**. The client can type an optional budget (saved as fixed pricing); leaving it blank keeps open quotes |
 | 2026-09-30 | New brief is now 4 steps: Property is merged into step 1 (Site & property), and the site address is always required (the "not confirmed yet" option is removed). Services are picked as category, then type dropdowns, then a filtered deliverables dropdown. Site access questions are removed |
 | 2026-09-30 | New brief is 5 steps ("Step X of 5"). Location and overview are merged, and the title is auto-named from the address. Services now show only the deliverables relevant to them. Property is simplified (Existing / Under construction, size required, floors dropdown). Timeline is ASAP / Flexible / date. Pricing choice is replaced by a read-only recommended price. Priority, existing-data and provider preferences (verified / experience / rating) are removed |

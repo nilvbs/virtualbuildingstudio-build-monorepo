@@ -12,8 +12,10 @@ import {
   CheckCircle,
   XCircle,
   Navigation,
+  Users,
 } from 'lucide-react';
 import {
+  PROJECT_OCCUPANCY_SHORT_LABELS,
   SURVEY_SERVICE_LABELS,
   type SurveyorRequest,
   type SurveyService,
@@ -248,6 +250,9 @@ function RequestCard({
     project.floors != null ? { icon: <Layers size={13} />, text: `${project.floors} floors` } : null,
     project.areaSqft != null
       ? { icon: <Ruler size={13} />, text: `${project.areaSqft.toLocaleString()} sq ft` }
+      : null,
+    project.occupancy
+      ? { icon: <Users size={13} />, text: PROJECT_OCCUPANCY_SHORT_LABELS[project.occupancy] }
       : null,
     project.neededWithin
       ? { icon: <Clock size={13} />, text: timelineLabel(project.neededWithin) }

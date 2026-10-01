@@ -36,27 +36,38 @@ export const PROJECT_PROPERTY_TYPE_LABELS: Record<ProjectPropertyType, string> =
   other: 'Other',
 };
 
-export const PROJECT_BUILDING_STATUSES = [
-  'existing',
-  'under_construction',
-  'new_construction',
-  'renovation',
-  'demolition',
-  'unknown',
-] as const;
+export const PROJECT_BUILDING_STATUSES = ['existing', 'under_construction'] as const;
 export type ProjectBuildingStatus = (typeof PROJECT_BUILDING_STATUSES)[number];
 
 export const PROJECT_BUILDING_STATUS_LABELS: Record<ProjectBuildingStatus, string> = {
   existing: 'Existing',
   under_construction: 'Under Construction',
-  new_construction: 'New Construction',
-  renovation: 'Renovation',
-  demolition: 'Demolition',
-  unknown: 'Unknown',
 };
 
-/** Statuses offered in the posting wizard (older briefs may hold any PROJECT_BUILDING_STATUSES value). */
-export const PROJECT_POST_BUILDING_STATUSES = ['existing', 'under_construction'] as const;
+export const PROJECT_POST_BUILDING_STATUSES = PROJECT_BUILDING_STATUSES;
+
+export const PROJECT_OCCUPANCY = ['occupied', 'vacant', 'partial', 'not_sure'] as const;
+export type ProjectOccupancy = (typeof PROJECT_OCCUPANCY)[number];
+
+export const PROJECT_OCCUPANCY_LABELS: Record<ProjectOccupancy, string> = {
+  occupied: 'Yes',
+  vacant: 'No',
+  partial: 'Partially',
+  not_sure: 'Not Sure',
+};
+
+/** Short form for chips and summaries. */
+export const PROJECT_OCCUPANCY_SHORT_LABELS: Record<ProjectOccupancy, string> = {
+  occupied: 'Occupied',
+  vacant: 'Vacant',
+  partial: 'Partially occupied',
+  not_sure: 'Occupancy not sure',
+};
+
+/** Occupancy is not asked for buildings under construction. */
+export function projectAsksOccupancy(status: ProjectBuildingStatus | null | undefined): boolean {
+  return status !== 'under_construction';
+}
 
 export const PROJECT_LOCATION_KNOWN = ['yes', 'not_yet'] as const;
 export type ProjectLocationKnown = (typeof PROJECT_LOCATION_KNOWN)[number];
@@ -309,55 +320,16 @@ export function deliverableGroupsForServices(
   })).filter((g) => g.items.length > 0);
 }
 
-export const PROJECT_EXISTING_DATA = ['yes', 'no', 'not_sure'] as const;
-export type ProjectExistingData = (typeof PROJECT_EXISTING_DATA)[number];
-
-export const PROJECT_EXISTING_ASSETS = [
-  'existing_drawings',
-  'cad_files',
-  'revit_model',
-  'point_cloud',
-  'site_photographs',
-  'drone_imagery',
-  'previous_survey',
-  'other',
-] as const;
-export type ProjectExistingAsset = (typeof PROJECT_EXISTING_ASSETS)[number];
-
-export const PROJECT_EXISTING_ASSET_LABELS: Record<ProjectExistingAsset, string> = {
-  existing_drawings: 'Existing drawings',
-  cad_files: 'CAD files',
-  revit_model: 'Revit model',
-  point_cloud: 'Point cloud',
-  site_photographs: 'Site photographs',
-  drone_imagery: 'Drone imagery',
-  previous_survey: 'Previous survey',
-  other: 'Other',
-};
-
-export const PROJECT_TIMELINES = [
-  'asap',
-  'within_3_days',
-  'within_7_days',
-  'within_14_days',
-  'within_30_days',
-  'flexible',
-  'specific_date',
-] as const;
+export const PROJECT_TIMELINES = ['asap', 'flexible', 'specific_date'] as const;
 export type ProjectTimeline = (typeof PROJECT_TIMELINES)[number];
 
 export const PROJECT_TIMELINE_LABELS: Record<ProjectTimeline, string> = {
   asap: 'ASAP',
-  within_3_days: 'Within 3 days',
-  within_7_days: 'Within 7 days',
-  within_14_days: 'Within 14 days',
-  within_30_days: 'Within 30 days',
   flexible: 'Flexible',
   specific_date: 'Specific date',
 };
 
-/** Timeline choices offered in the posting wizard. */
-export const PROJECT_POST_TIMELINES = ['asap', 'flexible', 'specific_date'] as const;
+export const PROJECT_POST_TIMELINES = PROJECT_TIMELINES;
 
 /** Floor counts for the wizard dropdown; the last value means "that many or more". */
 export const PROJECT_FLOOR_OPTIONS = [
@@ -386,35 +358,6 @@ export const PROJECT_PRICING_MODE_LABELS: Record<ProjectPricingMode, string> = {
   fixed: 'Fixed budget',
   range: 'Budget range',
   open: 'Open for proposals',
-};
-
-export const PROJECT_PROVIDER_TYPES = ['individual', 'company', 'either'] as const;
-export type ProjectProviderType = (typeof PROJECT_PROVIDER_TYPES)[number];
-
-export const PROJECT_PROVIDER_TYPE_LABELS: Record<ProjectProviderType, string> = {
-  individual: 'Individual professional',
-  company: 'Company',
-  either: 'Either',
-};
-
-export const PROJECT_EXPERIENCE = ['any', '2_plus', '5_plus', '10_plus'] as const;
-export type ProjectExperience = (typeof PROJECT_EXPERIENCE)[number];
-
-export const PROJECT_EXPERIENCE_LABELS: Record<ProjectExperience, string> = {
-  any: 'Any',
-  '2_plus': '2+ years',
-  '5_plus': '5+ years',
-  '10_plus': '10+ years',
-};
-
-export const PROJECT_MIN_RATINGS = ['any', '4', '4_5', '4_8'] as const;
-export type ProjectMinRating = (typeof PROJECT_MIN_RATINGS)[number];
-
-export const PROJECT_MIN_RATING_LABELS: Record<ProjectMinRating, string> = {
-  any: 'Any',
-  '4': '4+',
-  '4_5': '4.5+',
-  '4_8': '4.8+',
 };
 
 export const PROJECT_COMM_CHANNELS = ['platform', 'email'] as const;
@@ -453,6 +396,7 @@ export interface ProjectDetails {
   siteAccessRequired: ProjectSiteAccessRequired | null;
   siteAccessWindows: ProjectSiteAccessWindow[];
   buildingStatus: ProjectBuildingStatus | null;
+  occupancy: ProjectOccupancy | null;
   siteArea: string;
   yearBuilt: string;
   scanTypes: ProjectScanType[];
@@ -463,8 +407,6 @@ export interface ProjectDetails {
   bimElements: ProjectBimElement[];
   bimDeliverables: ProjectBimDeliverable[];
   scopeDeliverables: ProjectScopeDeliverable[];
-  existingData: ProjectExistingData | null;
-  existingAssets: ProjectExistingAsset[];
   files: ProjectFileRef[];
   timeline: ProjectTimeline | null;
   completionDate: string;
@@ -477,10 +419,6 @@ export interface ProjectDetails {
   /** Recommended price shown to the client at posting time (estimate, not a quote). */
   estimateMinCents: number | null;
   estimateMaxCents: number | null;
-  providerTypes: ProjectProviderType[];
-  verifiedOnly: boolean;
-  experience: ProjectExperience | null;
-  minRating: ProjectMinRating | null;
   specialRequirements: string;
   communication: ProjectCommChannel[];
 }
@@ -497,6 +435,7 @@ export function emptyProjectDetails(): ProjectDetails {
     siteAccessRequired: null,
     siteAccessWindows: [],
     buildingStatus: null,
+    occupancy: null,
     siteArea: '',
     yearBuilt: '',
     scanTypes: [],
@@ -507,8 +446,6 @@ export function emptyProjectDetails(): ProjectDetails {
     bimElements: [],
     bimDeliverables: [],
     scopeDeliverables: [],
-    existingData: null,
-    existingAssets: [],
     files: [],
     timeline: null,
     completionDate: '',
@@ -520,10 +457,6 @@ export function emptyProjectDetails(): ProjectDetails {
     budgetMaxCents: null,
     estimateMinCents: null,
     estimateMaxCents: null,
-    providerTypes: ['either'],
-    verifiedOnly: false,
-    experience: 'any',
-    minRating: 'any',
     specialRequirements: '',
     communication: ['platform', 'email'],
   };
@@ -532,19 +465,36 @@ export function emptyProjectDetails(): ProjectDetails {
 export function normalizeProjectDetails(raw: unknown): ProjectDetails {
   const base = emptyProjectDetails();
   if (!raw || typeof raw !== 'object') return base;
-  const src = raw as Partial<ProjectDetails>;
+  const {
+    existingData: _existingData,
+    existingAssets: _existingAssets,
+    providerTypes: _providerTypes,
+    verifiedOnly: _verifiedOnly,
+    experience: _experience,
+    minRating: _minRating,
+    ...src
+  } = raw as Partial<ProjectDetails> & Record<string, unknown>;
   return {
     ...base,
     ...src,
+    timeline: (PROJECT_TIMELINES as readonly string[]).includes(src.timeline ?? '')
+      ? (src.timeline as ProjectTimeline)
+      : null,
+    buildingStatus: (PROJECT_BUILDING_STATUSES as readonly string[]).includes(src.buildingStatus ?? '')
+      ? (src.buildingStatus as ProjectBuildingStatus)
+      : null,
+    occupancy:
+      src.buildingStatus !== 'under_construction' &&
+      (PROJECT_OCCUPANCY as readonly string[]).includes(src.occupancy ?? '')
+        ? (src.occupancy as ProjectOccupancy)
+        : null,
     siteAccessWindows: Array.isArray(src.siteAccessWindows) ? src.siteAccessWindows : [],
     scanTypes: Array.isArray(src.scanTypes) ? src.scanTypes : [],
     scanOutputs: Array.isArray(src.scanOutputs) ? src.scanOutputs : [],
     bimElements: Array.isArray(src.bimElements) ? src.bimElements : [],
     bimDeliverables: Array.isArray(src.bimDeliverables) ? src.bimDeliverables : [],
     scopeDeliverables: Array.isArray(src.scopeDeliverables) ? src.scopeDeliverables : [],
-    existingAssets: Array.isArray(src.existingAssets) ? src.existingAssets : [],
     files: Array.isArray(src.files) ? src.files : [],
-    providerTypes: Array.isArray(src.providerTypes) ? src.providerTypes : ['either'],
     communication: Array.isArray(src.communication) ? src.communication : ['platform', 'email'],
   };
 }
@@ -780,14 +730,23 @@ export function projectPostProgress(brief: BriefSource): ProjectPostProgress {
   const addressOk =
     locKnown === 'not_yet' ||
     (locKnown === 'yes' && Boolean(d.country.trim() && d.state.trim() && d.city.trim()));
-  const propertyOk = Boolean(brief.buildingType?.trim()) && (brief.areaSqft ?? 0) > 0;
+  const propertyOk =
+    Boolean(brief.buildingType?.trim()) &&
+    (brief.areaSqft ?? 0) > 0 &&
+    (!projectAsksOccupancy(d.buildingStatus) || Boolean(d.occupancy));
   const location = statusFrom(
     addressOk && titleOk && descLen >= PROJECT_DESCRIPTION_MIN && propertyOk,
     titleOk ||
       descLen > 0 ||
       Boolean(brief.locationText?.trim()) ||
       Boolean(brief.location) ||
-      Boolean(brief.buildingType || d.buildingStatus || brief.floors != null || brief.areaSqft != null),
+      Boolean(
+        brief.buildingType ||
+          d.buildingStatus ||
+          d.occupancy ||
+          brief.floors != null ||
+          brief.areaSqft != null,
+      ),
   );
 
   const serviceCount = brief.services?.length ?? 0;

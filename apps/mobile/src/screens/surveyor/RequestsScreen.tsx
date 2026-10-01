@@ -1,31 +1,26 @@
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { SurveyorRequest } from '@surveylink/types';
 import { api, errorMessage } from '../../lib/api';
-import { openStreetView } from '../../lib/street-view';
-import { colors, radius, shadows, spacing } from '../../lib/theme';
-import { AlertBox, Badge, Button } from '../../components/ui';
+import { firstName } from '../../lib/format';
+import { colors, radius, spacing } from '../../lib/theme';
+import { AlertBox, Button } from '../../components/ui';
 import { AppHeader } from '../../components/AppHeader';
 import { FadeInUp } from '../../components/motion';
+import { SurveyorProjectCard } from '../../components/SurveyorProjectCard';
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+function introCopy(count: number): string {
+  if (count === 0) return 'You’re all caught up — new fitted projects will land here.';
+  if (count === 1) return 'You’ve got a project waiting. Take a look and accept if it’s a fit.';
+  return `You’ve got ${count} projects waiting. Review each one and accept the ones that fit.`;
 }
 
 export function RequestsScreen() {
   const [requests, setRequests] = useState<SurveyorRequest[] | null>(null);
+  const [userName, setUserName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
@@ -33,8 +28,9 @@ export function RequestsScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const rows = await api.getSurveyorRequests();
+      const [rows, me] = await Promise.all([api.getSurveyorRequests(), api.me()]);
       setRequests(rows);
+      setUserName(me.fullName ?? '');
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -43,14 +39,22 @@ export function RequestsScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      const id = setInterval(() => {
+        void api
+          .getSurveyorRequests()
+          .then(setRequests)
+          .catch(() => undefined);
+      }, 20_000);
+      return () => clearInterval(id);
     }, [load]),
   );
 
-  const accept = useCallback(async (matchId: string) => {
+  const act = useCallback(async (matchId: string, kind: 'accept' | 'decline') => {
     setActingId(matchId);
     setError(null);
     try {
-      await api.acceptMatch(matchId);
+      if (kind === 'accept') await api.acceptMatch(matchId);
+      else await api.declineMatch(matchId);
       setRequests((prev) => (prev ?? []).filter((row) => row.matchId !== matchId));
     } catch (err) {
       setError(errorMessage(err));
@@ -59,18 +63,7 @@ export function RequestsScreen() {
     }
   }, []);
 
-  const decline = useCallback(async (matchId: string) => {
-    setActingId(matchId);
-    setError(null);
-    try {
-      await api.declineMatch(matchId);
-      setRequests((prev) => (prev ?? []).filter((row) => row.matchId !== matchId));
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setActingId(null);
-    }
-  }, []);
+  const count = requests?.length ?? 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -94,11 +87,18 @@ export function RequestsScreen() {
         ListHeaderComponent={
           <FadeInUp delay={30}>
             <View style={styles.intro}>
-              <Text style={styles.title}>My Requests</Text>
-              <Text style={styles.sub}>Review project requests and accept or decline.</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>Hi {firstName(userName)}</Text>
+                {count > 0 ? (
+                  <View style={styles.count}>
+                    <Text style={styles.countText}>{count}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={styles.sub}>{introCopy(count)}</Text>
             </View>
             {error ? (
-              <View style={{ marginTop: spacing.md }}>
+              <View style={{ marginBottom: spacing.md }}>
                 <AlertBox message={error} />
               </View>
             ) : null}
@@ -114,70 +114,24 @@ export function RequestsScreen() {
                   <Feather name="inbox" size={26} color={colors.accent} />
                 </View>
                 <Text style={styles.emptyTitle}>No pending requests</Text>
-                <Text style={styles.emptyCopy}>
-                  New project requests will appear here for your decision.
-                </Text>
+                <Text style={styles.emptyCopy}>When a project is matched to you, it will appear here.</Text>
               </View>
             </FadeInUp>
           )
         }
         renderItem={({ item, index }) => (
           <FadeInUp delay={60 + Math.min(index, 6) * 55}>
-            <View style={styles.card}>
-              <View style={styles.rowTop}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{item.project.title}</Text>
-                  <Text style={styles.cardMeta}>
-                    {item.client.username}
-                    {item.client.companyName ? ` · ${item.client.companyName}` : ''}
-                  </Text>
-                </View>
-                <Badge label={item.status} tone="warn" />
-              </View>
-
-              <View style={styles.details}>
-                {item.project.locationText ? (
-                  <Text style={styles.detailText}>Location: {item.project.locationText}</Text>
-                ) : null}
-                {item.project.buildingType ? (
-                  <Text style={styles.detailText}>
-                    Building: {item.project.buildingType}
-                    {item.project.buildingAge ? ` · ${item.project.buildingAge}` : ''}
-                  </Text>
-                ) : null}
-                {item.project.floors != null ? (
-                  <Text style={styles.detailText}>Floors: {item.project.floors}</Text>
-                ) : null}
-                {item.project.areaSqft != null ? (
-                  <Text style={styles.detailText}>Area: {item.project.areaSqft.toLocaleString()} sq ft</Text>
-                ) : null}
-                {item.project.neededWithin ? (
-                  <Text style={styles.detailText}>Timeline: {item.project.neededWithin}</Text>
-                ) : null}
-                {item.project.services.length > 0 ? (
-                  <Text style={styles.detailText}>Services: {item.project.services.join(', ')}</Text>
-                ) : null}
-                {item.project.notes ? (
-                  <Text style={styles.noteText}>Notes: {item.project.notes}</Text>
-                ) : null}
-              </View>
-
-              {item.project.location ? (
-                <Button
-                  label="Street View"
-                  icon="eye"
-                  variant="outline"
-                  onPress={() => openStreetView(item.project.location)}
-                />
-              ) : null}
-
-              <Text style={styles.cardMeta}>Requested {formatDate(item.createdAt)}</Text>
-
+            <SurveyorProjectCard
+              request={item}
+              pill={{ label: 'Incoming', tone: 'warn' }}
+              clientPrefix="From"
+              showTimer
+            >
               <View style={styles.actions}>
                 <Button
                   label="Accept"
                   icon="check-circle"
-                  onPress={() => accept(item.matchId)}
+                  onPress={() => void act(item.matchId, 'accept')}
                   busy={actingId === item.matchId}
                   style={{ flex: 1 }}
                 />
@@ -185,12 +139,12 @@ export function RequestsScreen() {
                   label="Decline"
                   icon="x-circle"
                   variant="outline"
-                  onPress={() => decline(item.matchId)}
-                  busy={actingId === item.matchId}
+                  onPress={() => void act(item.matchId, 'decline')}
+                  disabled={actingId === item.matchId}
                   style={{ flex: 1 }}
                 />
               </View>
-            </View>
+            </SurveyorProjectCard>
           </FadeInUp>
         )}
       />
@@ -209,29 +163,19 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.md,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { fontSize: 27, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
-  sub: { color: colors.muted, fontSize: 14, marginTop: 4 },
-  card: {
-    backgroundColor: colors.panel,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    gap: spacing.md,
-    ...shadows.sm,
+  count: {
+    minWidth: 26,
+    height: 26,
+    paddingHorizontal: 8,
+    borderRadius: 13,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rowTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  cardTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
-  cardMeta: { color: colors.muted, marginTop: 3, fontSize: 13 },
-  details: { gap: 5 },
-  detailText: { color: colors.text, fontSize: 13.5, lineHeight: 20 },
-  noteText: { color: colors.text, fontSize: 13.5, lineHeight: 20 },
+  countText: { color: colors.ice, fontWeight: '800', fontSize: 13 },
+  sub: { color: colors.muted, fontSize: 14, marginTop: 4, lineHeight: 20 },
   actions: { flexDirection: 'row', gap: spacing.sm },
   empty: {
     marginTop: 32,

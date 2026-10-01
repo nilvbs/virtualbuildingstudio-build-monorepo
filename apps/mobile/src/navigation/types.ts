@@ -1,7 +1,7 @@
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NavigatorScreenParams } from '@react-navigation/native';
-import type { WorkspaceRole } from '@surveylink/types';
+import type { HelpTicketWorkspace, WorkspaceRole } from '@surveylink/types';
 
 export type ClientTabParamList = {
   Projects: undefined;
@@ -26,6 +26,7 @@ export type RootStackParamList = {
   ProjectSurveyors: { id: string };
   NewProject: undefined;
   PersonalProfile: { role: WorkspaceRole };
+  HelpDesk: { workspace: HelpTicketWorkspace };
 };
 
 export type RootNav = NativeStackNavigationProp<RootStackParamList>;

@@ -32,6 +32,9 @@ import {
   PROJECT_FLOOR_OPTIONS,
   PROJECT_LOD,
   PROJECT_LOD_LABELS,
+  PROJECT_OCCUPANCY,
+  PROJECT_OCCUPANCY_LABELS,
+  PROJECT_OCCUPANCY_SHORT_LABELS,
   PROJECT_POST_BUILDING_STATUSES,
   PROJECT_POST_STEPS,
   PROJECT_POST_TIMELINES,
@@ -43,6 +46,7 @@ import {
   PROJECT_TIMELINE_LABELS,
   SURVEY_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
+  projectAsksOccupancy,
   projectNeedsBimDetails,
   projectNeedsLaserDetails,
   projectPostProgress,
@@ -53,13 +57,13 @@ import {
 } from '@surveylink/types';
 import type { CreateProjectBody } from '@surveylink/api-client';
 import { api, errorMessage } from '../../lib/api';
+import { PROJECT_DRAFT_KEY as DRAFT_KEY } from '../../lib/project-draft';
 import { colors, radius, shadows, spacing } from '../../lib/theme';
 import { AlertBox, BackButton, Button } from '../../components/ui';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NewProject'>;
 
-const DRAFT_KEY = 'bld.mobile.projectPostDraft.v1';
 /** Bump when PROJECT_POST_STEPS changes so saved step indexes are not misapplied. */
 const DRAFT_LAYOUT = 3;
 const STEPS = PROJECT_POST_STEPS;
@@ -120,6 +124,39 @@ function ChoiceRow({
           <Text style={[styles.choiceText, value === o.value && styles.choiceTextOn]}>{o.label}</Text>
         </Pressable>
       ))}
+    </View>
+  );
+}
+
+function RadioRow({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ value: string; label: string }>;
+  value: string | null | undefined;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <View style={styles.radioWrap} accessibilityRole="radiogroup">
+      {options.map((o) => {
+        const on = value === o.value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            style={styles.radioItem}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: on }}
+            hitSlop={6}
+          >
+            <View style={styles.radioOuter}>
+              {on ? <View style={styles.radioInner} /> : null}
+            </View>
+            <Text style={styles.radioText}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -358,6 +395,7 @@ export function NewProjectScreen({ navigation }: Props) {
       DRAFT_KEY,
       JSON.stringify({
         layout: DRAFT_LAYOUT,
+        savedAt: new Date().toISOString(),
         step,
         title,
         autoTitle: autoTitleRef.current,
@@ -423,7 +461,8 @@ export function NewProjectScreen({ navigation }: Props) {
         title.trim().length > 0 &&
         descLen >= PROJECT_DESCRIPTION_MIN &&
         Boolean(buildingType) &&
-        Number(areaSqft) > 0
+        Number(areaSqft) > 0 &&
+        (!projectAsksOccupancy(details.buildingStatus) || Boolean(details.occupancy))
       );
     }
     if (id === 'services') return services.length > 0 && details.scopeDeliverables.length > 0;
@@ -435,7 +474,7 @@ export function NewProjectScreen({ navigation }: Props) {
   }, [current.id, title, services, details, descLen, buildingType, areaSqft]);
 
   const stepHint: Record<string, string> = {
-    location: `Add city & state, a title, a ${PROJECT_DESCRIPTION_MIN}+ character description, property type and size.`,
+    location: `Add city & state, a title, a ${PROJECT_DESCRIPTION_MIN}+ character description, property type, size and whether the building is occupied.`,
     services: 'Pick at least one service and one deliverable.',
     budget: 'Choose when you need the work completed (dates as YYYY-MM-DD, today or later).',
   };
@@ -663,12 +702,30 @@ export function NewProjectScreen({ navigation }: Props) {
               <Text style={[styles.label, { marginTop: spacing.md }]}>Building status</Text>
               <ChoiceRow
                 value={details.buildingStatus}
-                onChange={(v) => patchDetails({ buildingStatus: v as ProjectDetails['buildingStatus'] })}
+                onChange={(v) => {
+                  const status = v as ProjectDetails['buildingStatus'];
+                  patchDetails(
+                    projectAsksOccupancy(status)
+                      ? { buildingStatus: status }
+                      : { buildingStatus: status, occupancy: null },
+                  );
+                }}
                 options={PROJECT_POST_BUILDING_STATUSES.map((s) => ({
                   value: s,
                   label: PROJECT_BUILDING_STATUS_LABELS[s],
                 }))}
               />
+
+              {projectAsksOccupancy(details.buildingStatus) ? (
+                <>
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>Is the Building Occupied? *</Text>
+                  <RadioRow
+                    value={details.occupancy}
+                    onChange={(v) => patchDetails({ occupancy: v as ProjectDetails['occupancy'] })}
+                    options={PROJECT_OCCUPANCY.map((o) => ({ value: o, label: PROJECT_OCCUPANCY_LABELS[o] }))}
+                  />
+                </>
+              ) : null}
 
               <View style={styles.row2}>
                 <View style={{ flex: 1 }}>
@@ -959,6 +1016,7 @@ export function NewProjectScreen({ navigation }: Props) {
                         buildingType)
                       : '',
                     details.buildingStatus ? PROJECT_BUILDING_STATUS_LABELS[details.buildingStatus] : '',
+                    details.occupancy ? PROJECT_OCCUPANCY_SHORT_LABELS[details.occupancy] : '',
                     areaSqft ? `${Number(areaSqft).toLocaleString()} sq ft` : '',
                     floors ? floorOptionLabel(Number(floors)) : '',
                   ]
@@ -1225,6 +1283,19 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12.5, color: colors.muted, fontWeight: '600' },
   chipTextOn: { color: colors.accent },
   choiceWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  radioWrap: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 10, marginTop: 2 },
+  radioItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.navy },
+  radioText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   choiceBtn: {
     borderWidth: 1,
     borderColor: colors.border,

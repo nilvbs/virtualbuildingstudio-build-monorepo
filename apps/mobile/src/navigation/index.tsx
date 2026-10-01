@@ -18,6 +18,7 @@ import { DashboardScreen } from '../screens/surveyor/DashboardScreen';
 import { ProfileScreen as PortfolioScreen } from '../screens/surveyor/ProfileScreen';
 import { MatchesScreen } from '../screens/surveyor/MatchesScreen';
 import { RequestsScreen } from '../screens/surveyor/RequestsScreen';
+import { HelpDeskScreen } from '../screens/HelpDeskScreen';
 import type { ClientTabParamList, RootStackParamList, SurveyorTabParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -144,6 +145,7 @@ export function RootNavigator() {
         <Stack.Screen name="ProjectSurveyors" component={ProjectSurveyorsScreen} />
         <Stack.Screen name="NewProject" component={NewProjectScreen} />
         <Stack.Screen name="PersonalProfile" component={StackPersonalProfile} />
+        <Stack.Screen name="HelpDesk" component={HelpDeskScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -67,6 +67,12 @@ export function AppHeader({ showLogout = false, showAccountMenu = false }: Props
     navigation.navigate('PersonalProfile', { role });
   }
 
+  async function openHelpDesk() {
+    setMenuOpen(false);
+    const role = (await getActiveRole()) ?? 'surveyor';
+    navigation.navigate('HelpDesk', { workspace: role === 'client' ? 'client' : 'surveyor' });
+  }
+
   const showMenu = showAccountMenu || showLogout;
   const photo = avatarUrl(user?.avatarKey);
 
@@ -100,6 +106,10 @@ export function AppHeader({ showLogout = false, showAccountMenu = false }: Props
             <Pressable style={styles.menuItem} onPress={() => void openPersonalProfile()}>
               <Feather name="user" size={16} color={colors.navy} />
               <Text style={styles.menuText}>Personal profile</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={() => void openHelpDesk()}>
+              <Feather name="life-buoy" size={16} color={colors.navy} />
+              <Text style={styles.menuText}>Help & support</Text>
             </Pressable>
             <View style={styles.menuDivider} />
             <Pressable style={styles.menuItem} onPress={() => void signOut()}>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -20,6 +20,8 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   AVAILABILITY_LABELS,
   AVAILABILITY_OPTIONS,
+  DAILY_CAPTURE_CAPACITIES,
+  DAILY_CAPTURE_CAPACITY_LABELS,
   EQUIPMENT_GROUPS,
   EQUIPMENT_LABELS,
   INDUSTRIES_SERVED,
@@ -28,12 +30,14 @@ import {
   PORTFOLIO_LANGUAGES,
   SURVEY_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
+  SURVEYOR_PROFILE_COMPLETION_CHECKS,
   emptyPortfolioDetails,
   normalizePortfolioDetails,
   surveyorProfileCompletion,
   type AccountType,
   type AvailabilityOption,
   type CompanyIdentity,
+  type DailyCaptureCapacity,
   type EquipmentId,
   type IndividualIdentity,
   type IndustryServed,
@@ -41,6 +45,7 @@ import {
   type SurveyService,
   type SurveyorPortfolioDetails,
   type SurveyorProfile,
+  type SurveyorProfileCompletionKey,
 } from '@surveylink/types';
 import { ApiError, api, errorMessage } from '../../lib/api';
 import { colors, radius, shadows, spacing } from '../../lib/theme';
@@ -51,13 +56,39 @@ function toggleInList<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
 }
 
-const PROFILE_STEPS = [
-  { id: 'services', label: 'Services', blurb: 'What you deliver' },
-  { id: 'coverage', label: 'Coverage', blurb: 'Where you work' },
-  { id: 'commercial', label: 'Rates & kit', blurb: 'Pricing and gear' },
-  { id: 'work', label: 'Showcase', blurb: 'Languages & sectors' },
-  { id: 'identity', label: 'You', blurb: 'Your story' },
-] as const;
+function dollarsFromCents(cents: number | null | undefined): string {
+  return cents == null ? '' : String(Math.round(cents / 100));
+}
+
+function centsFromDollars(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+}
+
+const PROFILE_STEPS: {
+  id: 'services' | 'coverage' | 'commercial' | 'work' | 'identity';
+  label: string;
+  blurb: string;
+  keys: SurveyorProfileCompletionKey[];
+}[] = [
+  { id: 'services', label: 'Services', blurb: 'What you deliver', keys: ['services'] },
+  {
+    id: 'coverage',
+    label: 'Coverage',
+    blurb: 'Where you work',
+    keys: ['baseCity', 'location', 'availability'],
+  },
+  { id: 'commercial', label: 'Rates & kit', blurb: 'Pricing and gear', keys: ['equipment', 'pricing'] },
+  {
+    id: 'work',
+    label: 'Showcase',
+    blurb: 'Sectors & credentials',
+    keys: ['yearsRealityCapture', 'industries', 'generalLiabilityInsurance'],
+  },
+  { id: 'identity', label: 'You', blurb: 'Your story', keys: [] },
+];
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -126,7 +157,6 @@ export function ProfileScreen() {
   const [isMatchable, setIsMatchable] = useState(false);
   const [details, setDetails] = useState<SurveyorPortfolioDetails>(emptyPortfolioDetails());
   const [mediaBusy, setMediaBusy] = useState<string | null>(null);
-
   const hydrate = useCallback((p: SurveyorProfile | null, type: AccountType) => {
     if (!p) {
       setHasProfile(false);
@@ -198,6 +228,24 @@ export function ProfileScreen() {
     });
   }, [services, equipment, baseCity, lat, lng, dayRate, hourlyRate, details]);
 
+  const missingKeys = useMemo(() => new Set(liveCompletion.missing), [liveCompletion.missing]);
+  const stepComplete = PROFILE_STEPS.map((s) => s.keys.every((k) => !missingKeys.has(k)));
+
+  /** Continue only advances when the current stage has its required fields. */
+  function tryContinue() {
+    const keys = PROFILE_STEPS[step]?.keys ?? [];
+    const labels = SURVEYOR_PROFILE_COMPLETION_CHECKS.filter(
+      (c) => keys.includes(c.key) && missingKeys.has(c.key),
+    ).map((c) => c.label);
+    if (labels.length > 0) {
+      setInfo(null);
+      setError(`Fill these before continuing: ${labels.join(', ')}.`);
+      return;
+    }
+    setError(null);
+    goStep(step + 1, setStep);
+  }
+
   function patchDetails(patch: Partial<SurveyorPortfolioDetails>) {
     setDetails((current) => ({ ...current, ...patch, currency: 'USD' }));
   }
@@ -249,7 +297,7 @@ export function ProfileScreen() {
       dayRateCents: dayRate ? Math.round(Number(dayRate) * 100) : undefined,
       location: hasLocation ? { lat: latN, lng: lngN } : undefined,
       details: nextDetails,
-      isMatchable: extra.isMatchable ?? isMatchable,
+      isMatchable: liveCompletion.complete ? (extra.isMatchable ?? isMatchable) : false,
     };
   }
 
@@ -369,23 +417,40 @@ export function ProfileScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.stepper}
           >
-            {PROFILE_STEPS.map((item, i) => (
+            {PROFILE_STEPS.map((item, i) => {
+              const done = item.keys.length > 0 && stepComplete[i];
+              const needs = item.keys.length > 0 && !stepComplete[i] && i < step;
+              return (
               <Pressable
                 key={item.id}
                 style={[
                   styles.stepItem,
                   i === step && styles.stepItemOn,
-                  i < step && styles.stepItemDone,
+                  done && styles.stepItemDone,
+                  needs && styles.stepItemNeeds,
                 ]}
                 onLayout={(e) => {
                   stepOffsets.current[i] = e.nativeEvent.layout.x;
                 }}
                 onPress={() => goStep(i, setStep)}
               >
-                <View style={[styles.stepIndex, i === step && styles.stepIndexOn]}>
-                  <Text style={[styles.stepIndexText, i === step && styles.stepIndexTextOn]}>
-                    {i < step ? '✓' : i + 1}
-                  </Text>
+                <View
+                  style={[
+                    styles.stepIndex,
+                    done && styles.stepIndexDone,
+                    needs && styles.stepIndexNeeds,
+                    i === step && styles.stepIndexOn,
+                  ]}
+                >
+                  {done && i !== step ? (
+                    <Feather name="check" size={14} color={colors.ok} />
+                  ) : needs ? (
+                    <Feather name="alert-triangle" size={13} color={colors.warn} />
+                  ) : (
+                    <Text style={[styles.stepIndexText, i === step && styles.stepIndexTextOn]}>
+                      {i + 1}
+                    </Text>
+                  )}
                 </View>
                 <View>
                   <Text style={[styles.stepLabel, i === step && styles.stepLabelOn]}>
@@ -394,7 +459,8 @@ export function ProfileScreen() {
                   <Text style={styles.stepBlurb}>{item.blurb}</Text>
                 </View>
               </Pressable>
-            ))}
+              );
+            })}
           </ScrollView>
 
           {error ? <AlertBox message={error} /> : null}
@@ -460,6 +526,20 @@ export function ProfileScreen() {
                 onChangeText={setLng}
                 keyboardType="decimal-pad"
               />
+              <Text style={styles.section}>Daily capture capacity</Text>
+              <ChipGrid
+                options={DAILY_CAPTURE_CAPACITIES}
+                labels={DAILY_CAPTURE_CAPACITY_LABELS}
+                selected={details.dailyCaptureCapacity ? [details.dailyCaptureCapacity] : []}
+                onToggle={(id) =>
+                  patchDetails({
+                    dailyCaptureCapacity:
+                      details.dailyCaptureCapacity === id ? null : (id as DailyCaptureCapacity),
+                  })
+                }
+              />
+
+              <Text style={styles.section}>Travel</Text>
               <View style={styles.checkRow}>
                 {(
                   [
@@ -517,6 +597,49 @@ export function ProfileScreen() {
                 onChangeText={setDayRate}
                 keyboardType="number-pad"
               />
+              <Field
+                label="Minimum project value"
+                icon="dollar-sign"
+                value={dollarsFromCents(details.minimumProjectCents)}
+                onChangeText={(v) => patchDetails({ minimumProjectCents: centsFromDollars(v) })}
+                keyboardType="number-pad"
+              />
+
+              <Text style={styles.subLabel}>Travel charges</Text>
+              <View style={styles.chips}>
+                {(
+                  [
+                    ['included', 'Included'],
+                    ['extra', 'Extra'],
+                  ] as const
+                ).map(([value, label]) => {
+                  const on = details.travelCharges === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() =>
+                        patchDetails({
+                          travelCharges: value,
+                          travelExtraCents: value === 'extra' ? details.travelExtraCents : null,
+                        })
+                      }
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {details.travelCharges === 'extra' ? (
+                <Field
+                  label="Extra travel cost"
+                  icon="dollar-sign"
+                  value={dollarsFromCents(details.travelExtraCents)}
+                  onChangeText={(v) => patchDetails({ travelExtraCents: centsFromDollars(v) })}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                />
+              ) : null}
 
               {EQUIPMENT_GROUPS.map((group) => (
                 <View key={group.id}>
@@ -532,16 +655,21 @@ export function ProfileScreen() {
             </>
           ) : step === 3 ? (
             <>
-              <Text style={styles.section}>Languages</Text>
-              <ChipGrid
-                options={PORTFOLIO_LANGUAGES}
-                labels={PORTFOLIO_LANGUAGE_LABELS}
-                selected={details.languages}
-                onToggle={(lang) =>
+              <Text style={styles.section}>Experience in reality capture</Text>
+              <Field
+                label="Years scanning on site"
+                icon="clock"
+                value={details.yearsRealityCapture != null ? String(details.yearsRealityCapture) : ''}
+                onChangeText={(v) => {
+                  const raw = v.trim();
+                  const n = Number(raw);
                   patchDetails({
-                    languages: toggleInList(details.languages, lang as PortfolioLanguage),
-                  })
-                }
+                    yearsRealityCapture:
+                      raw === '' || !Number.isFinite(n) ? null : Math.min(80, Math.max(0, Math.round(n))),
+                  });
+                }}
+                keyboardType="number-pad"
+                placeholder="e.g. 8"
               />
 
               <Text style={styles.section}>Industries served</Text>
@@ -552,6 +680,40 @@ export function ProfileScreen() {
                 onToggle={(industry) =>
                   patchDetails({
                     industries: toggleInList(details.industries, industry as IndustryServed),
+                  })
+                }
+              />
+
+              <Text style={styles.section}>General liability insurance</Text>
+              <Text style={styles.hint}>Required for matching on commercial work.</Text>
+              <View style={[styles.chips, { marginTop: 8 }]}>
+                {(
+                  [
+                    [true, 'Yes'],
+                    [false, 'No'],
+                  ] as const
+                ).map(([value, label]) => {
+                  const on = details.generalLiabilityInsurance === value;
+                  return (
+                    <Pressable
+                      key={label}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => patchDetails({ generalLiabilityInsurance: value })}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.section}>Languages</Text>
+              <ChipGrid
+                options={PORTFOLIO_LANGUAGES}
+                labels={PORTFOLIO_LANGUAGE_LABELS}
+                selected={details.languages}
+                onToggle={(lang) =>
+                  patchDetails({
+                    languages: toggleInList(details.languages, lang as PortfolioLanguage),
                   })
                 }
               />
@@ -705,7 +867,7 @@ export function ProfileScreen() {
               <Button
                 label="Continue"
                 style={{ flex: 1 }}
-                onPress={() => goStep(step + 1, setStep)}
+                onPress={tryContinue}
               />
             ) : (
               <Button
@@ -754,6 +916,9 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   stepItemDone: { borderColor: 'rgba(14,159,110,0.28)' },
+  stepItemNeeds: { borderColor: 'rgba(217,119,6,0.4)' },
+  stepIndexDone: { backgroundColor: colors.okSoft },
+  stepIndexNeeds: { backgroundColor: colors.warnSoft },
   stepIndex: {
     width: 28,
     height: 28,
@@ -812,6 +977,8 @@ const styles = StyleSheet.create({
   chipText: { color: colors.text, fontSize: 13, fontWeight: '600' },
   chipTextOn: { color: colors.ice },
   checkRow: { gap: 10, marginTop: 8, marginBottom: 4 },
+  hint: { color: colors.muted, fontSize: 12.5, lineHeight: 17, marginTop: 6 },
+  subLabel: { color: colors.text, fontWeight: '700', fontSize: 14, marginTop: 16, marginBottom: 8 },
   checkItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   checkLabel: { color: colors.text, fontWeight: '600', fontSize: 14 },
   bio: { minHeight: 96, textAlignVertical: 'top', paddingTop: 12 },
