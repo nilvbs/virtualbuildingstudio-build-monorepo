@@ -29,3 +29,6 @@ export function resolveApiUrl(): string {
 }
 
 export const API_URL = resolveApiUrl();
+
+/** Public web app, used for legal pages opened from the app. */
+export const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL || 'https://staging.bld.online').replace(/\/$/, '');

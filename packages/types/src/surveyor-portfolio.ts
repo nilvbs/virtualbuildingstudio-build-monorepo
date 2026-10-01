@@ -242,6 +242,7 @@ export const INDUSTRIES_SERVED = [
   'government',
   'retail',
   'infrastructure',
+  'historic_monuments',
 ] as const;
 export type IndustryServed = (typeof INDUSTRIES_SERVED)[number];
 
@@ -257,6 +258,7 @@ export const INDUSTRY_LABELS: Record<IndustryServed, string> = {
   government: 'Government',
   retail: 'Retail',
   infrastructure: 'Infrastructure',
+  historic_monuments: 'Historic Monuments',
 };
 
 export const DOCUMENT_TYPES = [

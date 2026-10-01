@@ -664,13 +664,17 @@ export default function OnboardingPage() {
                 />
                 <span>
                   <LordIcon name="document" size={18} trigger="hover" />
-                  <strong>I accept the Terms & Conditions</strong>
+                  <strong>I accept the Terms & Conditions and Privacy Policy</strong>
                   <small>
                     Required. Review the{' '}
                     <a href="/terms" target="_blank" rel="noreferrer">
                       Terms & Conditions
+                    </a>{' '}
+                    and{' '}
+                    <a href="/privacy" target="_blank" rel="noreferrer">
+                      Privacy Policy
                     </a>
-                    .
+                    . We never sell or share your personal data with third parties.
                   </small>
                 </span>
               </label>

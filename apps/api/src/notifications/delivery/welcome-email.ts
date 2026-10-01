@@ -38,7 +38,7 @@ export function buildWelcomeEmail(input: {
 }): WelcomeEmailContent {
   const name = firstName(input.fullName);
   const base = input.appUrl.replace(/\/$/, '');
-  const privacyUrl = `${base}/terms`;
+  const privacyUrl = `${base}/privacy`;
   const year = String(new Date().getFullYear());
   const subject = `Welcome to BLD, ${name}`;
 

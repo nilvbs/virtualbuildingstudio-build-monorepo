@@ -11550,6 +11550,20 @@ textarea {
   color: #0b7d56;
 }
 
+.auth-privacy-note {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+}
+
+.auth-privacy-note a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 /* ===== Live password strength (Create account) ===== */
 .pwd-strength {
   margin-top: 8px;

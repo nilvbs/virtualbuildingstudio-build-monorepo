@@ -26,6 +26,7 @@ import type {
   WorkspaceRole,
 } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
+import { WEB_URL } from '../lib/config';
 import { clearSession, getActiveRole, getSession } from '../lib/session';
 import { homeForWorkspace } from '../lib/home';
 import { colors, radius, shadows, spacing } from '../lib/theme';
@@ -607,15 +608,17 @@ export function OnboardingScreen({ navigation }: Props) {
                   {acceptTerms ? <Feather name="check" size={14} color="#fff" /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.acceptTitle}>I accept the Terms & Conditions</Text>
+                  <Text style={styles.acceptTitle}>I accept the Terms & Conditions and Privacy Policy</Text>
                   <Text style={styles.acceptCopy}>
                     Required.{' '}
-                    <Text
-                      style={styles.link}
-                      onPress={() => void Linking.openURL('https://surveylink.app/terms')}
-                    >
+                    <Text style={styles.link} onPress={() => void Linking.openURL(`${WEB_URL}/terms`)}>
                       Review terms
                     </Text>
+                    {' · '}
+                    <Text style={styles.link} onPress={() => void Linking.openURL(`${WEB_URL}/privacy`)}>
+                      Privacy Policy
+                    </Text>
+                    {'\n'}We never sell or share your personal data with third parties.
                   </Text>
                 </View>
               </Pressable>
@@ -633,7 +636,7 @@ export function OnboardingScreen({ navigation }: Props) {
                     Required.{' '}
                     <Text
                       style={styles.link}
-                      onPress={() => void Linking.openURL('https://surveylink.app/nda')}
+                      onPress={() => void Linking.openURL(`${WEB_URL}/nda`)}
                     >
                       Review NDA
                     </Text>

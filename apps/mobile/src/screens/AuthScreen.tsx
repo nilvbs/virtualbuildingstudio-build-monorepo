@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -13,6 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { WorkspaceRole } from '@surveylink/types';
 import { api, errorMessage } from '../lib/api';
 import { setSession } from '../lib/session';
+import { WEB_URL } from '../lib/config';
 import { destinationAfterAuth } from '../lib/auth-flow';
 import { signInWithGoogle } from '../lib/google';
 import {
@@ -392,6 +394,21 @@ export function AuthScreen({ navigation, route }: Props) {
                     }}
                   />
 
+                  {mode === 'signup' ? (
+                    <Text style={styles.privacyNote}>
+                      We never sell or share your personal data with third parties. By creating an
+                      account you agree to our{' '}
+                      <Text style={styles.privacyLink} onPress={() => void Linking.openURL(`${WEB_URL}/terms`)}>
+                        Terms
+                      </Text>{' '}
+                      and{' '}
+                      <Text style={styles.privacyLink} onPress={() => void Linking.openURL(`${WEB_URL}/privacy`)}>
+                        Privacy Policy
+                      </Text>
+                      .
+                    </Text>
+                  ) : null}
+
                   {mode !== 'forgot' ? (
                     <>
                       <Divider label="or" />
@@ -472,4 +489,12 @@ const styles = StyleSheet.create({
   tabText: { color: colors.muted, fontWeight: '600' },
   tabTextActive: { color: colors.text },
   forgot: { color: colors.accent, fontWeight: '700', fontSize: 13 },
+  privacyNote: {
+    color: colors.muted,
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  privacyLink: { color: colors.accent, fontWeight: '700' },
 });

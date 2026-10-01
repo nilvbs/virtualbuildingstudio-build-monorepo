@@ -423,8 +423,8 @@ export function LandingPage() {
               © {new Date().getFullYear()} BLD. All rights reserved.
             </p>
             <div className="bld-footer-legal">
-              <a href="#">Terms</a>
-              <a href="#">Privacy</a>
+              <Link href="/terms">Terms</Link>
+              <Link href="/privacy">Privacy</Link>
               <button type="button" className="bld-footer-link-btn" onClick={() => openFeedback('support')}>
                 Support
               </button>

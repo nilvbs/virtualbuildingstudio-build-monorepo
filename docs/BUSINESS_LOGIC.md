@@ -146,7 +146,7 @@ flowchart LR
 | Step | What happens |
 |------|----------------|
 | `select_account_type` | Individual vs company |
-| `accept_terms` | T&C + NDA (required) |
+| `accept_terms` | T&C + Privacy Policy (one checkbox) + NDA (required). Privacy Policy at `/privacy`: no selling or sharing personal data with third parties; only service providers acting on our behalf |
 | `verify_contact` | **Email OTP + phone OTP (both required)** before profile. Resend: **30s cooldown**, **3 resends** (4 sends/hour/channel), then **1h lockout** on send + verify; last-resend warning + helpdesk ticket link. Lockout alerts admins (in-app + ops email); staff can clear via **Clear OTP lockout**. |
 | `complete_profile` | Address / company fields → `account_profiles` |
 | `portfolio` | Surveyors only (or client-first then adding surveyor) |
@@ -320,6 +320,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-10-01 | Privacy: new public Privacy Policy page (`/privacy`). Sign-up (web + mobile) states we never sell or share personal data with third parties and links Terms + Privacy. The onboarding Terms checkbox now covers the Privacy Policy. Welcome email and landing footer link to it. Surveyor portfolio: **Historic Monuments** added to Industries served |
 | 2026-10-01 | Brief cleanup: "Within 3 / 7 / 14 / 30 days" timelines, "Do you already have project data?", provider preferences, experience and minimum rating are removed from the brief entirely (timeline is ASAP / Flexible / Specific date only; old values read back as unset). Surveyor search "Minimum rating" filter is unchanged |
 | 2026-10-01 | Brief: new "Is the Building Occupied?" (Yes / No / Partially / Not Sure) on web and mobile, required except for buildings Under construction (not asked), shown to surveyors on request / match cards and on the client project page. Building status options Renovation, Demolition, Unknown and New construction are removed everywhere |
 | 2026-09-30 | Mobile app matches web. Clients get a project status timeline, all matches, feedback and draft resume. Surveyors get the full brief on request cards with a working-hours timer, a dashboard with pending items, and feedback on matches. Both roles get a help desk (tickets, replies, attachments, FAQs). The mobile portfolio now collects the remaining web-required fields (years of reality capture, insurance, daily capacity, minimum project, travel charges), so it can reach 100% |

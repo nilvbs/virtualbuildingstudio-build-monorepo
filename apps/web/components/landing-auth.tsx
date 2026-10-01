@@ -623,6 +623,18 @@ export function LandingAuthOverlay({
                           {signupBusy ? <span className="spin" /> : null}
                           {signupBusy ? 'Creating…' : 'Create account'}
                         </button>
+                        <p className="auth-privacy-note">
+                          We never sell or share your personal data with third parties. By creating an
+                          account you agree to our{' '}
+                          <a href="/terms" target="_blank" rel="noreferrer">
+                            Terms
+                          </a>{' '}
+                          and{' '}
+                          <a href="/privacy" target="_blank" rel="noreferrer">
+                            Privacy Policy
+                          </a>
+                          .
+                        </p>
                       </form>
                     </>
                   )}
