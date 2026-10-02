@@ -2236,7 +2236,7 @@
 .bld-footer-logo-row {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: 1px;
   margin-bottom: 16px;
 }
 
@@ -2254,7 +2254,7 @@
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.04em;
-  color: #9b94ff;
+  color: #fff;
   white-space: pre;
 }
 
@@ -2264,7 +2264,7 @@
   height: 14px;
   margin-left: 2px;
   border-radius: 1px;
-  background: #9b94ff;
+  background: #fff;
   animation: bld-caret-blink 1s steps(1, end) infinite;
 }
 
@@ -2285,14 +2285,6 @@
   width: 112px;
   height: auto;
   filter: brightness(0) invert(1);
-}
-
-.bld-footer-brand p {
-  margin: 0;
-  max-width: 18rem;
-  font-size: 14.5px;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.62);
 }
 
 .bld-footer-col {

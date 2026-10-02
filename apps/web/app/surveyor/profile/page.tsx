@@ -15,7 +15,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
-  Boxes,
   Check,
   Crosshair,
   Drone,
@@ -37,7 +36,8 @@ import {
   EQUIPMENT_LABELS,
   INDUSTRIES_SERVED,
   INDUSTRY_LABELS,
-  SURVEY_SERVICE_GROUPS,
+  SURVEYOR_OFFERABLE_SERVICES,
+  SURVEYOR_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
   emptyPortfolioDetails,
   normalizePortfolioDetails,
@@ -184,11 +184,10 @@ const PROFILE_STEPS: {
 
 const stepEase = [0.22, 0.61, 0.36, 1] as const;
 
-const SERVICE_GROUP_ICONS: Record<(typeof SURVEY_SERVICE_GROUPS)[number]['id'], LucideIcon> = {
+const SERVICE_GROUP_ICONS: Record<(typeof SURVEYOR_SERVICE_GROUPS)[number]['id'], LucideIcon> = {
   survey_services: Ruler,
   laser_reality: ScanLine,
   drone: Drone,
-  bim_cad: Boxes,
 };
 
 const EQUIPMENT_GROUP_ICONS: Record<(typeof EQUIPMENT_GROUPS)[number]['id'], LucideIcon> = {
@@ -254,9 +253,12 @@ export default function SurveyorProfilePage() {
           return;
         }
         setMode('edit');
-        setServices(profile.services);
-        const firstPickedGroup = SURVEY_SERVICE_GROUPS.findIndex((g) =>
-          g.services.some((s) => profile.services.includes(s)),
+        const offeredServices = profile.services.filter((s) =>
+          SURVEYOR_OFFERABLE_SERVICES.includes(s),
+        );
+        setServices(offeredServices);
+        const firstPickedGroup = SURVEYOR_SERVICE_GROUPS.findIndex((g) =>
+          g.services.some((s) => offeredServices.includes(s)),
         );
         setServiceGroupIdx(firstPickedGroup >= 0 ? firstPickedGroup : null);
         setEquipment(profile.equipment);
@@ -274,6 +276,16 @@ export default function SurveyorProfilePage() {
         const selectedCounties = (nextDetails.coverageCounties ?? []).filter(
           (c) => c.selected !== false,
         );
+        const savedZip = selectedCounties.find((c) => c.zip)?.zip;
+        if (savedZip) setZipInput(savedZip);
+        if (profile.radiusKm) {
+          const savedMiles = kmToMiles(profile.radiusKm);
+          setSearchRadiusMiles(
+            RADIUS_OPTIONS.reduce((best, miles) =>
+              Math.abs(miles - savedMiles) < Math.abs(best - savedMiles) ? miles : best,
+            ),
+          );
+        }
         if (selectedCounties.length > 0) {
           applyBaseFromCounties(nextDetails.coverageCounties ?? []);
           const fips = selectedCounties.map((c) => c.fips).filter((f): f is string => Boolean(f));
@@ -390,7 +402,7 @@ export default function SurveyorProfilePage() {
   }, [measureWalker, loading]);
 
   const activeServiceGroup =
-    serviceGroupIdx != null ? SURVEY_SERVICE_GROUPS[serviceGroupIdx] ?? null : null;
+    serviceGroupIdx != null ? SURVEYOR_SERVICE_GROUPS[serviceGroupIdx] ?? null : null;
 
   function openServiceGroup(next: number) {
     setServiceGroupDir(serviceGroupIdx == null || next >= serviceGroupIdx ? 1 : -1);
@@ -571,26 +583,9 @@ export default function SurveyorProfilePage() {
         selected: true,
       }));
 
-      setDetails((current) => {
-        const existing = current.coverageCounties ?? [];
-        const merged = [...existing];
-        for (const entry of nextEntries) {
-          const key = entry.fips
-            ? `fips:${entry.fips}`
-            : `${entry.county.toLowerCase()}|${entry.state.toLowerCase()}`;
-          const idx = merged.findIndex((c) =>
-            entry.fips
-              ? c.fips === entry.fips
-              : `${c.county.toLowerCase()}|${c.state.toLowerCase()}` === key,
-          );
-          if (idx >= 0) {
-            merged[idx] = { ...merged[idx], ...entry, selected: true };
-          } else {
-            merged.push(entry);
-          }
-        }
-        return { ...current, ...syncCoverageFromCounties(merged) };
-      });
+      // One postal code per surveyor: a new search replaces the previous coverage.
+      setDetails((current) => ({ ...current, ...syncCoverageFromCounties(nextEntries) }));
+      setZipInput(result.zip);
       setLat(result.lat.toFixed(6));
       setLng(result.lng.toFixed(6));
       setRadiusMiles(String(result.radiusMiles));
@@ -866,7 +861,7 @@ export default function SurveyorProfilePage() {
             ) : null}
 
             <div className="svy-svc-rail" role="tablist" aria-label="Service disciplines">
-              {SURVEY_SERVICE_GROUPS.map((group, gi) => {
+              {SURVEYOR_SERVICE_GROUPS.map((group, gi) => {
                 const Icon = SERVICE_GROUP_ICONS[group.id];
                 const picked = group.services.filter((s) => services.includes(s)).length;
                 const active = serviceGroupIdx === gi;
@@ -924,8 +919,8 @@ export default function SurveyorProfilePage() {
                     {(() => {
                       const groupServices = activeServiceGroup.services as readonly SurveyService[];
                       const allPicked = groupServices.every((s) => services.includes(s));
-                      const prevGroup = SURVEY_SERVICE_GROUPS[serviceGroupIdx - 1];
-                      const nextGroup = SURVEY_SERVICE_GROUPS[serviceGroupIdx + 1];
+                      const prevGroup = SURVEYOR_SERVICE_GROUPS[serviceGroupIdx - 1];
+                      const nextGroup = SURVEYOR_SERVICE_GROUPS[serviceGroupIdx + 1];
                       return (
                         <>
                           <div className="svy-svc-panel-head">
@@ -1026,7 +1021,10 @@ export default function SurveyorProfilePage() {
                       </span>
                       <div>
                         <strong>Find counties by radius</strong>
-                        <p>Search from a postal code and keep the counties you cover.</p>
+                        <p>
+                          Serve from one postal code. Searching a new code replaces your current
+                          counties.
+                        </p>
                       </div>
                     </div>
                     <div className="svy-area-search-row">

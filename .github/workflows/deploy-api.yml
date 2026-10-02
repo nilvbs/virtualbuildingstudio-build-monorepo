@@ -105,11 +105,15 @@ jobs:
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
           WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
           CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          S3_REGION: ${{ secrets.S3_REGION }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ steps.dirs.outputs.user }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,TWILIO_VERIFY_SERVICE_SID,TWILIO_MESSAGING_SERVICE_SID,SENDGRID_API_KEY,TWILIO_EMAIL_FROM,TWILIO_EMAIL_FROM_NAME,DATABASE_URL,DIRECT_DATABASE_URL,WEB_APP_URL,CORS_ORIGINS
+          envs: TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN,TWILIO_FROM_NUMBER,TWILIO_VERIFY_SERVICE_SID,TWILIO_MESSAGING_SERVICE_SID,SENDGRID_API_KEY,TWILIO_EMAIL_FROM,TWILIO_EMAIL_FROM_NAME,DATABASE_URL,DIRECT_DATABASE_URL,WEB_APP_URL,CORS_ORIGINS,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,S3_BUCKET,S3_REGION
           script: |
             set -euo pipefail
             APP_DIR="${{ steps.dirs.outputs.app_dir }}"
@@ -156,6 +160,16 @@ jobs:
             upsert_env SENDGRID_API_KEY "${SENDGRID_API_KEY:-}"
             upsert_env TWILIO_EMAIL_FROM "${TWILIO_EMAIL_FROM:-}"
             upsert_env TWILIO_EMAIL_FROM_NAME "${TWILIO_EMAIL_FROM_NAME:-}"
+            # S3 media (avatars, portfolio files): existing key pair from staging secrets.
+            upsert_env AWS_ACCESS_KEY_ID "${AWS_ACCESS_KEY_ID:-}"
+            upsert_env AWS_SECRET_ACCESS_KEY "${AWS_SECRET_ACCESS_KEY:-}"
+            upsert_env S3_BUCKET "${S3_BUCKET:-}"
+            upsert_env S3_REGION "${S3_REGION:-}"
+            if grep -Eq '^(AWS|S3)_ACCESS_KEY_ID=.+' "$APP_DIR/.env" && grep -Eq '^(AWS|S3)_SECRET_ACCESS_KEY=.+' "$APP_DIR/.env"; then
+              echo "S3 media key pair present on EC2 .env"
+            else
+              echo "::warning title=S3 media::No AWS key pair on EC2 .env — uploads fail until AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY staging secrets are set"
+            fi
             # Optional: refresh Aurora URLs from GitHub Environment secrets when set.
             # Least-privilege mode (setup-staging-db-app-role.yml): the API runs as bld_app
             # (DATABASE_URL, generated on the box); the owner secrets only feed migrations.

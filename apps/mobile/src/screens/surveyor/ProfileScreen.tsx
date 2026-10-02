@@ -28,7 +28,8 @@ import {
   INDUSTRY_LABELS,
   PORTFOLIO_LANGUAGE_LABELS,
   PORTFOLIO_LANGUAGES,
-  SURVEY_SERVICE_GROUPS,
+  SURVEYOR_OFFERABLE_SERVICES,
+  SURVEYOR_SERVICE_GROUPS,
   SURVEY_SERVICE_LABELS,
   SURVEYOR_PROFILE_COMPLETION_CHECKS,
   emptyPortfolioDetails,
@@ -164,7 +165,7 @@ export function ProfileScreen() {
       return;
     }
     setHasProfile(true);
-    setServices(p.services ?? []);
+    setServices((p.services ?? []).filter((s) => SURVEYOR_OFFERABLE_SERVICES.includes(s)));
     setEquipment(p.equipment ?? []);
     setBaseCity(p.baseCity ?? '');
     setRadiusMiles(p.radiusKm != null ? String(Math.max(1, Math.round(p.radiusKm / 1.609344))) : '155');
@@ -489,7 +490,7 @@ export function ProfileScreen() {
 
           {step === 0 ? (
             <>
-              {SURVEY_SERVICE_GROUPS.map((group) => (
+              {SURVEYOR_SERVICE_GROUPS.map((group) => (
                 <View key={group.id}>
                   <Text style={styles.section}>{group.label}</Text>
                   <ChipGrid

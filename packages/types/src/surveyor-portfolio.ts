@@ -57,6 +57,16 @@ export const SURVEY_SERVICE_GROUPS = [
   },
 ] as const;
 
+/** Disciplines a surveyor can offer on their portfolio. BIM & CAD stays client-brief only. */
+export const SURVEYOR_SERVICE_GROUPS = SURVEY_SERVICE_GROUPS.filter(
+  (g): g is Exclude<(typeof SURVEY_SERVICE_GROUPS)[number], { id: 'bim_cad' }> =>
+    g.id !== 'bim_cad',
+);
+
+export const SURVEYOR_OFFERABLE_SERVICES: readonly string[] = SURVEYOR_SERVICE_GROUPS.flatMap(
+  (g) => [...g.services],
+);
+
 export const SURVEY_SERVICES = [
   'measured_building',
   'topographic',

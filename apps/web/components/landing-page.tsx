@@ -421,7 +421,6 @@ export function LandingPage() {
                 </Link>
                 <FooterTypedSuffix />
               </div>
-              <p>The managed marketplace for site surveys — matched by hand.</p>
             </div>
             <div className="bld-footer-col">
               <h4>Platform</h4>

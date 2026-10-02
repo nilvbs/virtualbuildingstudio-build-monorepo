@@ -77,6 +77,11 @@ import {
   rememberDevSignup,
 } from './dev-auth';
 import { ensureMembership, hintFromMemberships, listMemberships } from './memberships';
+import {
+  assertCompanyNameAvailable,
+  companyNameFields,
+  rethrowCompanyNameConflict,
+} from './company-name';
 
 const GOOGLE_CONNECTION = 'google-oauth2';
 const PASSWORD_RESET_CHANNEL = 'password_reset';
@@ -1462,6 +1467,11 @@ export class AuthService {
     const user = await this.requireUser(principal.sub);
     const namePatch =
       input.fullName !== undefined ? this.nameFieldsFromFullName(input.fullName) : {};
+    const companyPatch =
+      input.companyName !== undefined ? companyNameFields(input.companyName) : null;
+    if (companyPatch) {
+      await assertCompanyNameAvailable(this.prisma, user.id, companyPatch.companyNameKey);
+    }
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -1472,7 +1482,7 @@ export class AuthService {
     });
 
     const profilePatch = {
-      ...(input.companyName !== undefined ? { companyName: input.companyName } : {}),
+      ...(companyPatch ?? {}),
       ...(input.registrationNumber !== undefined
         ? { registrationNumber: input.registrationNumber?.trim() || null }
         : {}),
@@ -1490,11 +1500,13 @@ export class AuthService {
     };
 
     if (Object.keys(profilePatch).length > 0) {
-      await this.prisma.accountProfile.upsert({
-        where: { userId: user.id },
-        create: { userId: user.id, ...profilePatch },
-        update: profilePatch,
-      });
+      await this.prisma.accountProfile
+        .upsert({
+          where: { userId: user.id },
+          create: { userId: user.id, ...profilePatch },
+          update: profilePatch,
+        })
+        .catch(rethrowCompanyNameConflict);
     }
 
     return this.hydrateUser(updated, principal.roles);
@@ -1563,17 +1575,26 @@ export class AuthService {
       state: input.address.state,
       postalCode: input.address.postalCode,
       country: input.address.country,
-      ...(input.companyName !== undefined ? { companyName: input.companyName } : {}),
+      ...(input.companyName !== undefined ? companyNameFields(input.companyName) : {}),
     };
     const companyData = isCompany
       ? { registrationNumber: input.registrationNumber!.trim(), website }
       : {};
+    if (input.companyName !== undefined) {
+      await assertCompanyNameAvailable(
+        this.prisma,
+        user.id,
+        companyNameFields(input.companyName).companyNameKey,
+      );
+    }
 
-    await this.prisma.accountProfile.upsert({
-      where: { userId: user.id },
-      create: { userId: user.id, ...addressData, ...companyData },
-      update: { ...addressData, ...companyData },
-    });
+    await this.prisma.accountProfile
+      .upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, ...addressData, ...companyData },
+        update: { ...addressData, ...companyData },
+      })
+      .catch(rethrowCompanyNameConflict);
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },

@@ -72,6 +72,11 @@ import { ensureMembership } from '../auth/memberships';
 import { StaffContextService } from '../auth/staff-context.service';
 import { buildPersonNameFields } from '../auth/username';
 import { hashPassword, verifyPassword } from '../auth/password-verifier';
+import {
+  assertCompanyNameAvailable,
+  companyNameFields,
+  rethrowCompanyNameConflict,
+} from '../auth/company-name';
 import { AutoMatchService } from '../matching/auto-match.service';
 import { addWorkingHours, isStaffInviteWeekday } from '../matching/working-hours';
 import { ActivityService } from '../activity/activity.service';
@@ -1275,6 +1280,13 @@ export class AdminService {
       });
       if (clash) throw new ConflictException('Another account already uses that phone number');
     }
+    const companyPatch =
+      input.companyName !== undefined
+        ? companyNameFields(input.companyName)
+        : { companyName: undefined, companyNameKey: undefined };
+    if (companyPatch.companyNameKey) {
+      await assertCompanyNameAvailable(this.prisma, userId, companyPatch.companyNameKey);
+    }
 
     const firstName = input.firstName?.trim() ?? existing.firstName;
     const lastName = input.lastName?.trim() ?? existing.lastName;
@@ -1284,7 +1296,7 @@ export class AdminService {
         : existing.fullName;
 
     const profilePatch = {
-      companyName: input.companyName,
+      ...companyPatch,
       addressLine1: input.addressLine1,
       addressLine2: input.addressLine2,
       city: input.city,
@@ -1302,31 +1314,33 @@ export class AdminService {
     };
     const hasProfilePatch = Object.values(profilePatch).some((v) => v !== undefined);
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          firstName,
-          lastName,
-          fullName,
-          ...(input.email ? { email: normalizeEmail(input.email) } : {}),
-          ...(input.phone ? { phone: input.phone } : {}),
-          ...(input.status ? { status: input.status } : {}),
-          ...(input.accountType ? { accountType: input.accountType } : {}),
-        },
-      });
-
-      if (hasProfilePatch) {
-        const data = Object.fromEntries(
-          Object.entries(profilePatch).filter(([, v]) => v !== undefined),
-        );
-        await tx.accountProfile.upsert({
-          where: { userId },
-          create: { userId, ...data },
-          update: data,
+    await this.prisma
+      .$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            firstName,
+            lastName,
+            fullName,
+            ...(input.email ? { email: normalizeEmail(input.email) } : {}),
+            ...(input.phone ? { phone: input.phone } : {}),
+            ...(input.status ? { status: input.status } : {}),
+            ...(input.accountType ? { accountType: input.accountType } : {}),
+          },
         });
-      }
-    });
+
+        if (hasProfilePatch) {
+          const data = Object.fromEntries(
+            Object.entries(profilePatch).filter(([, v]) => v !== undefined),
+          );
+          await tx.accountProfile.upsert({
+            where: { userId },
+            create: { userId, ...data },
+            update: data,
+          });
+        }
+      })
+      .catch(rethrowCompanyNameConflict);
 
     if (input.status && input.status !== 'active') {
       await this.revokeAllSessions(existing.authSubject);

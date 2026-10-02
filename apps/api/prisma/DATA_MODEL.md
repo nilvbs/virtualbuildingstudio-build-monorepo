@@ -35,7 +35,7 @@ Plumbing
 
 | Table | When it exists | What is in it |
 |---|---|---|
-| `account_profiles` | After profile onboarding | Address, company name, work email, registration, website. |
+| `account_profiles` | After profile onboarding | Address, company name (unique via `company_name_key`), work email, registration, website. |
 | `surveyor_profiles` | Surveyor hat | Services, equipment, map pin (`base_location`), radius, rate, portfolio JSON. |
 | `admin_profiles` | Staff only | Staff level, permission preset, and portal invite token (3-day / Mon–Fri). |
 

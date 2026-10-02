@@ -155,6 +155,8 @@ model AccountProfile {
   id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId             String   @unique @map("user_id") @db.Uuid
   companyName        String?  @map("company_name")
+  /** Lowercased, whitespace-collapsed company name; one account per company. */
+  companyNameKey     String?  @unique @map("company_name_key")
   addressLine1       String?  @map("address_line1")
   addressLine2       String?  @map("address_line2")
   city               String?

@@ -5,7 +5,7 @@
 > Narrative companion: [`apps/api/prisma/DATA_MODEL.md`](../apps/api/prisma/DATA_MODEL.md).
 > Product flows: [`docs/BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md).
 
-Last synced from schema: **2026-09-29**
+Last synced from schema: **2026-10-02**
 
 ---
 
@@ -75,6 +75,7 @@ erDiagram
     uuid id PK
     uuid user_id FK,UK
     string company_name
+    string company_name_key UK
     string address_line1
     string city
     string state
@@ -333,6 +334,7 @@ See `@surveylink/types` for transition maps.
 
 | Date | Change |
 |------|--------|
+| 2026-10-02 | `account_profiles.company_name_key` (unique, lowercased + whitespace-collapsed) — one account per company name; backfill keeps the earliest duplicate |
 | 2026-09-29 | `auth_refresh_tokens` — hashed rotating refresh tokens (family reuse detection) for cookie / secure-store sessions |
 | 2026-09-24 | `users.otp_unlocked_at` — admin clears OTP abuse lockout without deleting codes |
 | 2026-09-21 | `admin_profiles`: staff invite token / expires / accepted / encrypted temp password |

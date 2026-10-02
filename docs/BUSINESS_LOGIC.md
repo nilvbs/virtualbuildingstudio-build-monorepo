@@ -75,6 +75,7 @@ flowchart TD
 ```
 
 - **Identity uniqueness:** email and phone are both checked. Reusing one with a different other (e.g. same email + new phone, or new email + existing phone) is blocked. Dual-role only when the same email **and** matching phone (or placeholder phone) pass password verify for a role the account does not yet have.
+- **Company name uniqueness:** one account per company name (case- and spacing-insensitive, e.g. "Acme  Surveys" = "acme surveys"). Saving a name another account already holds (onboarding, account details, or admin edit) is rejected with "This company name is already registered". Legacy duplicates from before the rule keep their name but must pick a unique one on their next edit.
 - Password signup: email/phone OTP **not** sent at create — only from onboarding **Verify contact**.
 - Google: complete registration (phone + role) then same onboarding gates.
 - Welcome email: branded HTML; client vs surveyor templates; SendGrid (`TwilioEmailSender`).
@@ -243,6 +244,8 @@ Match statuses: `proposed → accepted | declined | cancelled`; `accepted → co
 ## 7. Surveyor portfolio & eligibility
 
 - Surveyor profile holds services, coverage (PostGIS), rates, portfolio JSON.
+- **Surveyor services exclude BIM & CAD:** the portfolio (web + mobile) offers Survey Services, Laser & Reality Capture and Drone only. Previously saved BIM / CAD services are dropped the next time the surveyor saves their portfolio. Clients can still request BIM & CAD in the brief.
+- **Coverage is one postal code (web):** the surveyor serves counties within the chosen distance of a single ZIP. Searching a new ZIP replaces the previous counties (no stacking across ZIPs); the saved ZIP and distance are shown again when the portfolio is reopened. Individual counties can still be removed.
 - **Pricing currency is fixed to USD** (not editable in UI; normalized on save).
 - **Remote services** is no longer collected in surveyor UI (field may still exist in stored JSON as legacy `false`).
 - Incomplete portfolio blocks receiving / acting on marketplace requests (web gates + matching filters for “live” surveyors).
@@ -320,6 +323,7 @@ Failures on welcome are best-effort (never block signup). OTP send failures surf
 
 | Date | Change |
 |------|--------|
+| 2026-10-02 | Company names are unique across accounts (case/spacing-insensitive), enforced in onboarding, account details and admin edits. Web surveyor coverage is a single ZIP: a new ZIP search replaces earlier counties, and the saved ZIP + distance reappear on reopen. Coverage "Travel nationwide / International projects" removed from the web portfolio (stored values kept). BIM & CAD removed from the surveyor services form (web + mobile); saved BIM/CAD services drop on next portfolio save |
 | 2026-10-01 | Privacy: new public Privacy Policy page (`/privacy`). Sign-up (web + mobile) states we never sell or share personal data with third parties and links Terms + Privacy. The onboarding Terms checkbox now covers the Privacy Policy. Welcome email and landing footer link to it. Surveyor portfolio: **Historic Monuments** added to Industries served |
 | 2026-10-01 | Brief cleanup: "Within 3 / 7 / 14 / 30 days" timelines, "Do you already have project data?", provider preferences, experience and minimum rating are removed from the brief entirely (timeline is ASAP / Flexible / Specific date only; old values read back as unset). Surveyor search "Minimum rating" filter is unchanged |
 | 2026-10-01 | Brief: new "Is the Building Occupied?" (Yes / No / Partially / Not Sure) on web and mobile, required except for buildings Under construction (not asked), shown to surveyors on request / match cards and on the client project page. Building status options Renovation, Demolition, Unknown and New construction are removed everywhere |
