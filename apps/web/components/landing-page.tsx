@@ -24,6 +24,36 @@ const LandingPresenceMap = dynamic(
   },
 );
 
+const FOOTER_TYPED = '.online';
+
+function FooterTypedSuffix() {
+  const [count, setCount] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setCount(FOOTER_TYPED.length);
+      return;
+    }
+    const full = count === FOOTER_TYPED.length;
+    const empty = count === 0;
+    const delay = !deleting && full ? 2600 : deleting && empty ? 500 : deleting ? 70 : 150;
+    const timer = window.setTimeout(() => {
+      if (!deleting && full) setDeleting(true);
+      else if (deleting && empty) setDeleting(false);
+      else setCount((c) => c + (deleting ? -1 : 1));
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [count, deleting]);
+
+  return (
+    <span className="bld-footer-typed" role="img" aria-label={FOOTER_TYPED}>
+      <span aria-hidden>{FOOTER_TYPED.slice(0, count)}</span>
+      <span className="bld-footer-caret" aria-hidden />
+    </span>
+  );
+}
+
 const HERO_IMAGE = {
   desktop: '/brand/landing-hero.webp',
   tablet: '/brand/landing-hero-mobile.webp',
@@ -185,13 +215,6 @@ export function LandingPage() {
                     </div>
                   </div>
                 </nav>
-              </div>
-
-              <div className="bld-hero-tagline-wrap bld-animate bld-animate--1">
-                <p className="bld-hero-tagline">
-                  The right surveyor for your site —{' '}
-                  <span className="bld-hero-tagline-accent">matched by hand</span>
-                </p>
               </div>
             </div>
 
@@ -386,15 +409,18 @@ export function LandingPage() {
         <div className="bld-container">
           <div className="bld-footer-grid">
             <div className="bld-footer-brand">
-              <Link href="/" className="bld-footer-logo-link" scroll={false} aria-label="BLD home">
-                <img
-                  src="/brand/bld-logo-dark.png"
-                  alt="BLD"
-                  className="bld-footer-logo-img"
-                  width={636}
-                  height={236}
-                />
-              </Link>
+              <div className="bld-footer-logo-row">
+                <Link href="/" className="bld-footer-logo-link" scroll={false} aria-label="BLD home">
+                  <img
+                    src="/brand/bld-logo-dark.png"
+                    alt="BLD"
+                    className="bld-footer-logo-img"
+                    width={636}
+                    height={236}
+                  />
+                </Link>
+                <FooterTypedSuffix />
+              </div>
               <p>The managed marketplace for site surveys — matched by hand.</p>
             </div>
             <div className="bld-footer-col">

@@ -299,44 +299,6 @@
   padding-top: clamp(2px, 0.8vh, 10px);
 }
 
-.bld-hero-tagline-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-top: clamp(8px, 1.2vh, 14px);
-  padding-top: clamp(8px, 1.2vh, 12px);
-  width: min(100%, 520px);
-  border-top: 1px solid rgba(113, 104, 246, 0.2);
-}
-
-.bld-hero-tagline-wrap::after {
-  content: '';
-  display: block;
-  width: 36px;
-  height: 2px;
-  margin-top: clamp(10px, 1.4vh, 14px);
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, var(--bld-primary), transparent);
-  opacity: 0.55;
-}
-
-.bld-hero-tagline {
-  margin: 0;
-  font-family: var(--bld-font-display);
-  font-size: clamp(16px, 1.62vw, 20px);
-  font-weight: 500;
-  line-height: 1.35;
-  letter-spacing: 0.012em;
-  color: var(--bld-on-surface);
-  white-space: nowrap;
-}
-
-.bld-hero-tagline-accent {
-  color: var(--bld-primary);
-  font-style: italic;
-  font-weight: 600;
-}
-
 .bld-hero-foot {
   flex: 0 0 auto;
   align-self: flex-start;
@@ -421,19 +383,6 @@
       clamp(18px, 2.8vh, 32px);
   }
 
-  .bld-landing .bld-hero-tagline-wrap {
-    width: min(100%, 560px);
-    margin-top: 10px;
-    padding-top: 10px;
-  }
-
-  .bld-landing .bld-hero-tagline {
-    white-space: normal;
-    text-wrap: balance;
-    font-size: clamp(15px, 1.35vw, 18px);
-    line-height: 1.4;
-  }
-
   .bld-landing .bld-hero .bld-btn {
     min-height: 44px;
     padding: 0 20px;
@@ -503,19 +452,6 @@
     width: min(16vw, 180px);
   }
 
-  .bld-landing .bld-hero-tagline-wrap {
-    margin-top: 6px;
-    padding-top: 8px;
-  }
-
-  .bld-landing .bld-hero-tagline-wrap::after {
-    margin-top: 8px;
-  }
-
-  .bld-landing .bld-hero-tagline {
-    font-size: clamp(14px, 1.5vh + 0.4vw, 17px);
-  }
-
   .bld-landing .bld-nav-inner {
     padding-block: 10px;
     min-height: 48px;
@@ -544,10 +480,6 @@
 @media (min-width: 1025px) and (max-height: 780px) {
   .bld-landing .bld-hero-logo-img {
     width: min(14vw, 148px);
-  }
-
-  .bld-landing .bld-hero-tagline-wrap {
-    width: min(100%, 480px);
   }
 
   .bld-landing .bld-hero-foot {
@@ -637,28 +569,6 @@
   }
 
   /* Tagline under logo, same left start */
-  .bld-landing .bld-hero-tagline-wrap {
-    align-items: flex-start;
-    width: min(100%, 360px);
-    margin-top: 10px;
-    padding-top: 0;
-    border-top: 0;
-    text-align: left;
-  }
-
-  .bld-landing .bld-hero-tagline-wrap::after {
-    display: none;
-  }
-
-  .bld-landing .bld-hero-tagline {
-    white-space: normal;
-    font-size: clamp(14px, 2vw, 18px);
-    line-height: 1.4;
-    text-wrap: balance;
-    padding-inline: 0;
-    text-align: left;
-  }
-
   .bld-landing .bld-hero-foot {
     align-self: center;
     width: 100%;
@@ -866,28 +776,6 @@
 
   .bld-landing .bld-hero-logo-img {
     width: min(34vw, 112px);
-  }
-
-  .bld-landing .bld-hero-tagline-wrap {
-    align-items: flex-start;
-    width: min(100%, 240px);
-    margin-top: 8px;
-    padding-top: 0;
-    border-top: 0;
-    text-align: left;
-  }
-
-  .bld-landing .bld-hero-tagline-wrap::after {
-    display: none;
-  }
-
-  .bld-landing .bld-hero-tagline {
-    white-space: normal;
-    font-size: clamp(11px, 3.1vw, 13px);
-    line-height: 1.4;
-    text-wrap: balance;
-    padding-inline: 0;
-    text-align: left;
   }
 
   .bld-landing .bld-hero-foot {
@@ -2343,6 +2231,53 @@
   line-height: 0;
   text-decoration: none;
   margin-bottom: 16px;
+}
+
+.bld-footer-logo-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.bld-footer-logo-row .bld-footer-logo-link {
+  margin-bottom: 0;
+}
+
+.bld-footer-typed {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding-bottom: 3px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #9b94ff;
+  white-space: pre;
+}
+
+.bld-footer-caret {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  margin-left: 2px;
+  border-radius: 1px;
+  background: #9b94ff;
+  animation: bld-caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes bld-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bld-footer-caret {
+    animation: none;
+  }
 }
 
 .bld-footer-logo-img {
