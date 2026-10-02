@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
+  AlertCircle,
   AtSign,
   BadgeCheck,
   CheckCircle2,
   LoaderCircle,
   Pencil,
   Phone,
+  X,
   XCircle,
 } from 'lucide-react';
 import type { AccountType, AuthenticatedUser, OnboardingStatus, WorkspaceRole } from '@surveylink/types';
@@ -95,6 +97,12 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
       })
       .catch((err) => setError(errorMessage(err)));
   }, []);
+
+  useEffect(() => {
+    if (!savedMessage) return;
+    const timer = window.setTimeout(() => setSavedMessage(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [savedMessage]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -292,8 +300,29 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
         </p>
       </header>
 
-      {error && <div className="alert error">{error}</div>}
-      {savedMessage && <div className="alert success">{savedMessage}</div>}
+      {error && (
+        <div className="alert error personal-profile-alert" role="alert">
+          <AlertCircle size={16} strokeWidth={2.25} />
+          <span className="personal-profile-alert-text">{error}</span>
+          <button type="button" className="alert-dismiss" aria-label="Dismiss" onClick={() => setError(null)}>
+            <X size={15} strokeWidth={2.25} />
+          </button>
+        </div>
+      )}
+      {savedMessage && !error && (
+        <div className="alert success personal-profile-alert" role="status">
+          <CheckCircle2 size={16} strokeWidth={2.25} />
+          <span className="personal-profile-alert-text">{savedMessage}</span>
+          <button
+            type="button"
+            className="alert-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setSavedMessage(null)}
+          >
+            <X size={15} strokeWidth={2.25} />
+          </button>
+        </div>
+      )}
 
       <div className="personal-profile-grid">
         <section className="personal-profile-card personal-profile-identity">

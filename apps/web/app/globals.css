@@ -3848,7 +3848,50 @@ lord-icon {
   color: #6b668c;
   font-size: 14px;
   line-height: 1.45;
-  max-width: 46ch;
+  max-width: 72ch;
+  text-wrap: pretty;
+}
+
+.alert.personal-profile-alert {
+  align-items: center;
+  margin: 0;
+  padding: 9px 10px 9px 12px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(42, 37, 88, 0.04);
+  animation: personal-alert-in 220ms ease-out;
+}
+
+.alert.personal-profile-alert svg {
+  margin-top: 0;
+}
+
+.personal-profile-alert-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.personal-profile-alert .alert-dismiss {
+  margin: -4px -2px -4px 0;
+}
+
+@keyframes personal-alert-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert.personal-profile-alert {
+    animation: none;
+  }
 }
 
 .personal-profile-grid {
@@ -6772,7 +6815,7 @@ lord-icon {
   grid-template-rows: auto minmax(88px, auto);
   gap: 10px 18px;
   align-items: end;
-  min-height: 168px;
+  min-height: 268px;
   padding: 16px 20px 18px;
   border: 0;
   border-radius: 0;
@@ -8941,7 +8984,17 @@ lord-icon {
   font-size: 14px;
 }
 
-.svy-matchable-copy span {
+.svy-matchable-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.svy-matchable-head .svy-switch {
+  margin-left: 0;
+}
+
+.svy-matchable-hint {
   font-size: 12.5px;
   color: var(--muted);
   line-height: 1.35;

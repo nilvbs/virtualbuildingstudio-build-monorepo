@@ -1629,21 +1629,23 @@ export default function SurveyorProfilePage() {
               )}
             </span>
             <span className="svy-matchable-copy">
-              <strong>Available for new matches</strong>
-              <span>
+              <span className="svy-matchable-head">
+                <strong>Available for new matches</strong>
+                <span className="svy-switch">
+                  <input
+                    type="checkbox"
+                    checked={isMatchable && liveCompletion.complete}
+                    onChange={(e) => setIsMatchable(e.target.checked)}
+                    disabled={!liveCompletion.complete}
+                  />
+                  <span className="svy-switch-ui" aria-hidden />
+                </span>
+              </span>
+              <span className="svy-matchable-hint">
                 {liveCompletion.complete
                   ? 'Stay visible so our team can send you fitted projects.'
                   : 'Unlocks automatically once your portfolio hits 100%.'}
               </span>
-            </span>
-            <span className="svy-switch">
-              <input
-                type="checkbox"
-                checked={isMatchable && liveCompletion.complete}
-                onChange={(e) => setIsMatchable(e.target.checked)}
-                disabled={!liveCompletion.complete}
-              />
-              <span className="svy-switch-ui" aria-hidden />
             </span>
           </label>
 
