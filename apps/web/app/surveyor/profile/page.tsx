@@ -15,10 +15,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
+  Boxes,
   Check,
+  Drone,
   MapPinned,
+  Ruler,
+  ScanLine,
   TriangleAlert,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import {
   AVAILABILITY_LABELS,
@@ -177,6 +182,19 @@ const PROFILE_STEPS: {
 
 const stepEase = [0.22, 0.61, 0.36, 1] as const;
 
+const SERVICE_GROUP_ICONS: Record<(typeof SURVEY_SERVICE_GROUPS)[number]['id'], LucideIcon> = {
+  survey_services: Ruler,
+  laser_reality: ScanLine,
+  drone: Drone,
+  bim_cad: Boxes,
+};
+
+const serviceGroupSlide = {
+  enter: (dir: number) => ({ opacity: 0, x: dir * 28 }),
+  center: { opacity: 1, x: 0 },
+  exit: (dir: number) => ({ opacity: 0, x: dir * -28 }),
+};
+
 export default function SurveyorProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -190,6 +208,8 @@ export default function SurveyorProfilePage() {
   const [accountType, setAccountType] = useState<AccountType>('individual');
 
   const [services, setServices] = useState<SurveyService[]>([]);
+  const [serviceGroupIdx, setServiceGroupIdx] = useState<number | null>(null);
+  const [serviceGroupDir, setServiceGroupDir] = useState(1);
   const [equipment, setEquipment] = useState<string[]>([]);
   const [baseCity, setBaseCity] = useState('');
   const [radiusMiles, setRadiusMiles] = useState('50');
@@ -224,6 +244,10 @@ export default function SurveyorProfilePage() {
         }
         setMode('edit');
         setServices(profile.services);
+        const firstPickedGroup = SURVEY_SERVICE_GROUPS.findIndex((g) =>
+          g.services.some((s) => profile.services.includes(s)),
+        );
+        setServiceGroupIdx(firstPickedGroup >= 0 ? firstPickedGroup : null);
         setEquipment(profile.equipment);
         setDayRate(dollarsFromCents(profile.dayRateCents));
         setIsMatchable(profile.isMatchable);
@@ -349,6 +373,23 @@ export default function SurveyorProfilePage() {
     observer.observe(track);
     return () => observer.disconnect();
   }, [measureWalker, loading]);
+
+  const activeServiceGroup =
+    serviceGroupIdx != null ? SURVEY_SERVICE_GROUPS[serviceGroupIdx] ?? null : null;
+
+  function openServiceGroup(next: number) {
+    setServiceGroupDir(serviceGroupIdx == null || next >= serviceGroupIdx ? 1 : -1);
+    setServiceGroupIdx(next);
+  }
+
+  function toggleWholeServiceGroup(groupServices: readonly SurveyService[]) {
+    setServices((prev) => {
+      const allPicked = groupServices.every((s) => prev.includes(s));
+      return allPicked
+        ? prev.filter((s) => !groupServices.includes(s))
+        : [...prev, ...groupServices.filter((s) => !prev.includes(s))];
+    });
+  }
 
   function goToStep(next: number) {
     const clamped = Math.max(0, Math.min(PROFILE_STEPS.length - 1, next));
@@ -781,40 +822,161 @@ export default function SurveyorProfilePage() {
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
           >
         {currentStep.id === 'services' ? (
-          <div className="svy-q-stack">
-              {SURVEY_SERVICE_GROUPS.map((group, gi) => (
-                <section key={group.id} className="svy-q">
-                  <div className="svy-q-head">
-                    <span className="svy-q-num">{gi + 1}</span>
-                    <div>
-                      <h2>{group.label}</h2>
-                      <p>Choose all that apply.</p>
-                    </div>
-                  </div>
-                  <div className="svy-q-body">
-                    <div className="svy-opts">
-                    {group.services.map((s) => {
-                      const selected = services.includes(s);
+          <section
+            className={`svy-q svy-svc${showFieldErrors && missingKeys.has('services') ? ' is-invalid' : ''}`}
+          >
+            <div className="svy-q-head">
+              <span className="svy-q-num">1</span>
+              <div>
+                <h2>What do you deliver?</h2>
+                <p>Pick a discipline, then tick the services you offer. Mix across as many as you like.</p>
+              </div>
+            </div>
+            {showFieldErrors && missingKeys.has('services') ? (
+              <p className="field-error svy-svc-error">Select at least one service</p>
+            ) : null}
+
+            <div className="svy-svc-rail" role="tablist" aria-label="Service disciplines">
+              {SURVEY_SERVICE_GROUPS.map((group, gi) => {
+                const Icon = SERVICE_GROUP_ICONS[group.id];
+                const picked = group.services.filter((s) => services.includes(s)).length;
+                const active = serviceGroupIdx === gi;
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`svy-svc-tile${active ? ' is-active' : ''}${picked > 0 ? ' has-picks' : ''}`}
+                    onClick={() => openServiceGroup(gi)}
+                  >
+                    {active ? (
+                      <motion.span
+                        layoutId="svy-svc-active"
+                        className="svy-svc-tile-glow"
+                        transition={
+                          reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 36 }
+                        }
+                      />
+                    ) : null}
+                    <span className="svy-svc-tile-ico" aria-hidden>
+                      <Icon size={18} strokeWidth={2.1} />
+                    </span>
+                    <span className="svy-svc-tile-copy">
+                      <strong>{group.label}</strong>
+                      <small>
+                        {picked > 0
+                          ? `${picked} of ${group.services.length} selected`
+                          : `${group.services.length} services`}
+                      </small>
+                    </span>
+                    <span className="svy-svc-tile-badge" aria-hidden>
+                      {picked > 0 ? <Check size={11} strokeWidth={3} /> : gi + 1}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="svy-svc-stage">
+              <AnimatePresence mode="wait" initial={false} custom={serviceGroupDir}>
+                {activeServiceGroup && serviceGroupIdx != null ? (
+                  <motion.div
+                    key={activeServiceGroup.id}
+                    role="tabpanel"
+                    className="svy-svc-panel"
+                    custom={serviceGroupDir}
+                    variants={serviceGroupSlide}
+                    initial={reduceMotion ? false : 'enter'}
+                    animate="center"
+                    exit={reduceMotion ? undefined : 'exit'}
+                    transition={{ duration: 0.24, ease: stepEase }}
+                  >
+                    {(() => {
+                      const groupServices = activeServiceGroup.services as readonly SurveyService[];
+                      const allPicked = groupServices.every((s) => services.includes(s));
+                      const prevGroup = SURVEY_SERVICE_GROUPS[serviceGroupIdx - 1];
+                      const nextGroup = SURVEY_SERVICE_GROUPS[serviceGroupIdx + 1];
                       return (
-                        <button
-                          key={s}
-                          type="button"
-                          className={`svy-opt${selected ? ' is-on' : ''}`}
-                          aria-pressed={selected}
-                          onClick={() => setServices((prev) => toggleInList(prev, s))}
-                        >
-                          <span className="svy-opt-mark" aria-hidden>
-                            {selected ? <Check size={11} strokeWidth={3} /> : null}
-                          </span>
-                          <span>{SURVEY_SERVICE_LABELS[s]}</span>
-                        </button>
+                        <>
+                          <div className="svy-svc-panel-head">
+                            <p>
+                              <strong>{activeServiceGroup.label}</strong>
+                              <span>Choose all that apply</span>
+                            </p>
+                            <button
+                              type="button"
+                              className="svy-svc-all"
+                              onClick={() => toggleWholeServiceGroup(groupServices)}
+                            >
+                              {allPicked ? 'Clear all' : 'Select all'}
+                            </button>
+                          </div>
+                          <div className="svy-opts">
+                            {groupServices.map((s, si) => {
+                              const selected = services.includes(s);
+                              return (
+                                <motion.button
+                                  key={s}
+                                  type="button"
+                                  className={`svy-opt${selected ? ' is-on' : ''}`}
+                                  aria-pressed={selected}
+                                  onClick={() => setServices((prev) => toggleInList(prev, s))}
+                                  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ duration: 0.2, delay: reduceMotion ? 0 : 0.04 + si * 0.025 }}
+                                >
+                                  <span className="svy-opt-mark" aria-hidden>
+                                    {selected ? <Check size={11} strokeWidth={3} /> : null}
+                                  </span>
+                                  <span>{SURVEY_SERVICE_LABELS[s]}</span>
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+                          <div className="svy-svc-panel-foot">
+                            {prevGroup ? (
+                              <button
+                                type="button"
+                                className="svy-svc-nav"
+                                onClick={() => openServiceGroup(serviceGroupIdx - 1)}
+                              >
+                                <ArrowLeft size={14} strokeWidth={2.4} />
+                                {prevGroup.label}
+                              </button>
+                            ) : (
+                              <span />
+                            )}
+                            {nextGroup ? (
+                              <button
+                                type="button"
+                                className="svy-svc-nav is-next"
+                                onClick={() => openServiceGroup(serviceGroupIdx + 1)}
+                              >
+                                Next: {nextGroup.label}
+                                <ArrowRight size={14} strokeWidth={2.4} />
+                              </button>
+                            ) : null}
+                          </div>
+                        </>
                       );
-                    })}
-                    </div>
-                  </div>
-                </section>
-              ))}
-          </div>
+                    })()}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="svc-empty"
+                    className="svy-svc-empty"
+                    initial={reduceMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={reduceMotion ? undefined : { opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    Choose a discipline above to see its services.
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </section>
         ) : currentStep.id === 'coverage' ? (
           <div className="svy-coverage">
             <section className="svy-panel svy-area-panel">

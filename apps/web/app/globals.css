@@ -7476,6 +7476,261 @@ lord-icon {
   gap: 8px;
 }
 
+.svy-svc.is-invalid {
+  border-color: #f0b4b4;
+}
+
+.svy-svc-error {
+  margin: 0 0 10px 44px;
+}
+
+.svy-svc-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 6px 0 14px 44px;
+}
+
+.svy-svc-tile {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 12px 12px 12px;
+  border: 1px solid #e4e2f5;
+  border-radius: 12px;
+  background: #fff;
+  color: #1e2530;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.svy-svc-tile:hover {
+  border-color: #c9c4f5;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(113, 104, 246, 0.08);
+}
+
+.svy-svc-tile:focus-visible {
+  outline: 2px solid #7168f6;
+  outline-offset: 2px;
+}
+
+.svy-svc-tile.is-active {
+  border-color: #7168f6;
+  box-shadow: 0 8px 22px rgba(113, 104, 246, 0.16);
+}
+
+.svy-svc-tile-glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #f4f3ff 0%, #ebe9ff 100%);
+}
+
+.svy-svc-tile-ico {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #f1f0fe;
+  color: #5b52e0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.svy-svc-tile.is-active .svy-svc-tile-ico {
+  background: #7168f6;
+  color: #fff;
+}
+
+.svy-svc-tile-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.svy-svc-tile-copy strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: #0f172a;
+}
+
+.svy-svc-tile-copy small {
+  font-size: 11.5px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.svy-svc-tile.has-picks .svy-svc-tile-copy small {
+  color: #5b52e0;
+  font-weight: 600;
+}
+
+.svy-svc-tile-badge {
+  align-self: flex-start;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid #e4e2f5;
+  background: #fff;
+  color: #8a90a0;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.svy-svc-tile.has-picks .svy-svc-tile-badge {
+  border-color: #7168f6;
+  background: #7168f6;
+  color: #fff;
+}
+
+.svy-svc-stage {
+  margin-left: 44px;
+  overflow: hidden;
+}
+
+.svy-svc-panel {
+  padding: 14px;
+  border: 1px solid #eceaf8;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfbff 0%, #ffffff 100%);
+}
+
+.svy-svc-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.svy-svc-panel-head p {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.svy-svc-panel-head strong {
+  font-size: 15px;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.svy-svc-panel-head span {
+  font-size: 12.5px;
+  color: #6b7280;
+}
+
+.svy-svc-all {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid #dcd9f7;
+  border-radius: 999px;
+  background: #fff;
+  color: #5b52e0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.svy-svc-all:hover {
+  background: #f4f3ff;
+  border-color: #c9c4f5;
+}
+
+.svy-svc-panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #e4e2f5;
+}
+
+.svy-svc-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: #6b7280;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.12s ease, gap 0.15s ease;
+}
+
+.svy-svc-nav:hover {
+  color: #5b52e0;
+}
+
+.svy-svc-nav.is-next {
+  color: #5b52e0;
+}
+
+.svy-svc-nav.is-next:hover {
+  gap: 9px;
+}
+
+.svy-svc-empty {
+  padding: 28px 16px;
+  border: 1px dashed #dcd9f7;
+  border-radius: 12px;
+  background: #fbfbff;
+  color: #6b7280;
+  font-size: 13.5px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .svy-svc-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .svy-svc-rail,
+  .svy-svc-stage,
+  .svy-svc-error {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .svy-svc-tile-copy small {
+    white-space: normal;
+  }
+
+  .svy-svc-panel-foot .svy-svc-nav:not(.is-next) {
+    font-size: 0;
+  }
+}
+
 .svy-step-stage {
   min-height: 0;
 }
