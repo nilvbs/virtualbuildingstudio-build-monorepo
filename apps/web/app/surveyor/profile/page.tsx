@@ -148,35 +148,30 @@ const PROFILE_STEPS: {
   label: string;
   shortLabel: string;
   blurb: string;
-  beat: string;
 }[] = [
   {
     id: 'services',
     label: 'Services',
     shortLabel: 'Services',
     blurb: 'What you deliver',
-    beat: 'Tap every service you actually ship on site.',
   },
   {
     id: 'coverage',
     label: 'Coverage',
     shortLabel: 'Cover',
     blurb: 'Where you work',
-    beat: 'Add ZIPs — counties load and show on the map.',
   },
   {
     id: 'commercial',
     label: 'Rates & kit',
     shortLabel: 'Rates',
     blurb: 'Pricing and gear',
-    beat: 'Set rates and the kit that wins the brief.',
   },
   {
     id: 'work',
     label: 'Showcase',
     shortLabel: 'Work',
     blurb: 'Sectors and credentials',
-    beat: 'Set experience, insurance, and the sectors you know.',
   },
 ];
 
@@ -341,14 +336,19 @@ export default function SurveyorProfilePage() {
   }, [step]);
 
   useLayoutEffect(() => {
+    if (loading) return;
     measureWalker();
-  }, [measureWalker]);
-
-  useEffect(() => {
-    const onResize = () => measureWalker();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [measureWalker]);
+    const track = trackRef.current;
+    if (!track) return;
+    if (typeof ResizeObserver === 'undefined') {
+      const onResize = () => measureWalker();
+      window.addEventListener('resize', onResize);
+      return () => window.removeEventListener('resize', onResize);
+    }
+    const observer = new ResizeObserver(() => measureWalker());
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [measureWalker, loading]);
 
   function goToStep(next: number) {
     const clamped = Math.max(0, Math.min(PROFILE_STEPS.length - 1, next));
@@ -658,13 +658,6 @@ export default function SurveyorProfilePage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/profile-skyline-bg.png" alt="" draggable={false} />
           <span className="svy-skyline-veil" />
-        </div>
-
-        <div className="svy-hero-intro">
-          <p className="svy-profile-kicker">Portfolio setup</p>
-          {!liveCompletion.complete ? (
-            <p className="svy-hero-blurb">{currentStep.beat}</p>
-          ) : null}
         </div>
 
         <div className="svy-eta-mid">

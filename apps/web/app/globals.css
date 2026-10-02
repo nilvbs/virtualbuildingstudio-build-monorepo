@@ -6730,21 +6730,6 @@ lord-icon {
   pointer-events: none;
 }
 
-.svy-hero-intro {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-}
-
-.svy-hero-blurb {
-  margin: 8px 0 0;
-  max-width: 52ch;
-  font-size: 14px;
-  line-height: 1.45;
-  color: #3f4654;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
-}
-
 .svy-eta-mid {
   grid-column: 1;
   grid-row: 2;
@@ -6788,18 +6773,6 @@ lord-icon {
   box-shadow: 0 0 10px rgba(113, 104, 246, 0.35);
 }
 
-.svy-profile-kicker {
-  margin: 0 0 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #5b52e0;
-  background: rgba(255, 255, 255, 0.72);
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
 .svy-ring {
   position: relative;
   width: 108px;
@@ -8746,10 +8719,6 @@ lord-icon {
     font-family: inherit;
     font-size: 14px;
     font-weight: 600;
-  }
-
-  .svy-hero-blurb {
-    display: none;
   }
 
   .svy-step-context {

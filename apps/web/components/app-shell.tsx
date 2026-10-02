@@ -301,9 +301,7 @@ export function AppShell({ section, children }: { section: Section; children: Re
   function snoozeProfilePrompt() {
     if (typeof window !== 'undefined') sessionStorage.setItem(SURVEYOR_SNOOZE_KEY, '1');
     setShowProfilePrompt(false);
-    if (pathname === '/surveyor') {
-      router.replace('/surveyor/profile');
-    } else if (pathname.startsWith('/surveyor/profile')) {
+    if (pathname.startsWith('/surveyor/profile')) {
       router.replace('/surveyor/profile');
     }
   }
