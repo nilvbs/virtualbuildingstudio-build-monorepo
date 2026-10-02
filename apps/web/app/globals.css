@@ -7707,9 +7707,55 @@ lord-icon {
   text-align: center;
 }
 
+.svy-eq {
+  display: flex;
+  flex-direction: column;
+}
+
+.svy-eq.svy-panel > *:not(.svy-panel-head) {
+  margin-left: 0;
+}
+
+.svy-eq-rail {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 4px 0 12px;
+}
+
+.svy-eq-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 330px;
+}
+
+.svy-eq-stage > .svy-svc-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.svy-eq-stage .svy-svc-panel-foot {
+  margin-top: auto;
+}
+
+.svy-eq-stage .svy-opts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+}
+
 @media (max-width: 1100px) {
   .svy-svc-rail {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .svy-eq-stage .svy-opts {
+    grid-template-columns: 1fr;
+  }
+
+  .svy-eq-stage {
+    min-height: 0;
   }
 }
 

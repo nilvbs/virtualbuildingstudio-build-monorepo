@@ -17,8 +17,10 @@ import {
   ArrowRight,
   Boxes,
   Check,
+  Crosshair,
   Drone,
   MapPinned,
+  Monitor,
   Ruler,
   ScanLine,
   TriangleAlert,
@@ -189,6 +191,13 @@ const SERVICE_GROUP_ICONS: Record<(typeof SURVEY_SERVICE_GROUPS)[number]['id'], 
   bim_cad: Boxes,
 };
 
+const EQUIPMENT_GROUP_ICONS: Record<(typeof EQUIPMENT_GROUPS)[number]['id'], LucideIcon> = {
+  laser_scanners: ScanLine,
+  survey_equipment: Crosshair,
+  drone: Drone,
+  software: Monitor,
+};
+
 const serviceGroupSlide = {
   enter: (dir: number) => ({ opacity: 0, x: dir * 28 }),
   center: { opacity: 1, x: 0 },
@@ -210,6 +219,8 @@ export default function SurveyorProfilePage() {
   const [services, setServices] = useState<SurveyService[]>([]);
   const [serviceGroupIdx, setServiceGroupIdx] = useState<number | null>(null);
   const [serviceGroupDir, setServiceGroupDir] = useState(1);
+  const [equipmentGroupIdx, setEquipmentGroupIdx] = useState(0);
+  const [equipmentGroupDir, setEquipmentGroupDir] = useState(1);
   const [equipment, setEquipment] = useState<string[]>([]);
   const [baseCity, setBaseCity] = useState('');
   const [radiusMiles, setRadiusMiles] = useState('50');
@@ -249,6 +260,10 @@ export default function SurveyorProfilePage() {
         );
         setServiceGroupIdx(firstPickedGroup >= 0 ? firstPickedGroup : null);
         setEquipment(profile.equipment);
+        const firstPickedEquipment = EQUIPMENT_GROUPS.findIndex((g) =>
+          g.items.some((id) => profile.equipment.includes(id)),
+        );
+        setEquipmentGroupIdx(Math.max(firstPickedEquipment, 0));
         setDayRate(dollarsFromCents(profile.dayRateCents));
         setIsMatchable(profile.isMatchable);
         const nextDetails = normalizePortfolioDetails(profile.details, type);
@@ -388,6 +403,20 @@ export default function SurveyorProfilePage() {
       return allPicked
         ? prev.filter((s) => !groupServices.includes(s))
         : [...prev, ...groupServices.filter((s) => !prev.includes(s))];
+    });
+  }
+
+  function openEquipmentGroup(next: number) {
+    setEquipmentGroupDir(next >= equipmentGroupIdx ? 1 : -1);
+    setEquipmentGroupIdx(next);
+  }
+
+  function toggleWholeEquipmentGroup(items: readonly string[]) {
+    setEquipment((prev) => {
+      const allPicked = items.every((id) => prev.includes(id));
+      return allPicked
+        ? prev.filter((id) => !items.includes(id))
+        : [...prev, ...items.filter((id) => !prev.includes(id))];
     });
   }
 
@@ -1197,31 +1226,6 @@ export default function SurveyorProfilePage() {
                   />
                 </div>
               ) : null}
-              <p className="svy-geo-label" style={{ marginTop: 18 }}>Travel</p>
-              <div className="svy-avail">
-                {(
-                  [
-                    ['travelNationwide', 'Travel nationwide'],
-                    ['internationalProjects', 'International projects'],
-                  ] as const
-                ).map(([key, label]) => {
-                  const on = Boolean(details[key]);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`svy-opt${on ? ' is-on' : ''}`}
-                      aria-pressed={on}
-                      onClick={() => patchDetails({ [key]: !on })}
-                    >
-                      <span className="svy-opt-mark" aria-hidden>
-                        {on ? <Check size={11} strokeWidth={3} /> : null}
-                      </span>
-                      <span>{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
             </section>
           </div>
         ) : currentStep.id === 'commercial' ? (
@@ -1360,7 +1364,7 @@ export default function SurveyorProfilePage() {
             </section>
 
             <section
-              className={`svy-panel svy-panel-span${showFieldErrors && missingKeys.has('equipment') ? ' is-invalid' : ''}`}
+              className={`svy-panel svy-eq${showFieldErrors && missingKeys.has('equipment') ? ' is-invalid' : ''}`}
             >
               <div className="svy-panel-head">
                 <span className="svy-panel-ico">
@@ -1370,7 +1374,7 @@ export default function SurveyorProfilePage() {
                   <h2>
                     5. Equipment <span className="req">*</span>
                   </h2>
-                  <p>Select from catalog</p>
+                  <p>Pick a category, then tick the kit you own.</p>
                 </div>
               </div>
               {showFieldErrors && missingKeys.has('equipment') ? (
@@ -1378,30 +1382,133 @@ export default function SurveyorProfilePage() {
                   Select at least one piece of equipment
                 </p>
               ) : null}
-              {EQUIPMENT_GROUPS.map((group) => (
-                <div key={group.id} className="svy-group">
-                  <h3 className="svy-group-title">{group.label}</h3>
-                  <div className="svy-opts">
-                    {group.items.map((id) => {
-                      const selected = equipment.includes(id);
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          className={`svy-opt${selected ? ' is-on' : ''}`}
-                          aria-pressed={selected}
-                          onClick={() => setEquipment((prev) => toggleInList(prev, id))}
-                        >
-                          <span className="svy-opt-mark" aria-hidden>
-                            {selected ? <Check size={11} strokeWidth={3} /> : null}
-                          </span>
-                          <span>{EQUIPMENT_LABELS[id as EquipmentId]}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+
+              <div className="svy-svc-rail svy-eq-rail" role="tablist" aria-label="Equipment categories">
+                {EQUIPMENT_GROUPS.map((group, gi) => {
+                  const Icon = EQUIPMENT_GROUP_ICONS[group.id];
+                  const picked = group.items.filter((id) => equipment.includes(id)).length;
+                  const active = equipmentGroupIdx === gi;
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      className={`svy-svc-tile${active ? ' is-active' : ''}${picked > 0 ? ' has-picks' : ''}`}
+                      onClick={() => openEquipmentGroup(gi)}
+                    >
+                      {active ? (
+                        <motion.span
+                          layoutId="svy-eq-active"
+                          className="svy-svc-tile-glow"
+                          transition={
+                            reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 36 }
+                          }
+                        />
+                      ) : null}
+                      <span className="svy-svc-tile-ico" aria-hidden>
+                        <Icon size={17} strokeWidth={2.1} />
+                      </span>
+                      <span className="svy-svc-tile-copy">
+                        <strong>{group.label}</strong>
+                        <small>
+                          {picked > 0
+                            ? `${picked} of ${group.items.length} selected`
+                            : `${group.items.length} items`}
+                        </small>
+                      </span>
+                      <span className="svy-svc-tile-badge" aria-hidden>
+                        {picked > 0 ? <Check size={11} strokeWidth={3} /> : gi + 1}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="svy-svc-stage svy-eq-stage">
+                <AnimatePresence mode="wait" initial={false} custom={equipmentGroupDir}>
+                  {(() => {
+                    const group = EQUIPMENT_GROUPS[equipmentGroupIdx]!;
+                    const items = group.items as readonly string[];
+                    const allPicked = items.every((id) => equipment.includes(id));
+                    const prevGroup = EQUIPMENT_GROUPS[equipmentGroupIdx - 1];
+                    const nextGroup = EQUIPMENT_GROUPS[equipmentGroupIdx + 1];
+                    return (
+                      <motion.div
+                        key={group.id}
+                        role="tabpanel"
+                        className="svy-svc-panel"
+                        custom={equipmentGroupDir}
+                        variants={serviceGroupSlide}
+                        initial={reduceMotion ? false : 'enter'}
+                        animate="center"
+                        exit={reduceMotion ? undefined : 'exit'}
+                        transition={{ duration: 0.24, ease: stepEase }}
+                      >
+                        <div className="svy-svc-panel-head">
+                          <p>
+                            <strong>{group.label}</strong>
+                            <span>Choose all that apply</span>
+                          </p>
+                          <button
+                            type="button"
+                            className="svy-svc-all"
+                            onClick={() => toggleWholeEquipmentGroup(items)}
+                          >
+                            {allPicked ? 'Clear all' : 'Select all'}
+                          </button>
+                        </div>
+                        <div className="svy-opts">
+                          {items.map((id, ii) => {
+                            const selected = equipment.includes(id);
+                            return (
+                              <motion.button
+                                key={id}
+                                type="button"
+                                className={`svy-opt${selected ? ' is-on' : ''}`}
+                                aria-pressed={selected}
+                                onClick={() => setEquipment((prev) => toggleInList(prev, id))}
+                                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2, delay: reduceMotion ? 0 : 0.04 + ii * 0.025 }}
+                              >
+                                <span className="svy-opt-mark" aria-hidden>
+                                  {selected ? <Check size={11} strokeWidth={3} /> : null}
+                                </span>
+                                <span>{EQUIPMENT_LABELS[id as EquipmentId]}</span>
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                        <div className="svy-svc-panel-foot">
+                          {prevGroup ? (
+                            <button
+                              type="button"
+                              className="svy-svc-nav"
+                              onClick={() => openEquipmentGroup(equipmentGroupIdx - 1)}
+                            >
+                              <ArrowLeft size={14} strokeWidth={2.4} />
+                              {prevGroup.label}
+                            </button>
+                          ) : (
+                            <span />
+                          )}
+                          {nextGroup ? (
+                            <button
+                              type="button"
+                              className="svy-svc-nav is-next"
+                              onClick={() => openEquipmentGroup(equipmentGroupIdx + 1)}
+                            >
+                              Next: {nextGroup.label}
+                              <ArrowRight size={14} strokeWidth={2.4} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </motion.div>
+                    );
+                  })()}
+                </AnimatePresence>
+              </div>
             </section>
           </div>
         ) : (
