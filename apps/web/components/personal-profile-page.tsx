@@ -458,6 +458,10 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
               <span className="hint">From your account · not editable here</span>
             </div>
 
+            {showCompanyName || isCompany ? (
+              <p className="personal-section-label">{isCompany ? 'Company' : 'Organisation'}</p>
+            ) : null}
+
             {showCompanyName && (
               <div className="field">
                 <label htmlFor="personal-company">Company name</label>
@@ -466,7 +470,7 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   disabled={!editing}
-                  placeholder="Optional"
+                  placeholder={editing ? 'Optional' : 'Not added'}
                 />
               </div>
             )}
@@ -482,19 +486,20 @@ export function PersonalProfilePage({ role }: { role: WorkspaceRole }) {
                     disabled={!editing}
                   />
                 </div>
-                <div className="field">
+                <div className="field personal-field-wide">
                   <label htmlFor="personal-website">Website</label>
                   <input
                     id="personal-website"
                     value={website}
                     onChange={(e) => setWebsite(e.target.value)}
                     disabled={!editing}
-                    placeholder="https://"
+                    placeholder={editing ? 'https://' : 'Not added'}
                   />
                 </div>
               </>
             )}
 
+            <p className="personal-section-label">Address</p>
             <AddressFields
               value={address}
               onChange={setAddress}

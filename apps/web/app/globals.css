@@ -4161,10 +4161,10 @@ lord-icon {
 
 .personal-profile-edit form input:disabled,
 .personal-profile-edit form input[readonly] {
-  border-color: rgba(113, 104, 246, 0.1);
+  border-color: rgba(113, 104, 246, 0.08);
   color: #2a2558;
   -webkit-text-fill-color: #2a2558;
-  background: linear-gradient(180deg, #f7f8ff 0%, #eeeaff 100%);
+  background: #f8f8fd;
   box-shadow: none;
   cursor: default;
   opacity: 1;
@@ -4172,13 +4172,102 @@ lord-icon {
 
 .personal-profile-edit form input:disabled::placeholder,
 .personal-profile-edit form input[readonly]::placeholder {
-  color: #9b94ff;
-  -webkit-text-fill-color: #9b94ff;
+  color: #a7a3c4;
+  -webkit-text-fill-color: #a7a3c4;
+  font-weight: 500;
+  font-style: italic;
   opacity: 1;
 }
 
 .personal-profile-edit form .field:first-child {
   grid-column: 1 / -1;
+}
+
+.personal-profile-edit form {
+  align-items: start;
+}
+
+.personal-section-label {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 -2px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #7168f6;
+}
+
+.personal-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(113, 104, 246, 0.14);
+}
+
+.personal-profile-edit form .personal-field-wide,
+.personal-profile-edit form .addr-fields {
+  grid-column: 1 / -1;
+}
+
+.personal-profile-edit .addr-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.personal-profile-edit .addr-fields .addr-grid {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.personal-profile-edit .addr-line1-plain {
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(113, 104, 246, 0.16);
+  background: #fff;
+}
+
+.personal-profile-edit .addr-line1-plain:focus-within {
+  border-color: #7168f6;
+  box-shadow: 0 0 0 3px rgba(113, 104, 246, 0.16);
+}
+
+.personal-profile-edit .addr-line1-plain:has(input:disabled) {
+  border-color: rgba(113, 104, 246, 0.08);
+  background: #f8f8fd;
+}
+
+.personal-profile-edit form .addr-line1-plain input,
+.personal-profile-edit form .addr-line1-plain input:disabled,
+.personal-profile-edit form .addr-line1-plain input:focus {
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.personal-profile-edit .addr-line1-ico {
+  color: #9b94ff;
+}
+
+@media (max-width: 900px) {
+  .personal-profile-edit .addr-fields .addr-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .personal-profile-edit .addr-fields,
+  .personal-profile-edit .addr-fields .addr-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .personal-details-actions {
